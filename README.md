@@ -4,6 +4,8 @@
 このリポジトリには `yurii_PKM` 向けの専用 Vim 設定サンプルとして
 `vimrc_yurii_PKM_test.vim` を追加しています。
 
+※ `codex/implement-custom-vim-configuration-3nhmm3` と `main` の README 競合はこの内容で解消済みです。
+
 起動例:
 
 ```bash
