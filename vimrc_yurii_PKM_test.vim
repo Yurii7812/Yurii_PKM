@@ -1,8 +1,9 @@
+
 " =========================================================
-" ~/.vimrc_yurii_PKM_test
-" yurii_PKM 専用 Vim 環境（サンプル）
+" ~/.vimrc_yurii_PKM
+" yurii_PKM 専用 Vim 環境
 " 起動:
-"   vim -u /path/to/vimrc_yurii_PKM_test.vim
+"   vim -u ~/.vimrc_yurii_PKM
 " =========================================================
 
 set nocompatible
@@ -10,7 +11,7 @@ set nocompatible
 " ---------------------------------------------------------
 " 専用Vimディレクトリ
 " ---------------------------------------------------------
-let g:yurii_pkm_vimdir = expand('~/.vim_yurii_PKM_test')
+let g:yurii_pkm_vimdir = expand('~/.vim_yurii_PKM')
 
 let &runtimepath = g:yurii_pkm_vimdir . ',' . $VIMRUNTIME . ',' . g:yurii_pkm_vimdir . '/after'
 let &packpath = g:yurii_pkm_vimdir
@@ -25,20 +26,6 @@ set fileformats=unix,dos,mac
 
 filetype plugin indent on
 syntax on
-
-" =========================================================
-" vim-plug
-" =========================================================
-
-let g:plug_home = expand('~/.vim_yurii_PKM_test/plugged')
-
-call plug#begin(g:plug_home)
-  Plug 'tpope/vim-surround'
-  Plug 'junegunn/fzf'
-  Plug 'junegunn/fzf.vim'
-  Plug 'freeo/vim-kalisi'
-  Plug 'https://github.com/Yurii7812/Yurii_PKM.git', { 'rtp': 'Yurii_PKM' }
-call plug#end()
 
 " =========================================================
 " 表示
@@ -90,11 +77,6 @@ nnoremap <Down> gj
 inoremap <Up> <C-o>gk
 inoremap <Down> <C-o>gj
 
-" =========================================================
-" 設定編集
-" =========================================================
-nnoremap <leader>ev :edit ~/.vimrc_yurii_PKM_test<CR>
-nnoremap <leader>sv :source ~/.vimrc_yurii_PKM_test<CR>
 
 " =========================================================
 " yurii_PKM 見た目設定
@@ -105,15 +87,12 @@ let g:yurii_pkm_link_color_cterm = '81'
 " =========================================================
 " 自作プラグイン
 " =========================================================
-let s:yurii_pkm_plugin = expand('~/.vim_yurii_PKM_test/plugin/yurii_pkm.vim')
-
-if filereadable(s:yurii_pkm_plugin)
-  execute 'source ' . fnameescape(s:yurii_pkm_plugin)
-endif
 
 set backspace=indent,eol,start
 
+
 " 既定アプリで開く
+
 if has('wsl')
   nnoremap gm :call system('explorer.exe ' . shellescape(system('wslpath -w ' . expand('%:p'))))<CR>
 else
@@ -130,8 +109,7 @@ set nobackup
 set nowritebackup
 
 " indexを最初から開く
-autocmd VimEnter * call timer_start(0, {-> execute('YuriiIndex')})
-autocmd VimEnter * call timer_start(50, {-> execute('redraw!')})
+autocmd VimEnter * call timer_start(0, {-> execute('YuriiIndex')}) | autocmd VimEnter * call timer_start(50, {-> execute('redraw!')})
 
 " エラーを表示しない
 autocmd FileType markdown highlight markdownError cterm=NONE gui=NONE
@@ -148,10 +126,7 @@ nnoremap rg :Rg<CR>
 let g:yurii_pkm_link_color_gui = '#2F6690'
 let g:yurii_pkm_link_color_cterm = '24'
 
-set background=light
-colorscheme kalisi
-
 " !系コマンドを常にsilentで実行
-cmap <expr> <CR> getcmdtype() == ':' && getcmdline() =~ '^\s*!' ? '<C-\\>e"silent " . getcmdline()<CR><CR>' : '<CR>'
+cmap <expr> <CR> getcmdtype() == ':' && getcmdline() =~ '^\s*!' ? '<C-\>e"silent " . getcmdline()<CR><CR>' : '<CR>'
 " !コマンド後に自動でredraw
 autocmd ShellCmdPost * redraw!
