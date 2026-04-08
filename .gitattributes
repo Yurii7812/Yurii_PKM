@@ -1,0 +1,3 @@
+# Keep this branch's versions for frequently personalized docs/settings during merges
+README.md merge=ours
+vimrc_yurii_PKM merge=ours

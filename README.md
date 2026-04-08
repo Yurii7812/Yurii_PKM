@@ -53,3 +53,8 @@ call plug#end()
   - 個人用キーマップ・起動時挙動（`autocmd VimEnter` など）
 
 つまり、`vimrc_yurii_PKM` の「環境設定」はそのまま維持し、機能本体だけ `Yurii_PKM/` に集約する方針です。
+
+## マージ衝突について
+
+`README.md` と `vimrc_yurii_PKM` は更新頻度が高く競合しやすいため、`.gitattributes` で `merge=ours` を指定しています。  
+ブランチ運用時にこの2ファイルで衝突した場合は、基本的に作業ブランチ側の内容を採用する想定です。
