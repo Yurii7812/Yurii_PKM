@@ -1,0 +1,31 @@
+" =========================================================
+" ~/.vimrc_yurii_PKM
+" yurii_PKM 専用 Vim 環境
+" 起動:
+"   vim -u ~/.vimrc_yurii_PKM
+" =========================================================
+
+set nocompatible
+
+" ---------------------------------------------------------
+" 専用Vimディレクトリ
+" ---------------------------------------------------------
+
+set runtimepath^=~/.vim_yurii_PKM
+
+" =========================================================
+" vim-plug
+" =========================================================
+
+let g:plug_home = expand('~/.vim_yurii_PKM/plugged/')
+
+call plug#begin(g:plug_home)
+  Plug 'tpope/vim-surround'
+  Plug 'junegunn/fzf'
+  Plug 'Yurii7812/Yurii_PKM'
+  Plug 'junegunn/fzf.vim'
+  Plug 'freeo/vim-kalisi'
+call plug#end()
+
+set background=light
+colorscheme kalisi
