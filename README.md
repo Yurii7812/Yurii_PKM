@@ -33,6 +33,15 @@ let g:yurii_pkm_root = expand('~/memo')
 
 ---
 
+## 使い方（最短）
+
+1. `:YuriiIndex` で `index.md` を開く。
+2. `nf` / `nn` / `nk` で新規ノートを作成する。
+3. `<Tab>` / `<S-Tab>` でリンク移動、`<Enter>` でリンクを開く。
+4. `nt` でタイトル編集、`bc` / `at` でリンク操作を行う。
+
+---
+
 ## 推奨設定
 
 ```vim
