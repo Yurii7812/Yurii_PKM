@@ -52,6 +52,8 @@ endif
 if !exists('g:yurii_pkm_enable_conceal')
   " WSL terminal は conceal 再描画で重くなりやすいため既定では無効
   let g:yurii_pkm_enable_conceal = s:is_wsl_env() ? 0 : 1
+=======
+  let g:yurii_pkm_enable_conceal = has('wsl') ? 0 : 1
 endif
 " リンク色は .vimrc 側で設定する想定
 
