@@ -37,6 +37,10 @@ endif
 if !exists('g:yurii_pkm_auto_save_on_command')
   let g:yurii_pkm_auto_save_on_command = 1
 endif
+if !exists('g:yurii_pkm_enable_conceal')
+  " WSL terminal は conceal 再描画で重くなりやすいため既定では無効
+  let g:yurii_pkm_enable_conceal = has('wsl') ? 0 : 1
+endif
 " リンク色は .vimrc 側で設定する想定
 
 " Python スクリプトのパス
@@ -244,6 +248,11 @@ augroup END
 
 function! s:setup_conceal() abort
   if &l:filetype !=# 'markdown' && &l:filetype !=# 'vimwiki'
+    return
+  endif
+  if !get(g:, 'yurii_pkm_enable_conceal', 1)
+    setlocal conceallevel=0
+    setlocal concealcursor=
     return
   endif
 
