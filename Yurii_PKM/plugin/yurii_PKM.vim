@@ -47,6 +47,9 @@ endif
 if !exists('g:yurii_pkm_expand_s_python')
   let g:yurii_pkm_expand_s_python = s:plugin_root . '/python/expand_s.py'
 endif
+if !exists('g:yurii_search_tui')
+  let g:yurii_search_tui = s:plugin_root . '/python/fsearch_tui.py'
+endif
 
 " ---------------------------------------------------------------------------
 " コマンド定義
@@ -72,6 +75,11 @@ command!          YuriiChooseIndexDir call yurii_pkm#choose_index_root()
 command! -nargs=? SE         call yurii_pkm#expand_s_under_cursor(<q-args>)
 command!          RP         call yurii_pkm#rename_prefix()
 command!          OutlineEdit call yurii_pkm#outline_edit()
+command! -nargs=0 FSearch    call yurii_search#run()
+command! -nargs=+ FileContentSearch call yurii_pkm_extra#file_content_search(<q-args>)
+command!          Rename     call yurii_pkm_extra#rename_current_file()
+command!          SetImageSize call yurii_pkm_extra#set_image_size()
+command!          Autocwindow call yurii_pkm_extra#toggle_quickfix_advanced_mode()
 " テーブル操作コマンド
 command! -nargs=* TN         call yurii_pkm#table_new(<q-args>)
 command! -nargs=* NewTable   call yurii_pkm#table_new(<q-args>)
@@ -102,6 +110,9 @@ nnoremap <silent> \tac :TAC<CR>
 nnoremap <silent> \tdr :TDR<CR>
 nnoremap <silent> \tdc :TDC<CR>
 nnoremap <silent> \ua  :UpdateAll<CR>
+if !exists('g:yurii_search_no_mappings')
+  nnoremap <leader>fs :FSearch<CR>
+endif
 
 nnoremap <silent> \se  <Cmd>call <SID>expand_s_and_open()<CR>
 nnoremap <nowait> <silent> mp  <Cmd>call yurii_pkm#rename_prefix()<CR>
@@ -208,6 +219,11 @@ augroup yurii_pkm_table
   autocmd!
   autocmd FileType markdown,vimwiki call s:setup_table_keys()
   autocmd BufRead,BufNewFile *.md   call s:setup_table_keys()
+augroup END
+
+augroup yurii_pkm_extra_quickfix
+  autocmd!
+  autocmd FileType qf call yurii_pkm_extra#quickfix_on_filetype()
 augroup END
 
 function! s:setup_table_keys() abort
