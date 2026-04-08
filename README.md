@@ -127,6 +127,7 @@ Plug 'Yurii7812/Yurii_PKM'
 | `g:yurii_pkm_history_max` | `200` | 履歴最大件数 |
 | `g:yurii_pkm_autosync` | `1` | 保存時 AutoSync 有効/無効 |
 | `g:yurii_pkm_auto_save_on_command` | `1` | コマンド前自動保存 |
+| `g:yurii_pkm_enable_conceal` | `WSL:0 / その他:1` | リンク conceal 表示の有効/無効（WSL は既定で無効） |
 | `g:yurii_pkm_python` | `{plugin}/python/yurii_pkm_sync.py` | 同期スクリプト |
 | `g:yurii_pkm_expand_s_python` | `{plugin}/python/expand_s.py` | S展開スクリプト |
 
