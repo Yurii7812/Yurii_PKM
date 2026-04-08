@@ -37,6 +37,8 @@ call plug#begin(g:plug_home)
   Plug 'junegunn/fzf'
   Plug 'junegunn/fzf.vim'
   Plug 'freeo/vim-kalisi'
+  " GitHub に公開したら実パスへ置き換えて利用:
+  " Plug 'YOUR_GITHUB_ID/Yurii_PKM'
 call plug#end()
 
 " =========================================================
@@ -102,10 +104,10 @@ let g:yurii_pkm_link_color_gui = '#66CCFF'
 let g:yurii_pkm_link_color_cterm = '81'
 
 " =========================================================
-" 自作プラグイン
+" 自作プラグイン（レガシー互換: 直読み）
+" Vim-Plug 導入時は不要
 " =========================================================
-let s:yurii_pkm_plugin = expand('~/.vim_yurii_PKM/plugin/yurii_pkm.vim')
-
+let s:yurii_pkm_plugin = expand('~/.vim_yurii_PKM/plugin/yurii_PKM.vim')
 if filereadable(s:yurii_pkm_plugin)
   execute 'source ' . fnameescape(s:yurii_pkm_plugin)
 endif
