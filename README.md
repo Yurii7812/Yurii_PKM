@@ -16,12 +16,6 @@ Plug 'Yurii7812/Yurii_PKM'
 
 ## 初期設定
 
-最低限、ノートを置くルートディレクトリを指定してください。
-
-```vim
-let g:yurii_pkm_root = expand('~/memo')
-```
-
 必要なら自動同期を無効化できます。
 
 ```vim
