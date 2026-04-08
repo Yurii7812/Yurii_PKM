@@ -1,12 +1,12 @@
 # yurii_PKM
 
 `yurii_PKM` は、あなたの PKM（Personal Knowledge Management）運用向けに作られた Vim プラグイン集を、
-**1つの Vim プラグインとして統合**したリポジトリです。
+**`Yurii_PKM/` フォルダ配下に1つへ統合**した構成です。
 
-この統合により、以下を一括で提供します。
+この統合により、以下を `Yurii_PKM/` 配下で一括提供します。
 
-- 既存の PKM 本体機能（`yurii_PKM/`）
-- ファイル検索 UI（`yurii_search/`）
+- PKM 本体機能（`Yurii_PKM/plugin`, `Yurii_PKM/autoload`, `Yurii_PKM/python`）
+- ファイル検索 UI（`Yurii_PKM/autoload/yurii_search.vim`, `Yurii_PKM/python/fsearch_tui.py`）
 - 以前は単体 `.vim` ファイルだった補助コマンド群
   - `:FileContentSearch`
   - `:Rename`
@@ -17,7 +17,7 @@
 
 ```vim
 call plug#begin('~/.vim/plugged')
-  Plug 'YOUR_GITHUB_ID/Yurii_PKM'
+  Plug 'YOUR_GITHUB_ID/Yurii_PKM', { 'rtp': 'Yurii_PKM' }
 call plug#end()
 ```
 
@@ -27,7 +27,8 @@ call plug#end()
 :PlugInstall
 ```
 
-> `YOUR_GITHUB_ID/Yurii_PKM` は、実際の GitHub リポジトリパスに置き換えてください。
+> `YOUR_GITHUB_ID/Yurii_PKM` は、実際の GitHub リポジトリパスに置き換えてください。  
+> 本リポジトリは `Yurii_PKM/` を runtimepath として使うため、`{ 'rtp': 'Yurii_PKM' }` を指定します。
 
 ## 使い方
 
@@ -37,4 +38,16 @@ call plug#end()
 - 検索コマンド（` :FSearch`）
 - 統合補助コマンド（` :FileContentSearch`, `:Rename`, `:SetImageSize`, `:Autocwindow`）
 
-詳細な操作は `yurii_PKM/README.txt` を参照してください。
+詳細な操作は `Yurii_PKM/README.txt` を参照してください。
+
+## vimrc からの移行について
+
+- **移行済み（プラグイン側）**
+  - PKM/検索/補助コマンドの機能本体
+  - `:FSearch`, `:FileContentSearch`, `:Rename`, `:SetImageSize`, `:Autocwindow`
+- **移行しない（vimrc 側に残す）**
+  - 色テーマ (`colorscheme` / `background`)
+  - 表示・入力系オプション (`number`, `wrap`, `clipboard` など)
+  - 個人用キーマップ・起動時挙動（`autocmd VimEnter` など）
+
+つまり、`vimrc_yurii_PKM` の「環境設定」はそのまま維持し、機能本体だけ `Yurii_PKM/` に集約する方針です。
