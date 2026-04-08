@@ -11,13 +11,13 @@ set nocompatible
 " 専用Vimディレクトリ
 " ---------------------------------------------------------
 
-set runtimepath^=~/.vim_yurii_PKM
+set runtimepath^=dir
 
 " =========================================================
 " vim-plug
 " =========================================================
 
-let g:plug_home = expand('~/.vim_yurii_PKM/plugged/')
+let g:plug_home = expand('dir')
 
 call plug#begin(g:plug_home)
   Plug 'tpope/vim-surround'
