@@ -605,11 +605,22 @@ endfunction
 
 function! yurii_pkm#jump_link(forward) abort
   let l:flags = a:forward ? 'W' : 'bW'
-  if !search(s:link_pat, l:flags)
+  let l:save_search = @/
+  let l:save_hl = &hlsearch
+  let l:pos = [0, 0]
+  try
+    let l:pos = searchpos(s:link_pat, l:flags)
+  finally
+    let @/ = l:save_search
+    if !l:save_hl
+      nohlsearch
+    endif
+  endtry
+  if l:pos[0] <= 0
     echo 'No more links'
     return
   endif
-  " search() のマッチ先頭 ([) にそのまま止める
+  call cursor(l:pos[0], l:pos[1])
 endfunction
 
 function! yurii_pkm#get_link_under_cursor() abort

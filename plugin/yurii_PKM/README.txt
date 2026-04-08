@@ -103,6 +103,7 @@ prefix [S] →    → 新プレフィクスを1文字即時入力（a-z、大文
 |------|-----------|------|
 | `g:yurii_pkm_root` | `''` | PKM ルートディレクトリ（未設定なら保存済み値→選択） |
 | `g:yurii_pkm_autosync` | `1` | 保存時に自動同期するか |
+| `g:yurii_pkm_enable_conceal` | `WSL:0 / その他:1` | リンク conceal 表示の有効/無効（WSL は既定で無効） |
 | `g:yurii_pkm_history_max` | `200` | 履歴の最大件数 |
 | `g:yurii_pkm_persistent_undo` | `1` | Persistent undo を有効にするか |
 | `g:yurii_pkm_link_color_gui` | `#66CCFF` | リンクテキストの色（GUI） |
