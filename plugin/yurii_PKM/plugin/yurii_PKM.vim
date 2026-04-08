@@ -8,6 +8,18 @@ if exists('g:loaded_yurii_pkm')
 endif
 let g:loaded_yurii_pkm = 1
 
+" WSL 判定（has('wsl') が無い Vim でも判定できるようにする）
+function! s:is_wsl_env() abort
+  if has('wsl')
+    return 1
+  endif
+  if !has('unix')
+    return 0
+  endif
+  let l:uname_r = tolower(substitute(system('uname -r'), '\n\+$', '', ''))
+  return l:uname_r =~# 'microsoft\|wsl'
+endfunction
+
 " ---------------------------------------------------------------------------
 " デフォルト設定
 " ---------------------------------------------------------------------------
@@ -36,6 +48,10 @@ if !exists('g:yurii_pkm_autosync')
 endif
 if !exists('g:yurii_pkm_auto_save_on_command')
   let g:yurii_pkm_auto_save_on_command = 1
+endif
+if !exists('g:yurii_pkm_enable_conceal')
+  " WSL terminal は conceal 再描画で重くなりやすいため既定では無効
+  let g:yurii_pkm_enable_conceal = s:is_wsl_env() ? 0 : 1
 endif
 " リンク色は .vimrc 側で設定する想定
 
@@ -244,6 +260,11 @@ augroup END
 
 function! s:setup_conceal() abort
   if &l:filetype !=# 'markdown' && &l:filetype !=# 'vimwiki'
+    return
+  endif
+  if !get(g:, 'yurii_pkm_enable_conceal', 1)
+    setlocal conceallevel=0
+    setlocal concealcursor=
     return
   endif
 
