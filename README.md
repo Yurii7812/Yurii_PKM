@@ -24,15 +24,7 @@ Plug 'Yurii7812/Yurii_PKM'
 
 ---
 
-## 必須設定（最小）
 
-ノートを保存するルートディレクトリを指定します。
-
-```vim
-let g:yurii_pkm_root = expand('~/memo')
-```
-
----
 
 ## 使い方（最短）
 
@@ -40,26 +32,6 @@ let g:yurii_pkm_root = expand('~/memo')
 2. `nf` / `nn` / `nk` で新規ノートを作成する。
 3. `<Tab>` / `<S-Tab>` でリンク移動、`<Enter>` でリンクを開く。
 4. `nt` でタイトル編集、`bc` / `at` でリンク操作を行う。
-
----
-
-## 推奨設定
-
-```vim
-" 保存時 AutoSync（既定: 1）
-let g:yurii_pkm_autosync = 1
-
-" コマンド実行前に自動保存（既定: 1）
-let g:yurii_pkm_auto_save_on_command = 1
-
-" 履歴件数（既定: 200）
-let g:yurii_pkm_history_max = 200
-
-" 新規ノートの既定プレフィクス
-let g:yurii_pkm_default_child_prefix = 'C'
-let g:yurii_pkm_default_quick_prefix = 'F'
-let g:yurii_pkm_default_atomic_prefix = 'C'
-```
 
 ---
 
@@ -161,18 +133,7 @@ let g:yurii_pkm_default_atomic_prefix = 'C'
 ---
 
 
-## トラブルシューティング（マージ競合エラー）
 
-README に以下のような文字列が見える場合は、Git のマージ競合が未解決です。
-
-- `<<<<<<<`
-- `=======`
-- `>>>>>>>`
-
-このリポジトリの `README.md` は競合解消済みの状態が正です。  
-競合マーカーが残っている場合は、競合行を削除して 1 つの内容に統合してからコミットしてください。
-
----
 
 ## 参考
 
