@@ -603,13 +603,94 @@ endfunction
 " Link navigation
 " ---------------------------------------------------------------------------
 
+function! s:collect_link_positions() abort
+  let l:items = []
+  for l:lnum in range(1, line('$'))
+    let l:line = getline(l:lnum)
+    let l:start = 0
+    while 1
+      let l:m = matchstrpos(l:line, s:link_pat, l:start)
+      if len(l:m) < 3 || l:m[1] < 0
+        break
+      endif
+      call add(l:items, [l:lnum, l:m[1] + 1])
+      let l:start = l:m[2]
+    endwhile
+  endfor
+  return l:items
+endfunction
+
+function! s:link_positions_cached() abort
+  let l:tick = get(b:, 'changedtick', -1)
+  if !exists('b:yurii_pkm_link_cache') || get(b:yurii_pkm_link_cache, 'tick', -1) != l:tick
+    let b:yurii_pkm_link_cache = {
+          \ 'tick': l:tick,
+          \ 'items': s:collect_link_positions(),
+          \ }
+  endif
+  return b:yurii_pkm_link_cache.items
+endfunction
+
 function! yurii_pkm#jump_link(forward) abort
-  let l:flags = a:forward ? 'W' : 'bW'
-  if !search(s:link_pat, l:flags)
+  if !get(g:, 'yurii_pkm_use_link_cache', 0)
+    let l:flags = a:forward ? 'W' : 'bW'
+    let l:save_search = @/
+    let l:save_hl = &hlsearch
+    let l:pos = [0, 0]
+    try
+      let l:pos = searchpos(s:link_pat, l:flags)
+    finally
+      let @/ = l:save_search
+      if !l:save_hl
+        nohlsearch
+      endif
+    endtry
+    if l:pos[0] <= 0
+      echo 'No more links'
+      return
+    endif
+    call cursor(l:pos[0], l:pos[1])
+    return
+  endif
+
+  let l:items = s:link_positions_cached()
+  if empty(l:items)
     echo 'No more links'
     return
   endif
-  " search() のマッチ先頭 ([) にそのまま止める
+
+  let l:cur_lnum = line('.')
+  let l:cur_col = col('.')
+  let l:low = 0
+  let l:high = len(l:items)
+
+  " 最初の「現在位置より後」のリンクを二分探索で探す
+  while l:low < l:high
+    let l:mid = (l:low + l:high) / 2
+    let l:pos = l:items[l:mid]
+    if l:pos[0] > l:cur_lnum || (l:pos[0] == l:cur_lnum && l:pos[1] > l:cur_col)
+      let l:high = l:mid
+    else
+      let l:low = l:mid + 1
+    endif
+  endwhile
+
+  if a:forward
+    if l:low >= len(l:items)
+      echo 'No more links'
+      return
+    endif
+    let l:target = l:items[l:low]
+  else
+    let l:idx = l:low - 1
+    if l:idx < 0
+      echo 'No more links'
+      return
+    endif
+    let l:target = l:items[l:idx]
+  endif
+
+  call cursor(l:target[0], l:target[1])
 endfunction
 
 function! yurii_pkm#get_link_under_cursor() abort
