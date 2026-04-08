@@ -42,19 +42,7 @@ call plug#end()
 
 詳細な操作は `Yurii_PKM/README.txt` を参照してください。
 
-## vimrc からの移行について
-
-- **移行済み（プラグイン側）**
-  - PKM/検索/補助コマンドの機能本体
-  - `:FSearch`, `:FileContentSearch`, `:Rename`, `:SetImageSize`, `:Autocwindow`
-- **移行しない（vimrc 側に残す）**
-  - 色テーマ (`colorscheme` / `background`)
-  - 表示・入力系オプション (`number`, `wrap`, `clipboard` など)
-  - 個人用キーマップ・起動時挙動（`autocmd VimEnter` など）
-
-つまり、`vimrc_yurii_PKM` の「環境設定」はそのまま維持し、機能本体だけ `Yurii_PKM/` に集約する方針です。
-
 ## マージ衝突について
 
-`README.md` と `vimrc_yurii_PKM` は更新頻度が高く競合しやすいため、`.gitattributes` で `merge=ours` を指定しています。  
-ブランチ運用時にこの2ファイルで衝突した場合は、基本的に作業ブランチ側の内容を採用する想定です。
+競合を減らすため、個人環境用の `vimrc_yurii_PKM` は削除し、プラグイン本体に集約しました。  
+また、`README.md` は `.gitattributes` の `merge=ours` で作業ブランチ側を優先する設定にしています。
