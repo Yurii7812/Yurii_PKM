@@ -56,6 +56,9 @@ endif
 if !exists('g:yurii_pkm_use_link_cache')
   " 全文走査キャッシュは環境によっては初回コストが重いので既定オフ
   let g:yurii_pkm_use_link_cache = 0
+
+
+  let g:yurii_pkm_enable_conceal = has('wsl') ? 0 : 1
 endif
 " リンク色は .vimrc 側で設定する想定
 
