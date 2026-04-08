@@ -671,6 +671,43 @@ function! yurii_pkm#jump_link(forward) abort
 
   call cursor(l:target[0], l:target[1])
 =======
+    echo 'No more links'
+    return
+  endif
+
+  let l:cur_lnum = line('.')
+  let l:cur_col = col('.')
+  let l:low = 0
+  let l:high = len(l:items)
+
+  " 最初の「現在位置より後」のリンクを二分探索で探す
+  while l:low < l:high
+    let l:mid = (l:low + l:high) / 2
+    let l:pos = l:items[l:mid]
+    if l:pos[0] > l:cur_lnum || (l:pos[0] == l:cur_lnum && l:pos[1] > l:cur_col)
+      let l:high = l:mid
+    else
+      let l:low = l:mid + 1
+    endif
+  endwhile
+
+  if a:forward
+    if l:low >= len(l:items)
+      echo 'No more links'
+      return
+    endif
+    let l:target = l:items[l:low]
+  else
+    let l:idx = l:low - 1
+    if l:idx < 0
+      echo 'No more links'
+      return
+    endif
+    let l:target = l:items[l:idx]
+  endif
+
+  call cursor(l:target[0], l:target[1])
+=======
   let l:flags = a:forward ? 'W' : 'bW'
   let l:save_search = @/
   let l:save_hl = &hlsearch
