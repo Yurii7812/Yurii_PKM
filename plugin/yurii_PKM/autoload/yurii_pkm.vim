@@ -1034,6 +1034,19 @@ function! yurii_pkm#timestamp_yaml() abort
   return strftime('%Y-%m-%d %H:%M:%S')
 endfunction
 
+function! s:new_note_insert_line() abort
+  let l:max = min([40, line('$')])
+  for lnum in range(1, l:max)
+    if getline(lnum) =~# '^#\s\+'
+      if lnum < line('$') && getline(lnum + 1) =~# '^\s*$'
+        return lnum + 1
+      endif
+      return min([lnum + 1, line('$')])
+    endif
+  endfor
+  return min([8, line('$')])
+endfunction
+
 function! yurii_pkm#note_template(title, ...) abort
   let l:filetype = a:0 >= 1 ? a:1 : ''
   let l:header = [
@@ -1415,7 +1428,7 @@ function! yurii_pkm#create_note(prefix, title, open_after, insert_mode) abort
     execute 'edit ' . fnameescape(l:file)
     let &autoindent = l:save_ai
     let &smartindent = l:save_si
-    call cursor(8, 1)
+    call cursor(s:new_note_insert_line(), 1)
     startinsert
   endif
 
@@ -1648,7 +1661,7 @@ function! s:new_note_no_title(prefix) abort
 
   call yurii_pkm#push_history()
   execute 'edit ' . fnameescape(l:file)
-  call cursor(l:cursor_line, 1)
+  call cursor(s:new_note_insert_line(), 1)
   startinsert
 endfunction
 
@@ -2050,7 +2063,7 @@ function! yurii_pkm#new_quick(args) abort
 
   call yurii_pkm#push_history()
   execute 'edit ' . fnameescape(l:file)
-  call cursor(l:cursor_line, 1)
+  call cursor(s:new_note_insert_line(), 1)
   startinsert
 endfunction
 
