@@ -2265,6 +2265,80 @@ function! yurii_pkm#linkify_filename_under_cursor() abort
   call setline('.', l:newline)
 endfunction
 
+function! yurii_pkm#linkify_selection() abort range
+  let l:clipboard = s:clipboard_text()
+  if empty(l:clipboard)
+    echo 'Error: clipboard is empty'
+    return
+  endif
+
+  let l:targets = s:extract_targets_from_clipboard(l:clipboard)
+  if empty(l:targets)
+    echo 'Error: no valid link target in clipboard'
+    return
+  endif
+  let l:target = l:targets[0]
+
+  if s:is_markdown_target(l:target)
+    let l:path = yurii_pkm#resolve_link(l:target)
+    if !filereadable(l:path)
+      echo 'Error: not found: ' . l:target
+      return
+    endif
+  endif
+
+  let l:sline = line("'<")
+  let l:eline = line("'>")
+  let l:scol  = col("'<")
+  let l:ecol  = col("'>")
+
+  if l:sline <= 0 || l:eline <= 0
+    echo 'No visual selection'
+    return
+  endif
+
+  if l:sline > l:eline || (l:sline == l:eline && l:scol > l:ecol)
+    let [l:sline, l:eline] = [l:eline, l:sline]
+    let [l:scol, l:ecol] = [l:ecol, l:scol]
+  endif
+
+  let l:lines = getline(l:sline, l:eline)
+  if empty(l:lines)
+    echo 'No visual selection'
+    return
+  endif
+
+  if len(l:lines) == 1
+    let l:selected = strpart(l:lines[0], l:scol - 1, l:ecol - l:scol + 1)
+  else
+    let l:selected_lines = copy(l:lines)
+    let l:selected_lines[0] = strpart(l:selected_lines[0], l:scol - 1)
+    let l:selected_lines[-1] = strpart(l:selected_lines[-1], 0, l:ecol)
+    let l:selected = join(l:selected_lines, "\n")
+  endif
+
+  let l:text = trim(substitute(l:selected, '\n\+', ' ', 'g'))
+  if empty(l:text)
+    echo 'No visual selection'
+    return
+  endif
+
+  let l:link = '[' . l:text . '](' . l:target . ')'
+
+  if len(l:lines) == 1
+    let l:line = l:lines[0]
+    let l:newline = strpart(l:line, 0, l:scol - 1) . l:link . strpart(l:line, l:ecol)
+    call setline(l:sline, l:newline)
+  else
+    let l:prefix = strpart(l:lines[0], 0, l:scol - 1)
+    let l:suffix = strpart(l:lines[-1], l:ecol)
+    call setline(l:sline, l:prefix . l:link . l:suffix)
+    if l:eline > l:sline
+      execute (l:sline + 1) . ',' . l:eline . 'delete _'
+    endif
+  endif
+endfunction
+
 " ---------------------------------------------------------------------------
 " :YN - Yank Note name
 " ---------------------------------------------------------------------------
