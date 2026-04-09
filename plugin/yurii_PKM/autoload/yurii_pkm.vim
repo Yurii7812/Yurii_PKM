@@ -1052,7 +1052,6 @@ function! yurii_pkm#note_template(title, ...) abort
         \ '',
         \ '',
         \ '# Back',
-
         \ '[Index](index.md)',
         \ ]
 endfunction
@@ -1533,7 +1532,6 @@ function! s:new_note_no_title(prefix) abort
             \ '',
             \ '# Back',
             \ l:parent_link_line,
-
             \ '[Index](index.md)' ]
       let l:cursor_line = 8
     else
@@ -1549,7 +1547,6 @@ function! s:new_note_no_title(prefix) abort
             \ '# ' . l:title,
             \ '',
             \ '# Back',
-
             \ l:parent_link_line,
             \ '',
             \ '[Index](index.md)' ]
@@ -1706,7 +1703,6 @@ function! s:visual_new_note(prefix, mode) abort
             \ '',
             \ '# Back',
             \ l:parent_link_line,
-
             \ '[Index](index.md)' ]
     else
       let l:content = [
@@ -1719,7 +1715,6 @@ function! s:visual_new_note(prefix, mode) abort
             \ '# ' . l:title,
             \ '',
             \ '# Back',
-
             \ l:parent_link_line,
             \ '',
             \ '[Index](index.md)' ]
@@ -1955,8 +1950,8 @@ function! yurii_pkm#new_quick(args) abort
             \ '',
             \ '# ' . l:title,
             \ '',
-            \ l:parent_link_line,
             \ '# Back',
+            \ l:parent_link_line,
             \ '[Index](index.md)' ]
       let l:cursor_line = 8
     else
@@ -1968,9 +1963,9 @@ function! yurii_pkm#new_quick(args) abort
             \ '',
             \ '# ' . l:title,
             \ '',
+            \ '# Back',
             \ l:parent_link_line,
             \ '',
-            \ '# Back',
             \ '[Index](index.md)' ]
       let l:cursor_line = 8
     endif
