@@ -115,6 +115,7 @@ let g:yurii_pkm_default_atomic_prefix = 'C'
 - `:CheckPrefix` : プレフィクスチェック
 - `:OutlineEdit` / `\oe` : アウトライン編集（別バッファで見出し編集、`←/→` で `#` 数変更、`q` / `:write` / `ZZ` / `:OutlineApply` で反映）
 
+
 ### 8) Markdown テーブル編集
 
 - 作成: `:TN`, `:NewTable`, `:YuriiTable`

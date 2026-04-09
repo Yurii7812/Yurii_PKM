@@ -126,6 +126,7 @@ function! s:outline_collect() abort
       let l:title = substitute(l:line, '^\s*#\+\s\+', '', '')
       let l:title = substitute(l:title, '^\s\+', '', '')
       let l:title = substitute(l:title, '\s\+$', '', '')
+
       call add(l:items, {
             \ 'src_lnum': lnum,
             \ 'indent': l:indent,
@@ -135,6 +136,7 @@ function! s:outline_collect() abort
     endif
     let lnum += 1
   endwhile
+
   return l:items
 endfunction
 
@@ -145,6 +147,7 @@ function! s:outline_editor_lines(items) abort
   call add(l:lines, '# Visual選択して <- / -> : 選択範囲を一括変更')
   call add(l:lines, '# q / ZZ / :OutlineApply で反映（Q は保存せず閉じる）')
   call add(l:lines, '')
+
   for l:item in a:items
     call add(l:lines, repeat('#', l:item.level) . ' ' . l:item.title)
   endfor
@@ -217,6 +220,7 @@ function! yurii_pkm#outline_edit() abort
   endif
 
   let l:items = s:outline_collect()
+
   if empty(l:items)
     echom 'yurii_PKM: 見出しが見つかりませんでした'
     return
@@ -225,6 +229,7 @@ function! yurii_pkm#outline_edit() abort
   let l:origin_win = win_getid()
   vertical botright new
   execute 'file ' . fnameescape('[YuriiOutlineEdit]')
+
   call setline(1, s:outline_editor_lines(l:items))
 
   let b:yurii_outline_editor = 1
@@ -252,6 +257,7 @@ function! yurii_pkm#outline_edit() abort
   nnoremap <silent><buffer> q  <Cmd>call yurii_pkm#outline_editor_apply()<CR><Cmd>bd!<CR>
   nnoremap <silent><buffer> Q  <Cmd>bd!<CR>
   nnoremap <silent><buffer> ZZ <Cmd>call yurii_pkm#outline_editor_apply()<CR><Cmd>bd!<CR>
+
   nnoremap <silent><buffer> <Left>  <Cmd>call yurii_pkm#outline_shift_current(-1)<CR>
   nnoremap <silent><buffer> <Right> <Cmd>call yurii_pkm#outline_shift_current(1)<CR>
   xnoremap <silent><buffer> <Left>  :<C-u>call yurii_pkm#outline_shift_visual(-1)<CR>
@@ -361,6 +367,31 @@ function! yurii_pkm#init_persistent_undo_if_ready() abort
 endfunction
 
 let s:startup_root_recovery_active = 0
+let s:index_created_recently = 0
+
+function! s:mark_index_created() abort
+  let s:index_created_recently = 1
+endfunction
+
+function! s:consume_index_created_flag() abort
+  let l:created = get(s:, 'index_created_recently', 0)
+  let s:index_created_recently = 0
+  return l:created
+endfunction
+
+function! s:timer_edit_file_cb(timer, path) abort
+  execute 'edit ' . fnameescape(a:path)
+endfunction
+
+function! s:timer_redraw_cb(timer) abort
+  redraw!
+endfunction
+
+function! s:open_index_with_delay(index_path) abort
+  call yurii_pkm#push_history()
+  call timer_start(0, function('s:timer_edit_file_cb', [a:index_path]))
+  call timer_start(50, function('s:timer_redraw_cb'))
+endfunction
 
 function! s:startup_recover_missing_root() abort
   let l:new_root = s:prompt_index_root()
@@ -383,14 +414,19 @@ function! s:startup_recover_missing_root() abort
     endif
     call s:setup_persistent_undo_for_root(l:new_root)
     call writefile(s:index_template(), l:index)
+    call s:mark_index_created()
     call yurii_pkm#clear_title_cache()
     echom 'Created: ' . l:index
   endif
 
   if filereadable(l:index)
     execute 'cd ' . fnameescape(l:new_root)
-    call yurii_pkm#push_history()
-    execute 'edit ' . fnameescape(l:index)
+    if s:consume_index_created_flag()
+      call s:open_index_with_delay(l:index)
+    else
+      call yurii_pkm#push_history()
+      execute 'edit ' . fnameescape(l:index)
+    endif
   endif
   return l:new_root
 endfunction
@@ -431,10 +467,15 @@ function! yurii_pkm#startup_restore_root() abort
     let l:index = s:index_path(l:root)
     call s:setup_persistent_undo_for_root(l:root)
     call writefile(s:index_template(), l:index)
+    call s:mark_index_created()
     call yurii_pkm#clear_title_cache()
     execute 'cd ' . fnameescape(l:root)
-    call yurii_pkm#push_history()
-    execute 'edit ' . fnameescape(l:index)
+    if s:consume_index_created_flag()
+      call s:open_index_with_delay(l:index)
+    else
+      call yurii_pkm#push_history()
+      execute 'edit ' . fnameescape(l:index)
+    endif
     echom 'Created: ' . l:index
   finally
     let s:startup_root_recovery_active = 0
@@ -475,6 +516,7 @@ function! s:setup_root_and_index(open_index) abort
     let l:ans = tolower(trim(input('Create index.md? y/n: ')))
     if l:ans ==# 'y'
       call writefile(s:index_template(), l:index)
+      call s:mark_index_created()
       call yurii_pkm#clear_title_cache()
       echom 'Created: ' . l:index
     else
@@ -486,8 +528,12 @@ function! s:setup_root_and_index(open_index) abort
   " Step3: Indexを開く
   if a:open_index && filereadable(l:index)
     execute 'cd ' . fnameescape(l:root)
-    call yurii_pkm#push_history()
-    execute 'edit ' . fnameescape(l:index)
+    if s:consume_index_created_flag()
+      call s:open_index_with_delay(l:index)
+    else
+      call yurii_pkm#push_history()
+      execute 'edit ' . fnameescape(l:index)
+    endif
   endif
 
   return l:root
@@ -543,6 +589,7 @@ function! yurii_pkm#ensure_root_and_index() abort
     let l:ans = tolower(trim(input('Create index.md? y/n: ')))
     if l:ans ==# 'y'
       call writefile(s:index_template(), l:index)
+      call s:mark_index_created()
       call yurii_pkm#clear_title_cache()
       echom 'Created: ' . l:index
       return l:root
@@ -777,8 +824,8 @@ function! yurii_pkm#get_link_under_cursor() abort
             \ 'endcol':   l:m[2]
             \ }
     endif
-    " カーソルがリンクより後ろ（タイトル注釈の上）かチェック
-    " [xxx](yyy)  タイトル  の形式で、リンク終端の直後スペース以降にいる場合
+    " カーソルがリンクより後ろかチェック
+    " [xxx](yyy) の形式で、リンク終端の直後にいる場合
     if l:cursor >= l:m[2]
       let l:after = strpart(l:line, l:m[2])
       " 直後がスペース2つ以上 + テキスト の形式
@@ -882,14 +929,14 @@ function! s:link_from_target(target) abort
     return ''
   endif
   let l:name = fnamemodify(l:target, ':t')
-  " md 以外は拡張子ごとリンクテキストにする
+  " md は YAML/H1 タイトルをリンク文字列にする。非mdは拡張子ごとのファイル名
+  let l:title = s:existing_title_for_target(l:target)
   if s:is_markdown_target(l:target)
-    let l:text = fnamemodify(l:name, ':r')
+    let l:text = empty(l:title) ? fnamemodify(l:name, ':r') : l:title
   else
     let l:text = l:name
   endif
-  let l:title = s:existing_title_for_target(l:target)
-  return '[' . l:text . '](' . l:target . ')' . (empty(l:title) ? '' : '  ' . l:title)
+  return '[' . l:text . '](' . l:target . ')'
 endfunction
 
 function! s:insert_link_below_cursor(link) abort
@@ -987,15 +1034,15 @@ function! yurii_pkm#note_template(title) abort
         \ '',
         \ '',
         \ '# Back',
-        \ '[index](index.md)  index',
+        \ '[index](index.md)',
         \ ]
 endfunction
 
 
 function! yurii_pkm#make_link(path, title) abort
   let l:file = fnamemodify(a:path, ':t')
-  return '[' . fnamemodify(l:file, ':r') . '](' . l:file . ')' .
-        \ (empty(a:title) ? '' : '  ' . a:title)
+  let l:text = empty(a:title) ? fnamemodify(l:file, ':r') : a:title
+  return '[' . l:text . '](' . l:file . ')'
 endfunction
 
 " ---------------------------------------------------------------------------
@@ -1045,7 +1092,7 @@ function! yurii_pkm#update_current_buffer() abort
         if filereadable(l:filepath)
           let l:title = s:get_title(l:filepath)
           if !empty(l:title)
-            let l:new_line = l:link_part . '  ' . l:title
+            let l:new_line = '[' . l:title . '](' . l:target . ')'
             if l:new_line !=# l:line
               call setline(l:i, l:new_line)
               let l:modified = 1
@@ -1398,8 +1445,7 @@ function! s:new_note_no_title(prefix) abort
   let l:fname = a:prefix . '_' . l:title . '.md'
   let l:dir   = expand('%:p:h')
   let l:file  = l:dir . s:sep() . l:fname
-  let l:stem  = fnamemodify(l:fname, ':r')
-  let l:link  = '[' . l:stem . '](' . l:fname . ')  ' . l:title
+  let l:link  = yurii_pkm#make_link(l:fname, l:title)
 
   if !l:no_parent_link && !l:reverse_link
     let l:save_ai = &autoindent
@@ -1417,7 +1463,7 @@ function! s:new_note_no_title(prefix) abort
     call s:run_update_one_for(expand('%:p'))
   endif
 
-  let l:parent_link_line = '[' . fnamemodify(l:parent_file, ':r') . '](' . l:parent_file . ')  ' . l:parent_title
+  let l:parent_link_line = yurii_pkm#make_link(l:parent_file, l:parent_title)
   let l:is_k = (a:prefix ==? 'K')
 
   if l:reverse_link
@@ -1434,7 +1480,7 @@ function! s:new_note_no_title(prefix) abort
             \ '',
             \ l:parent_link_line,
             \ '# Back',
-            \ '[index](index.md)  Index' ]
+            \ '[Index](index.md)' ]
       let l:cursor_line = 8
     else
       " nn/nf b モード: リンク後に空行あり
@@ -1450,7 +1496,7 @@ function! s:new_note_no_title(prefix) abort
             \ l:parent_link_line,
             \ '',
             \ '# Back',
-            \ '[index](index.md)  Index' ]
+            \ '[Index](index.md)' ]
       let l:cursor_line = 8
     endif
   elseif l:is_k
@@ -1465,7 +1511,7 @@ function! s:new_note_no_title(prefix) abort
           \ '# ' . l:title,
           \ '',
           \ '# Back',
-          \ '[index](index.md)  Index' ]
+          \ '[Index](index.md)' ]
     let l:cursor_line = 7
   else
     " nn/nf の h/Enter/o モード: 従来どおり
@@ -1483,7 +1529,7 @@ function! s:new_note_no_title(prefix) abort
     if !l:no_parent_link
       call add(l:content, l:parent_link_line)
     endif
-    call add(l:content, '[index](index.md)  Index')
+    call add(l:content, '[Index](index.md)')
     let l:cursor_line = 8
   endif
 
@@ -1495,7 +1541,7 @@ function! s:new_note_no_title(prefix) abort
     if &modified
       silent noautocmd write
     endif
-    let l:new_link = '[' . l:stem . '](' . l:fname . ')  ' . l:title
+    let l:new_link = yurii_pkm#make_link(l:fname, l:title)
     let l:parent_fp = l:dir . s:sep() . l:parent_file
     if filereadable(l:parent_fp)
       let l:plines = readfile(l:parent_fp)
@@ -1511,7 +1557,7 @@ function! s:new_note_no_title(prefix) abort
           " Back セクションがなければ末尾に追加
           call add(l:plines, '')
           call add(l:plines, '# Back')
-          call add(l:plines, '[index](index.md)  Index')
+          call add(l:plines, '[Index](index.md)')
           let l:back_idx = len(l:plines) - 2
         endif
         " Back 行の直後（back_idx + 1）に挿入
@@ -1567,10 +1613,8 @@ function! s:visual_new_note(prefix, mode) abort
   let l:title = yurii_pkm#timestamp_filename()
   let l:fname = a:prefix . '_' . l:title . '.md'
   let l:file  = l:dir . s:sep() . l:fname
-  let l:stem  = fnamemodify(l:fname, ':r')
-
-  let l:parent_link_line = '[' . fnamemodify(l:parent_file, ':r') . '](' . l:parent_file . ')  ' . l:parent_title
-  let l:link_to_new      = '[' . l:stem . '](' . l:fname . ')  ' . l:title
+  let l:parent_link_line = yurii_pkm#make_link(l:parent_file, l:parent_title)
+  let l:link_to_new      = yurii_pkm#make_link(l:fname, l:title)
 
   let l:is_b = (a:mode ==? 'b')
   let l:is_k = (a:prefix ==? 'K')
@@ -1589,7 +1633,7 @@ function! s:visual_new_note(prefix, mode) abort
             \ '',
             \ l:parent_link_line,
             \ '# Back',
-            \ '[index](index.md)  Index' ]
+            \ '[Index](index.md)' ]
     else
       let l:content = [
             \ '---',
@@ -1602,7 +1646,7 @@ function! s:visual_new_note(prefix, mode) abort
             \ l:parent_link_line,
             \ '',
             \ '# Back',
-            \ '[index](index.md)  Index' ]
+            \ '[Index](index.md)' ]
     endif
     " 選択テキストを本文（Back の直前）に挿入
     let l:back_idx = s:find_section_index_in_lines(l:content, 'back')
@@ -1623,7 +1667,7 @@ function! s:visual_new_note(prefix, mode) abort
     call add(l:content, '')
     call add(l:content, '# Back')
     call add(l:content, l:parent_link_line)
-    call add(l:content, '[index](index.md)  Index')
+    call add(l:content, '[Index](index.md)')
   endif
 
   call writefile(l:content, l:file)
@@ -1659,7 +1703,7 @@ function! s:visual_new_note(prefix, mode) abort
         if l:back_idx2 < 0
           call add(l:plines, '')
           call add(l:plines, '# Back')
-          call add(l:plines, '[index](index.md)  Index')
+          call add(l:plines, '[Index](index.md)')
           let l:back_idx2 = len(l:plines) - 2
         endif
         call insert(l:plines, l:link_to_new, l:back_idx2 + 1)
@@ -1795,8 +1839,7 @@ function! yurii_pkm#new_quick(args) abort
   let l:fname = l:prefix . '_' . yurii_pkm#timestamp_filename() . '.md'
   let l:dir   = expand('%:p:h')
   let l:file  = l:dir . s:sep() . l:fname
-  let l:stem = fnamemodify(l:fname, ':r')
-  let l:link = '[' . l:stem . '](' . l:fname . ')  ' . l:title
+  let l:link = yurii_pkm#make_link(l:fname, l:title)
 
   if !l:no_parent_link && !l:reverse_link
     let l:save_ai = &autoindent
@@ -1814,7 +1857,7 @@ function! yurii_pkm#new_quick(args) abort
     call s:run_update_one_for(expand('%:p'))
   endif
 
-  let l:parent_link_line = '[' . fnamemodify(l:parent_file, ':r') . '](' . l:parent_file . ')  ' . l:parent_title
+  let l:parent_link_line = yurii_pkm#make_link(l:parent_file, l:parent_title)
   let l:is_k = (l:prefix ==? 'K')
 
   if l:reverse_link
@@ -1829,7 +1872,7 @@ function! yurii_pkm#new_quick(args) abort
             \ '',
             \ l:parent_link_line,
             \ '# Back',
-            \ '[index](index.md)  Index' ]
+            \ '[Index](index.md)' ]
       let l:cursor_line = 8
     else
       let l:content = [
@@ -1843,7 +1886,7 @@ function! yurii_pkm#new_quick(args) abort
             \ l:parent_link_line,
             \ '',
             \ '# Back',
-            \ '[index](index.md)  Index' ]
+            \ '[Index](index.md)' ]
       let l:cursor_line = 8
     endif
   elseif l:is_k
@@ -1856,7 +1899,7 @@ function! yurii_pkm#new_quick(args) abort
           \ '# ' . l:title,
           \ '',
           \ '# Back',
-          \ '[index](index.md)  Index' ]
+          \ '[Index](index.md)' ]
     let l:cursor_line = 7
   else
     let l:content = [
@@ -1873,7 +1916,7 @@ function! yurii_pkm#new_quick(args) abort
     if !l:no_parent_link
       call add(l:content, l:parent_link_line)
     endif
-    call add(l:content, '[index](index.md)  Index')
+    call add(l:content, '[Index](index.md)')
     let l:cursor_line = 8
   endif
 
@@ -1885,7 +1928,7 @@ function! yurii_pkm#new_quick(args) abort
     if &modified
       silent noautocmd write
     endif
-    let l:new_link = '[' . l:stem . '](' . l:fname . ')  ' . l:title
+    let l:new_link = yurii_pkm#make_link(l:fname, l:title)
     let l:parent_fp = l:dir . s:sep() . l:parent_file
     if filereadable(l:parent_fp)
       let l:plines = readfile(l:parent_fp)
@@ -1900,7 +1943,7 @@ function! yurii_pkm#new_quick(args) abort
         if l:back_idx < 0
           call add(l:plines, '')
           call add(l:plines, '# Back')
-          call add(l:plines, '[index](index.md)  Index')
+          call add(l:plines, '[Index](index.md)')
           let l:back_idx = len(l:plines) - 2
         endif
         call insert(l:plines, l:new_link, l:back_idx + 1)
@@ -2144,7 +2187,6 @@ endfunction
 
 function! yurii_pkm#at_add() abort
   let l:current_file  = expand('%:t')
-  let l:current_fname = fnamemodify(l:current_file, ':r')
   let l:current_title = yurii_pkm#current_title()
 
   let l:cb = s:clipboard_text()
@@ -2159,8 +2201,7 @@ function! yurii_pkm#at_add() abort
     return
   endif
 
-  let l:new_link = '[' . l:current_fname . '](' . l:current_file . ')' .
-        \ (empty(l:current_title) ? '' : '  ' . l:current_title)
+  let l:new_link = yurii_pkm#make_link(l:current_file, l:current_title)
 
   let l:added = 0
   let l:already = 0
@@ -2197,7 +2238,7 @@ function! yurii_pkm#at_add() abort
     if !l:found_back
       call add(l:lines, '')
       call add(l:lines, '# Back')
-      call add(l:lines, '[index](index.md)  index')
+      call add(l:lines, '[index](index.md)')
       let l:back_idx = len(l:lines) - 2
     endif
 
@@ -2223,8 +2264,12 @@ function! yurii_pkm#open_index() abort
   execute 'cd ' . fnameescape(l:root)
   let l:index = s:index_path(l:root)
   if filereadable(l:index)
-    call yurii_pkm#push_history()
-    execute 'edit ' . fnameescape(l:index)
+    if s:consume_index_created_flag()
+      call s:open_index_with_delay(l:index)
+    else
+      call yurii_pkm#push_history()
+      execute 'edit ' . fnameescape(l:index)
+    endif
   else
     echo 'index.md not found in ' . l:root
   endif
@@ -2377,10 +2422,8 @@ function! yurii_pkm#expand_s_under_cursor(...) abort
   endif
 
   let l:t_fname = fnamemodify(l:t_path, ':t')
-  let l:t_stem  = fnamemodify(l:t_fname, ':r')
   let l:t_title = s:get_title(l:t_path)
-  let l:t_link  = '[' . l:t_stem . '](' . l:t_fname . ')'
-        \ . (empty(l:t_title) ? '' : '  ' . l:t_title)
+  let l:t_link  = yurii_pkm#make_link(l:t_fname, l:t_title)
 
   call append(line('$'), ['', l:t_link])
   silent write
