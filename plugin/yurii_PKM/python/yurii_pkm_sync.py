@@ -237,7 +237,7 @@ def sort_back_links(link_lines: list[str], self_prefix: str, include_index: bool
         result.extend(other_links)
     if include_index:
         if not index_line:
-            index_line = '[index](index.md)  index'
+            index_line = '[index](index.md)'
         if result:
             result.append("")
         result.append(index_line)
@@ -281,9 +281,8 @@ def make_link_line(target_path: Path, title: str, from_dir: Path) -> str:
         rel_str = rel.as_posix()
     except ValueError:
         rel_str = target_path.name
-    stem = target_path.stem
-    suffix = ("  " + title) if title else ""
-    return f"[{stem}]({rel_str}){suffix}"
+    text = title if title else target_path.stem
+    return f"[{text}]({rel_str})"
 
 
 def create_f_and_link(current_file: Path, root: Path) -> Path:
@@ -309,7 +308,7 @@ def create_f_and_link(current_file: Path, root: Path) -> Path:
         "",
         "",
         "# Back",
-        "[index](index.md)  index",
+        "[index](index.md)",
     ]
     root.mkdir(parents=True, exist_ok=True)
     write_lines(f_path, content)
@@ -350,13 +349,13 @@ def get_title(path: Path) -> str:
 
 # ---------------------------------------------------------------------------
 # update_titles_in_file
-#   - branch/back 内のリンクのタイトル注釈を最新化
+#   - markdown リンクの表示テキストを最新タイトルに更新
 #   - branch/back 内でファイルが存在しないリンクを削除
 #   - ___ 以降は処理しない
 # ---------------------------------------------------------------------------
 
 def update_titles_in_file(path: Path) -> bool:
-    """Rewrite link title annotations in one file. Return True if changed."""
+    """Rewrite markdown link text to note titles in one file. Return True if changed."""
     lines = read_lines(path)
     base = path.parent
     result: list[str] = []
@@ -390,51 +389,36 @@ def update_titles_in_file(path: Path) -> bool:
             result.append(line)
             continue
 
-        if in_branch or in_back:
-            m = re.match(r'^(\[[^\]]+\]\([^)]+\))(.*)', line)
-            if m:
-                link_part = m.group(1)
-                lm = re.match(r'\[([^\]]+)\]\(([^)]+)\)', link_part)
-                if lm:
-                    if '\x00' in lm.group(2):
-                        result.append(line)
-                        continue
-                    target = (base / lm.group(2)).resolve()
-                    if not is_markdown_file(target):
-                        result.append(line)
-                        continue
-                    if not target.exists():
-                        # 存在しないファイルへのリンクは削除
-                        modified = True
-                        continue
-                    title = get_title(target)
-                    new_line = link_part + (("  " + title) if title else "")
-                    if new_line != line:
-                        modified = True
-                        line = new_line
+        m = re.match(r'^(\[[^\]]+\]\(([^)]+)\))(.*)', line)
+        if not m:
             result.append(line)
-        else:
-            # branch/back 以外: リンク行のタイトル注釈だけ更新（削除はしない）
-            m = re.match(r'^(\[[^\]]+\]\([^)]+\))(.*)', line)
-            if m:
-                link_part = m.group(1)
-                lm = re.match(r'\[([^\]]+)\]\(([^)]+)\)', link_part)
-                if lm:
-                    if '\x00' in lm.group(2):
-                        result.append(line)
-                        continue
-                    target = (base / lm.group(2)).resolve()
-                    if not is_markdown_file(target):
-                        result.append(line)
-                        continue
-                    if target.exists():
-                        title = get_title(target)
-                        if title:
-                            new_line = link_part + "  " + title
-                            if new_line != line:
-                                modified = True
-                                line = new_line
+            continue
+
+        target_text = m.group(2)
+        if '\x00' in target_text:
             result.append(line)
+            continue
+
+        target = (base / target_text).resolve()
+        if not is_markdown_file(target):
+            result.append(line)
+            continue
+
+        if not target.exists():
+            if in_branch or in_back:
+                # 存在しないファイルへのリンクは branch/back では削除
+                modified = True
+                continue
+            result.append(line)
+            continue
+
+        title = get_title(target)
+        text = title if title else Path(target_text).stem
+        new_line = f"[{text}]({target_text})"
+        if new_line != line:
+            modified = True
+            line = new_line
+        result.append(line)
 
     if modified:
         write_lines(path, result)
