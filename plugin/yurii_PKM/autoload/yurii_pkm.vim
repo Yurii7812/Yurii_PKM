@@ -141,12 +141,15 @@ function! yurii_pkm#outline_edit() abort
     return
   endif
 
-  " NOTE:
-  " 旧バージョンの Vim では setloclist() に「list 引数」と「what(dict)」を
-  " 同時指定すると E475 になるため、互換性の高い 3 引数版を使う。
-  call setloclist(0, l:items, 'r')
-
-  call setloclist(0, l:items, 'r', {'title': 'PKM Outline'})
+  " Vim バージョン差異の吸収:
+  " - what(dict) 形式を先に試す（title も同時設定できる）
+  " - 失敗したら 3 引数形式にフォールバック
+  let v:errmsg = ''
+  silent! call setloclist(0, [], 'r', {'title': 'PKM Outline', 'items': l:items})
+  if !empty(v:errmsg)
+    let v:errmsg = ''
+    silent! call setloclist(0, l:items, 'r')
+  endif
   lopen
 endfunction
 
