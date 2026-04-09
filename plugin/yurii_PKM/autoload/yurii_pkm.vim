@@ -379,8 +379,20 @@ function! s:consume_index_created_flag() abort
   return l:created
 endfunction
 
-function! s:timer_edit_file_cb(timer, path) abort
-  execute 'edit ' . fnameescape(a:path)
+function! s:timer_edit_file_cb(...) abort
+  " timer_start() の callback 引数順は Vim 実装/呼び出し方で差が出ることがあるため、
+  " 文字列の引数を path として拾う。
+  let l:path = ''
+  if a:0 >= 1 && type(a:1) == v:t_string
+    let l:path = a:1
+  elseif a:0 >= 2 && type(a:2) == v:t_string
+    let l:path = a:2
+  endif
+  if empty(l:path)
+    return
+  endif
+  execute 'edit ' . fnameescape(l:path)
+
 endfunction
 
 function! s:timer_redraw_cb(timer) abort
