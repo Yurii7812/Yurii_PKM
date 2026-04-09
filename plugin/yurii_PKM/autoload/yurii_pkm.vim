@@ -115,10 +115,12 @@ function! yurii_pkm#current_title() abort
 endfunction
 
 function! s:outline_collect() abort
+
   let l:items = []
   let l:lines = getline(1, '$')
   for lnum in range(1, len(l:lines))
     let l:line = l:lines[lnum - 1]
+ codex/fix-unknown-function-error-for-outline_edit-5t9dia
     if l:line =~# '^\s*#\+\s\+'
       let l:indent = matchstr(l:line, '^\s*')
       let l:head = matchstr(l:line, '#\+')
@@ -214,6 +216,7 @@ function! yurii_pkm#outline_edit() abort
   endif
 
   let l:items = s:outline_collect()
+
   if empty(l:items)
     echom 'yurii_PKM: 見出しが見つかりませんでした'
     return
@@ -249,6 +252,7 @@ function! yurii_pkm#outline_edit() abort
   xnoremap <silent><buffer> <Right> :<C-u>call yurii_pkm#outline_shift_visual(1)<CR>
 
   call cursor(b:yurii_outline_base, 1)
+
 endfunction
 
 
