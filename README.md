@@ -104,6 +104,7 @@ let g:yurii_pkm_default_atomic_prefix = 'C'
 
 - `:UpdateMD [path]` : リンクタイトル等の一括更新
 - `:UpdateAll [path]` / `:UpdateALL [path]` : 同等コマンド
+- 自動同期で表示名を上書きするのは `[xxx](xxx.md)` のように表示名がターゲットstemと一致するリンクのみ（手動表示名は維持）
 - Back セクションは、該当リンクがあるときだけ `category:`（K系）/`note:`（N系）見出しを自動表示
 
 - `.md` 保存時に AutoSync（`g:yurii_pkm_autosync=1` 時）

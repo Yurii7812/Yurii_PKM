@@ -1129,14 +1129,19 @@ function! yurii_pkm#update_current_buffer() abort
     endif
 
     if (l:in_branch || l:in_back) && l:line =~# '\[[^\]]\+\]([^)]\+\.md)'
-      let l:lm = matchlist(l:line, '^\(\[[^\]]\+\](\([^)]\+\))\)\(.*\)$')
+      let l:lm = matchlist(l:line, '^\(\[\([^\]]\+\)\](\([^)]\+\))\)\(.*\)$')
       if !empty(l:lm)
-        let l:link_part = l:lm[1]
-        let l:target    = trim(l:lm[2])
-        let l:suffix    = get(l:lm, 3, '')
+        let l:link_text = get(l:lm, 2, '')
+        let l:target    = trim(get(l:lm, 3, ''))
+        let l:suffix    = get(l:lm, 4, '')
         if l:suffix =~# s:fixed_link_text_marker
           continue
         endif
+        let l:target_stem = fnamemodify(fnamemodify(l:target, ':t'), ':r')
+        if l:link_text !=# l:target_stem
+          continue
+        endif
+
         let l:filepath  = expand('%:p:h') . s:sep() . l:target
         if filereadable(l:filepath)
           let l:title = s:get_title(l:filepath)

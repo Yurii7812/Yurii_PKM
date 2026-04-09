@@ -98,6 +98,7 @@ filetype [N] →    → 新しい filetype を1文字入力（a-z、大文字に
 
 - Back セクションへの逆リンク追加、リンクタイトル更新などが自動的に行われる
 - Back セクションは、該当リンクがある場合のみ `category:`（Kのfiletype）と `note:`（Nのfiletype）が表示される
+- リンク表示名の自動更新は `[xxx](xxx.md)` のように表示名がターゲットstemと一致するもののみ（手動表示名は維持）
 
 - `job_start` が使えれば非同期、なければ同期フォールバック
 - 無効化する場合: `let g:yurii_pkm_autosync = 0`

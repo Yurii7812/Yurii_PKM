@@ -430,16 +430,22 @@ def update_titles_in_file(path: Path) -> bool:
             result.append(line)
             continue
 
-        m = re.match(r'^(\[[^\]]+\]\(([^)]+)\))(.*)', line)
+        m = re.match(r'^(\[([^\]]+)\]\(([^)]+)\))(.*)', line)
         if not m:
             result.append(line)
             continue
 
-        target_text = m.group(2)
-        suffix = m.group(3)
+        link_text = m.group(2)
+        target_text = m.group(3)
+        suffix = m.group(4)
         if FIXED_LINK_TEXT_MARKER in suffix:
             result.append(line)
             continue
+        if link_text != Path(target_text).stem:
+            # 手動で付けた表示名は保持（stem一致のみ自動更新対象）
+            result.append(line)
+            continue
+
         if '\x00' in target_text:
             result.append(line)
             continue
