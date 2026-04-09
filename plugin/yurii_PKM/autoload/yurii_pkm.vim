@@ -1052,10 +1052,7 @@ function! yurii_pkm#note_template(title, ...) abort
         \ '',
         \ '',
         \ '# Back',
-        \ 'category:',
-        \ '',
-        \ 'note:',
-        \ '',
+
         \ '[Index](index.md)',
         \ ]
 endfunction
@@ -1535,11 +1532,8 @@ function! s:new_note_no_title(prefix) abort
             \ '# ' . l:title,
             \ '',
             \ '# Back',
-            \ 'category:',
-            \ '',
-            \ 'note:',
             \ l:parent_link_line,
-            \ '',
+
             \ '[Index](index.md)' ]
       let l:cursor_line = 8
     else
@@ -1555,9 +1549,7 @@ function! s:new_note_no_title(prefix) abort
             \ '# ' . l:title,
             \ '',
             \ '# Back',
-            \ 'category:',
-            \ '',
-            \ 'note:',
+
             \ l:parent_link_line,
             \ '',
             \ '[Index](index.md)' ]
@@ -1713,11 +1705,8 @@ function! s:visual_new_note(prefix, mode) abort
             \ '# ' . l:title,
             \ '',
             \ '# Back',
-            \ 'category:',
-            \ '',
-            \ 'note:',
             \ l:parent_link_line,
-            \ '',
+
             \ '[Index](index.md)' ]
     else
       let l:content = [
@@ -1730,9 +1719,7 @@ function! s:visual_new_note(prefix, mode) abort
             \ '# ' . l:title,
             \ '',
             \ '# Back',
-            \ 'category:',
-            \ '',
-            \ 'note:',
+
             \ l:parent_link_line,
             \ '',
             \ '[Index](index.md)' ]
@@ -2340,12 +2327,9 @@ function! yurii_pkm#at_add() abort
     if !l:found_back
       call add(l:lines, '')
       call add(l:lines, '# Back')
-      call add(l:lines, 'category:')
-      call add(l:lines, '')
-      call add(l:lines, 'note:')
-      call add(l:lines, '')
       call add(l:lines, '[Index](index.md)')
-      let l:back_idx = len(l:lines) - 5
+      let l:back_idx = len(l:lines) - 2
+
     endif
 
     call insert(l:lines, l:new_link, l:back_idx)

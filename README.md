@@ -100,7 +100,8 @@ let g:yurii_pkm_default_atomic_prefix = 'C'
 
 - `:UpdateMD [path]` : リンクタイトル等の一括更新
 - `:UpdateAll [path]` / `:UpdateALL [path]` : 同等コマンド
-- Back セクションは `category:`（K系）/`note:`（N系）に自動整理
+- Back セクションは、該当リンクがあるときだけ `category:`（K系）/`note:`（N系）見出しを自動表示
+
 - `.md` 保存時に AutoSync（`g:yurii_pkm_autosync=1` 時）
 
 ### 6) 変換・リネーム

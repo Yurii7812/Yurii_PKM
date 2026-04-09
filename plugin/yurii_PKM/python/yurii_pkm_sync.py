@@ -249,13 +249,19 @@ def sort_back_links(link_lines: list[str], from_dir: Path, include_index: bool =
     category_links.sort(key=str.lower)
     note_links.sort(key=str.lower)
 
-    result = ["category:"]
-    result.extend(category_links)
-    result.append("")
-    result.append("note:")
-    result.extend(note_links)
+    result: list[str] = []
+    if category_links:
+        result.append("category:")
+        result.extend(category_links)
+    if note_links:
+        if result:
+            result.append("")
+        result.append("note:")
+        result.extend(note_links)
     if include_index:
-        result.append("")
+        if result:
+            result.append("")
+
         result.append(index_line)
     return result
 
