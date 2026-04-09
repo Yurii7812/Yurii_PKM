@@ -93,10 +93,10 @@ let g:yurii_pkm_default_atomic_prefix = 'C'
 - `at` / `:AT` : クリップボード側ノートへ逆リンク追加
 - `yn` / `:YN` : 現在ファイル名をヤンク
 - `\l` / `:Linkify` : ファイル名テキストを Markdown リンク化
-- Visual `\l` / `:LinkifySelection` : 選択文字列をクリップボードのターゲットへリンク化（`pkm:fixed-text` マーカー付きでタイトル同期の自動上書きを抑止）
-- `\L` / `:LinkFixedToggle` : カーソル下リンクの固定マーカー（`pkm:fixed-text`）を ON/OFF
+- Visual `\l` / `:LinkifySelection` : 選択文字列をクリップボードのターゲットへリンク化
 
 - `\p` / `:PasteLink` : クリップボードのリンクを挿入
+- Visual `\p` : 選択文字列をクリップボードのターゲットへリンク化（Visual `\l` と同等）
 - `p` : `"+p` へマップ（システムクリップボード貼り付け）
 - `gp` : 旧挙動の貼り付け
 

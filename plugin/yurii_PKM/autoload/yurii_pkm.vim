@@ -1134,9 +1134,7 @@ function! yurii_pkm#update_current_buffer() abort
         let l:link_text = get(l:lm, 2, '')
         let l:target    = trim(get(l:lm, 3, ''))
         let l:suffix    = get(l:lm, 4, '')
-        if l:suffix =~# s:fixed_link_text_marker
-          continue
-        endif
+
         let l:target_stem = fnamemodify(fnamemodify(l:target, ':t'), ':r')
         if l:link_text !=# l:target_stem
           continue
@@ -2340,7 +2338,7 @@ function! yurii_pkm#linkify_selection() abort range
     return
   endif
 
-  let l:link = '[' . l:text . '](' . l:target . ') <!-- ' . s:fixed_link_text_marker . ' -->'
+  let l:link = '[' . l:text . '](' . l:target . ')'
 
 
   if len(l:lines) == 1
@@ -2355,31 +2353,6 @@ function! yurii_pkm#linkify_selection() abort range
       execute (l:sline + 1) . ',' . l:eline . 'delete _'
     endif
   endif
-endfunction
-
-function! yurii_pkm#toggle_fixed_link_text_under_cursor() abort
-  let l:link = yurii_pkm#get_link_under_cursor()
-  if empty(l:link) || empty(get(l:link, 'raw', ''))
-    echo 'No link under cursor'
-    return
-  endif
-
-  let l:line = getline('.')
-  let l:link_end = (get(l:link, 'startcol', 1) - 1) + strlen(l:link.raw)
-  let l:prefix = strpart(l:line, 0, l:link_end)
-  let l:suffix = strpart(l:line, l:link_end)
-  let l:marker = ' <!-- ' . s:fixed_link_text_marker . ' -->'
-  let l:marker_pat = '^\s*<!--\s*' . escape(s:fixed_link_text_marker, '\') . '\s*-->'
-
-  if l:suffix =~# l:marker_pat
-    let l:suffix2 = substitute(l:suffix, l:marker_pat, '', '')
-    call setline('.', l:prefix . l:suffix2)
-    echo 'Fixed-text OFF'
-    return
-  endif
-
-  call setline('.', l:prefix . l:marker . l:suffix)
-  echo 'Fixed-text ON'
 endfunction
 
 
