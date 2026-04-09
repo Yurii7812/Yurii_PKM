@@ -1299,8 +1299,11 @@ function! s:update_one_done(target_fp, job, status) abort
   endif
 endfunction
 
-" タイトル変更時は、参照元ノートのリンクタイトルも即時更新する
-function! s:run_update_all_for_title_change() abort
+" タイトル変更時は、旧タイトルと一致するリンク文字列だけ新タイトルへ置換する
+function! s:run_retitle_links_for_title_change(target_fp, old_title, new_title) abort
+  if a:old_title ==# a:new_title
+    return
+  endif
   if !filereadable(g:yurii_pkm_python)
     return
   endif
@@ -1311,7 +1314,10 @@ function! s:run_update_all_for_title_change() abort
 
   let l:py  = s:python_cmd()
   let l:cmd = l:py . ' ' . shellescape(g:yurii_pkm_python)
-        \    . ' update ' . shellescape(l:root)
+        \    . ' retitle_links ' . shellescape(a:target_fp)
+        \    . ' ' . shellescape(l:root)
+        \    . ' ' . shellescape(a:old_title)
+        \    . ' ' . shellescape(a:new_title)
 
   if has('job') && has('channel')
     call job_start(['/bin/sh', '-c', l:cmd], {
@@ -1334,6 +1340,7 @@ endfunction
 " ---------------------------------------------------------------------------
 
 function! yurii_pkm#rename_title_with_default(default) abort
+  let l:old_title = yurii_pkm#current_title()
   let l:title = input('new title: ', a:default)
 
   if empty(l:title)
@@ -1392,7 +1399,7 @@ function! yurii_pkm#rename_title_with_default(default) abort
   endif
   write
   call yurii_pkm#clear_title_cache()
-  call s:run_update_all_for_title_change()
+  call s:run_retitle_links_for_title_change(expand('%:p'), l:old_title, l:title)
 endfunction
 
 function! yurii_pkm#rename_title(args) abort
@@ -2344,6 +2351,32 @@ function! yurii_pkm#linkify_selection() abort range
     endif
   endif
 endfunction
+
+function! yurii_pkm#toggle_fixed_link_text_under_cursor() abort
+  let l:link = yurii_pkm#get_link_under_cursor()
+  if empty(l:link) || empty(get(l:link, 'raw', ''))
+    echo 'No link under cursor'
+    return
+  endif
+
+  let l:line = getline('.')
+  let l:link_end = (get(l:link, 'startcol', 1) - 1) + strlen(l:link.raw)
+  let l:prefix = strpart(l:line, 0, l:link_end)
+  let l:suffix = strpart(l:line, l:link_end)
+  let l:marker = ' <!-- ' . s:fixed_link_text_marker . ' -->'
+  let l:marker_pat = '^\s*<!--\s*' . escape(s:fixed_link_text_marker, '\') . '\s*-->'
+
+  if l:suffix =~# l:marker_pat
+    let l:suffix2 = substitute(l:suffix, l:marker_pat, '', '')
+    call setline('.', l:prefix . l:suffix2)
+    echo 'Fixed-text OFF'
+    return
+  endif
+
+  call setline('.', l:prefix . l:marker . l:suffix)
+  echo 'Fixed-text ON'
+endfunction
+
 
 " ---------------------------------------------------------------------------
 " :YN - Yank Note name
