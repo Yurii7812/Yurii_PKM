@@ -8,6 +8,7 @@
 " ---------------------------------------------------------------------------
 
 let s:link_pat = '\v\[[^\]]+\]\([^)]*\)'
+let s:fixed_link_text_marker = 'pkm:fixed-text'
 
 function! s:sep() abort
   return has('win32') ? '\' : '/'
@@ -1128,15 +1129,19 @@ function! yurii_pkm#update_current_buffer() abort
     endif
 
     if (l:in_branch || l:in_back) && l:line =~# '\[[^\]]\+\]([^)]\+\.md)'
-      let l:lm = matchlist(l:line, '\(\[[^\]]\+\](\([^)]\+\))\)')
+      let l:lm = matchlist(l:line, '^\(\[[^\]]\+\](\([^)]\+\))\)\(.*\)$')
       if !empty(l:lm)
         let l:link_part = l:lm[1]
         let l:target    = trim(l:lm[2])
+        let l:suffix    = get(l:lm, 3, '')
+        if l:suffix =~# s:fixed_link_text_marker
+          continue
+        endif
         let l:filepath  = expand('%:p:h') . s:sep() . l:target
         if filereadable(l:filepath)
           let l:title = s:get_title(l:filepath)
           if !empty(l:title)
-            let l:new_line = '[' . l:title . '](' . l:target . ')'
+            let l:new_line = '[' . l:title . '](' . l:target . ')' . l:suffix
             if l:new_line !=# l:line
               call setline(l:i, l:new_line)
               let l:modified = 1
@@ -2263,6 +2268,80 @@ function! yurii_pkm#linkify_filename_under_cursor() abort
   endif
   let l:newline = strpart(l:line, 0, l:idx) . l:link . strpart(l:line, l:idx + strlen(l:word))
   call setline('.', l:newline)
+endfunction
+
+function! yurii_pkm#linkify_selection() abort range
+  let l:clipboard = s:clipboard_text()
+  if empty(l:clipboard)
+    echo 'Error: clipboard is empty'
+    return
+  endif
+
+  let l:targets = s:extract_targets_from_clipboard(l:clipboard)
+  if empty(l:targets)
+    echo 'Error: no valid link target in clipboard'
+    return
+  endif
+  let l:target = l:targets[0]
+
+  if s:is_markdown_target(l:target)
+    let l:path = yurii_pkm#resolve_link(l:target)
+    if !filereadable(l:path)
+      echo 'Error: not found: ' . l:target
+      return
+    endif
+  endif
+
+  let l:sline = line("'<")
+  let l:eline = line("'>")
+  let l:scol  = col("'<")
+  let l:ecol  = col("'>")
+
+  if l:sline <= 0 || l:eline <= 0
+    echo 'No visual selection'
+    return
+  endif
+
+  if l:sline > l:eline || (l:sline == l:eline && l:scol > l:ecol)
+    let [l:sline, l:eline] = [l:eline, l:sline]
+    let [l:scol, l:ecol] = [l:ecol, l:scol]
+  endif
+
+  let l:lines = getline(l:sline, l:eline)
+  if empty(l:lines)
+    echo 'No visual selection'
+    return
+  endif
+
+  if len(l:lines) == 1
+    let l:selected = strpart(l:lines[0], l:scol - 1, l:ecol - l:scol + 1)
+  else
+    let l:selected_lines = copy(l:lines)
+    let l:selected_lines[0] = strpart(l:selected_lines[0], l:scol - 1)
+    let l:selected_lines[-1] = strpart(l:selected_lines[-1], 0, l:ecol)
+    let l:selected = join(l:selected_lines, "\n")
+  endif
+
+  let l:text = trim(substitute(l:selected, '\n\+', ' ', 'g'))
+  if empty(l:text)
+    echo 'No visual selection'
+    return
+  endif
+
+  let l:link = '[' . l:text . '](' . l:target . ') <!-- ' . s:fixed_link_text_marker . ' -->'
+
+  if len(l:lines) == 1
+    let l:line = l:lines[0]
+    let l:newline = strpart(l:line, 0, l:scol - 1) . l:link . strpart(l:line, l:ecol)
+    call setline(l:sline, l:newline)
+  else
+    let l:prefix = strpart(l:lines[0], 0, l:scol - 1)
+    let l:suffix = strpart(l:lines[-1], l:ecol)
+    call setline(l:sline, l:prefix . l:link . l:suffix)
+    if l:eline > l:sline
+      execute (l:sline + 1) . ',' . l:eline . 'delete _'
+    endif
+  endif
 endfunction
 
 " ---------------------------------------------------------------------------
