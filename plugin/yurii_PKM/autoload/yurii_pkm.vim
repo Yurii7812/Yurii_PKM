@@ -256,8 +256,6 @@ function! yurii_pkm#outline_edit() abort
   xnoremap <silent><buffer> <Right> :<C-u>call yurii_pkm#outline_shift_visual(1)<CR>
 
   call cursor(b:yurii_outline_base, 1)
-
-main
 endfunction
 
 
