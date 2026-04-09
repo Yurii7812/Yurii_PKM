@@ -114,6 +114,37 @@ function! yurii_pkm#current_title() abort
   return expand('%:t:r')
 endfunction
 
+function! yurii_pkm#outline_edit() abort
+  if !s:is_markdown_file(expand('%:p'))
+    echoerr 'yurii_PKM: OutlineEdit は Markdown ファイルでのみ利用できます'
+    return
+  endif
+
+  let l:items = []
+  let l:lines = getline(1, '$')
+  for lnum in range(1, len(l:lines))
+    let l:line = l:lines[lnum - 1]
+    if l:line =~# '^#\+\s\+'
+      let l:level = strlen(matchstr(l:line, '^#\+'))
+      let l:title = substitute(l:line, '^#\+\s\+', '', '')
+      call add(l:items, {
+            \ 'bufnr': bufnr('%'),
+            \ 'lnum': lnum,
+            \ 'col': 1,
+            \ 'text': repeat('  ', max([0, l:level - 1])) . l:title,
+            \ })
+    endif
+  endfor
+
+  if empty(l:items)
+    echom 'yurii_PKM: 見出しが見つかりませんでした'
+    return
+  endif
+
+  call setloclist(0, l:items, 'r', {'title': 'PKM Outline'})
+  lopen
+endfunction
+
 
 function! s:state_dir() abort
   if exists('*stdpath')
