@@ -113,7 +113,8 @@ let g:yurii_pkm_default_atomic_prefix = 'C'
 - `:YuriiChooseIndexDir` : index ルート選択
 - `:SortYomi` : Branch の読み順ソート
 - `:CheckPrefix` : プレフィクスチェック
-- `:OutlineEdit` / `\oe` : アウトライン編集（別バッファで見出し編集、`←/→` で `#` 数変更、`:write` で反映）
+- `:OutlineEdit` / `\oe` : アウトライン編集（別バッファで見出し編集、`←/→` で `#` 数変更、`:write` / `ZZ` / `:OutlineApply` で反映）
+
 
 ### 8) Markdown テーブル編集
 
