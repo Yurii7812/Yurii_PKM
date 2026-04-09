@@ -53,6 +53,7 @@
 | `\l` | `:Linkify` | カーソル下のファイル名テキストを Markdown リンク形式に変換 |
 | Visual `\l` | `:LinkifySelection` | 選択文字列をクリップボードのターゲットへリンク化（`pkm:fixed-text` マーカー付き） |
 | `\L` | `:LinkFixedToggle` | カーソル下リンクの固定マーカー（`pkm:fixed-text`）を ON/OFF |
+
 | `\p` | `:PasteLink` | クリップボードのファイル名/リンクをカーソル行の直下に挿入 |
 | `p` | | 行単位ヤンクでも改行なしでカーソル直下に貼り付け（Vim標準の `p` を上書き） |
 

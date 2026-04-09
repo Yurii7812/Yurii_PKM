@@ -1141,6 +1141,7 @@ function! yurii_pkm#update_current_buffer() abort
         if l:link_text !=# l:target_stem
           continue
         endif
+
         let l:filepath  = expand('%:p:h') . s:sep() . l:target
         if filereadable(l:filepath)
           let l:title = s:get_title(l:filepath)
@@ -2341,6 +2342,7 @@ function! yurii_pkm#linkify_selection() abort range
 
   let l:link = '[' . l:text . '](' . l:target . ') <!-- ' . s:fixed_link_text_marker . ' -->'
 
+
   if len(l:lines) == 1
     let l:line = l:lines[0]
     let l:newline = strpart(l:line, 0, l:scol - 1) . l:link . strpart(l:line, l:ecol)
@@ -2379,6 +2381,7 @@ function! yurii_pkm#toggle_fixed_link_text_under_cursor() abort
   call setline('.', l:prefix . l:marker . l:suffix)
   echo 'Fixed-text ON'
 endfunction
+
 
 " ---------------------------------------------------------------------------
 " :YN - Yank Note name

@@ -445,6 +445,7 @@ def update_titles_in_file(path: Path) -> bool:
             # 手動で付けた表示名は保持（stem一致のみ自動更新対象）
             result.append(line)
             continue
+
         if '\x00' in target_text:
             result.append(line)
             continue
