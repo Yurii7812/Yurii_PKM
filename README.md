@@ -85,6 +85,7 @@ let g:yurii_pkm_default_atomic_prefix = 'C'
 
 - `nt` : 空入力からタイトル編集
 - `nT` / `:NT` : 現在タイトルを残して編集
+- タイトル変更時は、同一ターゲットへのリンクのうち「旧タイトルと一致する表示テキスト」だけ新タイトルへ更新（例: `[A](x.md)` は更新、`[aaa](x.md)` は維持）
 
 ### 4) リンク操作
 
@@ -92,6 +93,8 @@ let g:yurii_pkm_default_atomic_prefix = 'C'
 - `at` / `:AT` : クリップボード側ノートへ逆リンク追加
 - `yn` / `:YN` : 現在ファイル名をヤンク
 - `\l` / `:Linkify` : ファイル名テキストを Markdown リンク化
+- Visual `\l` / `:LinkifySelection` : 選択文字列をクリップボードのターゲットへリンク化（`pkm:fixed-text` マーカー付きでタイトル同期の自動上書きを抑止）
+- `\L` / `:LinkFixedToggle` : カーソル下リンクの固定マーカー（`pkm:fixed-text`）を ON/OFF
 - `\p` / `:PasteLink` : クリップボードのリンクを挿入
 - `p` : `"+p` へマップ（システムクリップボード貼り付け）
 - `gp` : 旧挙動の貼り付け
@@ -100,6 +103,7 @@ let g:yurii_pkm_default_atomic_prefix = 'C'
 
 - `:UpdateMD [path]` : リンクタイトル等の一括更新
 - `:UpdateAll [path]` / `:UpdateALL [path]` : 同等コマンド
+- 自動同期で表示名を上書きするのは `[xxx](xxx.md)` のように表示名がターゲットstemと一致するリンクのみ（手動表示名は維持）
 - Back セクションは、該当リンクがあるときだけ `category:`（K系）/`note:`（N系）見出しを自動表示
 
 - `.md` 保存時に AutoSync（`g:yurii_pkm_autosync=1` 時）
