@@ -366,6 +366,42 @@ function! yurii_pkm#init_persistent_undo_if_ready() abort
 endfunction
 
 let s:startup_root_recovery_active = 0
+let s:index_created_recently = 0
+
+function! s:mark_index_created() abort
+  let s:index_created_recently = 1
+endfunction
+
+function! s:consume_index_created_flag() abort
+  let l:created = get(s:, 'index_created_recently', 0)
+  let s:index_created_recently = 0
+  return l:created
+endfunction
+
+function! s:timer_edit_file_cb(...) abort
+  " timer_start() の callback 引数順は Vim 実装/呼び出し方で差が出ることがあるため、
+  " 文字列の引数を path として拾う。
+  let l:path = ''
+  if a:0 >= 1 && type(a:1) == v:t_string
+    let l:path = a:1
+  elseif a:0 >= 2 && type(a:2) == v:t_string
+    let l:path = a:2
+  endif
+  if empty(l:path)
+    return
+  endif
+  execute 'edit ' . fnameescape(l:path)
+endfunction
+
+function! s:timer_redraw_cb(timer) abort
+  redraw!
+endfunction
+
+function! s:open_index_with_delay(index_path) abort
+  call yurii_pkm#push_history()
+  call timer_start(0, function('s:timer_edit_file_cb', [a:index_path]))
+  call timer_start(50, function('s:timer_redraw_cb'))
+endfunction
 
 function! s:startup_recover_missing_root() abort
   let l:new_root = s:prompt_index_root()
@@ -388,14 +424,19 @@ function! s:startup_recover_missing_root() abort
     endif
     call s:setup_persistent_undo_for_root(l:new_root)
     call writefile(s:index_template(), l:index)
+    call s:mark_index_created()
     call yurii_pkm#clear_title_cache()
     echom 'Created: ' . l:index
   endif
 
   if filereadable(l:index)
     execute 'cd ' . fnameescape(l:new_root)
-    call yurii_pkm#push_history()
-    execute 'edit ' . fnameescape(l:index)
+    if s:consume_index_created_flag()
+      call s:open_index_with_delay(l:index)
+    else
+      call yurii_pkm#push_history()
+      execute 'edit ' . fnameescape(l:index)
+    endif
   endif
   return l:new_root
 endfunction
@@ -436,10 +477,15 @@ function! yurii_pkm#startup_restore_root() abort
     let l:index = s:index_path(l:root)
     call s:setup_persistent_undo_for_root(l:root)
     call writefile(s:index_template(), l:index)
+    call s:mark_index_created()
     call yurii_pkm#clear_title_cache()
     execute 'cd ' . fnameescape(l:root)
-    call yurii_pkm#push_history()
-    execute 'edit ' . fnameescape(l:index)
+    if s:consume_index_created_flag()
+      call s:open_index_with_delay(l:index)
+    else
+      call yurii_pkm#push_history()
+      execute 'edit ' . fnameescape(l:index)
+    endif
     echom 'Created: ' . l:index
   finally
     let s:startup_root_recovery_active = 0
@@ -480,6 +526,7 @@ function! s:setup_root_and_index(open_index) abort
     let l:ans = tolower(trim(input('Create index.md? y/n: ')))
     if l:ans ==# 'y'
       call writefile(s:index_template(), l:index)
+      call s:mark_index_created()
       call yurii_pkm#clear_title_cache()
       echom 'Created: ' . l:index
     else
@@ -491,8 +538,12 @@ function! s:setup_root_and_index(open_index) abort
   " Step3: Indexを開く
   if a:open_index && filereadable(l:index)
     execute 'cd ' . fnameescape(l:root)
-    call yurii_pkm#push_history()
-    execute 'edit ' . fnameescape(l:index)
+    if s:consume_index_created_flag()
+      call s:open_index_with_delay(l:index)
+    else
+      call yurii_pkm#push_history()
+      execute 'edit ' . fnameescape(l:index)
+    endif
   endif
 
   return l:root
@@ -548,6 +599,7 @@ function! yurii_pkm#ensure_root_and_index() abort
     let l:ans = tolower(trim(input('Create index.md? y/n: ')))
     if l:ans ==# 'y'
       call writefile(s:index_template(), l:index)
+      call s:mark_index_created()
       call yurii_pkm#clear_title_cache()
       echom 'Created: ' . l:index
       return l:root
@@ -2228,8 +2280,12 @@ function! yurii_pkm#open_index() abort
   execute 'cd ' . fnameescape(l:root)
   let l:index = s:index_path(l:root)
   if filereadable(l:index)
-    call yurii_pkm#push_history()
-    execute 'edit ' . fnameescape(l:index)
+    if s:consume_index_created_flag()
+      call s:open_index_with_delay(l:index)
+    else
+      call yurii_pkm#push_history()
+      execute 'edit ' . fnameescape(l:index)
+    endif
   else
     echo 'index.md not found in ' . l:root
   endif
