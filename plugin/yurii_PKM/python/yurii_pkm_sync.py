@@ -261,6 +261,7 @@ def sort_back_links(link_lines: list[str], from_dir: Path, include_index: bool =
     if include_index:
         if result:
             result.append("")
+
         result.append(index_line)
     return result
 

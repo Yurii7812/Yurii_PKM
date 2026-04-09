@@ -1052,6 +1052,7 @@ function! yurii_pkm#note_template(title, ...) abort
         \ '',
         \ '',
         \ '# Back',
+
         \ '[Index](index.md)',
         \ ]
 endfunction
@@ -1532,6 +1533,7 @@ function! s:new_note_no_title(prefix) abort
             \ '',
             \ '# Back',
             \ l:parent_link_line,
+
             \ '[Index](index.md)' ]
       let l:cursor_line = 8
     else
@@ -1547,6 +1549,7 @@ function! s:new_note_no_title(prefix) abort
             \ '# ' . l:title,
             \ '',
             \ '# Back',
+
             \ l:parent_link_line,
             \ '',
             \ '[Index](index.md)' ]
@@ -1565,6 +1568,10 @@ function! s:new_note_no_title(prefix) abort
           \ '# ' . l:title,
           \ '',
           \ '# Back',
+          \ 'category:',
+          \ '',
+          \ 'note:',
+          \ '',
           \ '[Index](index.md)' ]
     let l:cursor_line = 7
   else
@@ -1581,9 +1588,13 @@ function! s:new_note_no_title(prefix) abort
           \ '',
           \ '' ]
     call add(l:content, '# Back')
+    call add(l:content, 'category:')
+    call add(l:content, '')
+    call add(l:content, 'note:')
     if !l:no_parent_link
       call add(l:content, l:parent_link_line)
     endif
+    call add(l:content, '')
     call add(l:content, '[Index](index.md)')
     let l:cursor_line = 8
   endif
@@ -1612,8 +1623,12 @@ function! s:new_note_no_title(prefix) abort
           " Back セクションがなければ末尾に追加
           call add(l:plines, '')
           call add(l:plines, '# Back')
+          call add(l:plines, 'category:')
+          call add(l:plines, '')
+          call add(l:plines, 'note:')
+          call add(l:plines, '')
           call add(l:plines, '[Index](index.md)')
-          let l:back_idx = len(l:plines) - 2
+          let l:back_idx = len(l:plines) - 5
         endif
         " Back 行の直後（back_idx + 1）に挿入
         call insert(l:plines, l:new_link, l:back_idx + 1)
@@ -1691,6 +1706,7 @@ function! s:visual_new_note(prefix, mode) abort
             \ '',
             \ '# Back',
             \ l:parent_link_line,
+
             \ '[Index](index.md)' ]
     else
       let l:content = [
@@ -1703,6 +1719,7 @@ function! s:visual_new_note(prefix, mode) abort
             \ '# ' . l:title,
             \ '',
             \ '# Back',
+
             \ l:parent_link_line,
             \ '',
             \ '[Index](index.md)' ]
@@ -1726,7 +1743,11 @@ function! s:visual_new_note(prefix, mode) abort
     call extend(l:content, l:sel_lines)
     call add(l:content, '')
     call add(l:content, '# Back')
+    call add(l:content, 'category:')
+    call add(l:content, '')
+    call add(l:content, 'note:')
     call add(l:content, l:parent_link_line)
+    call add(l:content, '')
     call add(l:content, '[Index](index.md)')
   endif
 
@@ -1763,8 +1784,12 @@ function! s:visual_new_note(prefix, mode) abort
         if l:back_idx2 < 0
           call add(l:plines, '')
           call add(l:plines, '# Back')
+          call add(l:plines, 'category:')
+          call add(l:plines, '')
+          call add(l:plines, 'note:')
+          call add(l:plines, '')
           call add(l:plines, '[Index](index.md)')
-          let l:back_idx2 = len(l:plines) - 2
+          let l:back_idx2 = len(l:plines) - 5
         endif
         call insert(l:plines, l:link_to_new, l:back_idx2 + 1)
         call writefile(l:plines, l:parent_fp)
@@ -2003,8 +2028,12 @@ function! yurii_pkm#new_quick(args) abort
         if l:back_idx < 0
           call add(l:plines, '')
           call add(l:plines, '# Back')
+          call add(l:plines, 'category:')
+          call add(l:plines, '')
+          call add(l:plines, 'note:')
+          call add(l:plines, '')
           call add(l:plines, '[Index](index.md)')
-          let l:back_idx = len(l:plines) - 2
+          let l:back_idx = len(l:plines) - 5
         endif
         call insert(l:plines, l:new_link, l:back_idx + 1)
         call writefile(l:plines, l:parent_fp)
@@ -2300,6 +2329,7 @@ function! yurii_pkm#at_add() abort
       call add(l:lines, '# Back')
       call add(l:lines, '[Index](index.md)')
       let l:back_idx = len(l:lines) - 2
+
     endif
 
     call insert(l:lines, l:new_link, l:back_idx)
