@@ -1034,6 +1034,19 @@ function! yurii_pkm#timestamp_yaml() abort
   return strftime('%Y-%m-%d %H:%M:%S')
 endfunction
 
+function! s:new_note_insert_line() abort
+  let l:max = min([40, line('$')])
+  for lnum in range(1, l:max)
+    if getline(lnum) =~# '^#\s\+'
+      if lnum < line('$') && getline(lnum + 1) =~# '^\s*$'
+        return lnum + 1
+      endif
+      return min([lnum + 1, line('$')])
+    endif
+  endfor
+  return min([8, line('$')])
+endfunction
+
 function! yurii_pkm#note_template(title, ...) abort
   let l:filetype = a:0 >= 1 ? a:1 : ''
   let l:header = [
@@ -1052,7 +1065,6 @@ function! yurii_pkm#note_template(title, ...) abort
         \ '',
         \ '',
         \ '# Back',
-
         \ '[Index](index.md)',
         \ ]
 endfunction
@@ -1416,8 +1428,8 @@ function! yurii_pkm#create_note(prefix, title, open_after, insert_mode) abort
     execute 'edit ' . fnameescape(l:file)
     let &autoindent = l:save_ai
     let &smartindent = l:save_si
-    call cursor(8, 1)
     startinsert
+    call cursor(s:new_note_insert_line(), 1)
   endif
 
   return {'path': l:file, 'link': l:link}
@@ -1533,7 +1545,6 @@ function! s:new_note_no_title(prefix) abort
             \ '',
             \ '# Back',
             \ l:parent_link_line,
-
             \ '[Index](index.md)' ]
       let l:cursor_line = 8
     else
@@ -1549,7 +1560,6 @@ function! s:new_note_no_title(prefix) abort
             \ '# ' . l:title,
             \ '',
             \ '# Back',
-
             \ l:parent_link_line,
             \ '',
             \ '[Index](index.md)' ]
@@ -1651,8 +1661,8 @@ function! s:new_note_no_title(prefix) abort
 
   call yurii_pkm#push_history()
   execute 'edit ' . fnameescape(l:file)
-  call cursor(l:cursor_line, 1)
   startinsert
+  call cursor(s:new_note_insert_line(), 1)
 endfunction
 
 " ---------------------------------------------------------------------------
@@ -1706,7 +1716,6 @@ function! s:visual_new_note(prefix, mode) abort
             \ '',
             \ '# Back',
             \ l:parent_link_line,
-
             \ '[Index](index.md)' ]
     else
       let l:content = [
@@ -1719,7 +1728,6 @@ function! s:visual_new_note(prefix, mode) abort
             \ '# ' . l:title,
             \ '',
             \ '# Back',
-
             \ l:parent_link_line,
             \ '',
             \ '[Index](index.md)' ]
@@ -1955,8 +1963,8 @@ function! yurii_pkm#new_quick(args) abort
             \ '',
             \ '# ' . l:title,
             \ '',
-            \ l:parent_link_line,
             \ '# Back',
+            \ l:parent_link_line,
             \ '[Index](index.md)' ]
       let l:cursor_line = 8
     else
@@ -1968,9 +1976,9 @@ function! yurii_pkm#new_quick(args) abort
             \ '',
             \ '# ' . l:title,
             \ '',
+            \ '# Back',
             \ l:parent_link_line,
             \ '',
-            \ '# Back',
             \ '[Index](index.md)' ]
       let l:cursor_line = 8
     endif
@@ -2055,8 +2063,8 @@ function! yurii_pkm#new_quick(args) abort
 
   call yurii_pkm#push_history()
   execute 'edit ' . fnameescape(l:file)
-  call cursor(l:cursor_line, 1)
   startinsert
+  call cursor(s:new_note_insert_line(), 1)
 endfunction
 
 
