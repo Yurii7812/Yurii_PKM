@@ -1038,9 +1038,16 @@ function! s:new_note_insert_line() abort
   let l:max = min([120, line('$')])
   for lnum in range(1, l:max)
     if s:is_section_header_text(getline(lnum), 'back')
-      return max([1, lnum - 1])
+      let l:direct = max([1, lnum - 1])
+      let l:upper  = max([1, lnum - 2])
+      if l:upper >= 1 && getline(l:upper) =~# '^\s*$'
+        return l:upper
+      endif
+      return l:direct
     endif
   endfor
+
+
   let l:max = min([40, line('$')])
   for lnum in range(1, l:max)
     if getline(lnum) =~# '^#\s\+'
