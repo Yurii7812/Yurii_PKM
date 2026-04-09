@@ -126,6 +126,7 @@ function! s:outline_collect() abort
       let l:title = substitute(l:line, '^\s*#\+\s\+', '', '')
       let l:title = substitute(l:title, '^\s\+', '', '')
       let l:title = substitute(l:title, '\s\+$', '', '')
+
       call add(l:items, {
             \ 'src_lnum': lnum,
             \ 'indent': l:indent,
@@ -135,6 +136,7 @@ function! s:outline_collect() abort
     endif
     let lnum += 1
   endwhile
+
   return l:items
 endfunction
 
@@ -144,6 +146,7 @@ function! s:outline_editor_lines(items) abort
         \ '# ← / → : 見出しレベル変更（# の数を減増）',
         \ '# Visual選択して ← / → : 選択範囲を一括変更',
         \ '# q で閉じる / ZZ または :OutlineApply で反映',
+
         \ '',
         \ ]
   for l:item in a:items
@@ -218,6 +221,7 @@ function! yurii_pkm#outline_edit() abort
   endif
 
   let l:items = s:outline_collect()
+
   if empty(l:items)
     echom 'yurii_PKM: 見出しが見つかりませんでした'
     return
@@ -226,6 +230,7 @@ function! yurii_pkm#outline_edit() abort
   let l:origin_win = win_getid()
   vertical botright new
   execute 'file ' . fnameescape('[YuriiOutlineEdit]')
+
   call setline(1, s:outline_editor_lines(l:items))
 
   let b:yurii_outline_editor = 1
@@ -252,6 +257,7 @@ function! yurii_pkm#outline_edit() abort
   command! -buffer OutlineApply call yurii_pkm#outline_editor_apply()
   nnoremap <silent><buffer> q  <Cmd>bd!<CR>
   nnoremap <silent><buffer> ZZ <Cmd>OutlineApply<Bar>bd!<CR>
+
   nnoremap <silent><buffer> <Left>  <Cmd>call yurii_pkm#outline_shift_current(-1)<CR>
   nnoremap <silent><buffer> <Right> <Cmd>call yurii_pkm#outline_shift_current(1)<CR>
   xnoremap <silent><buffer> <Left>  :<C-u>call yurii_pkm#outline_shift_visual(-1)<CR>
