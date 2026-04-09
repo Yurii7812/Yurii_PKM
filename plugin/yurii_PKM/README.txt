@@ -92,6 +92,7 @@ filetype [N] →    → 新しい filetype を1文字入力（a-z、大文字に
 `.md` ファイルを保存すると、バックグラウンドで `update_one` が自動実行される。
 
 - Back セクションへの逆リンク追加、リンクタイトル更新などが自動的に行われる
+- Back セクションは `category:`（Kのfiletype）と `note:`（Nのfiletype）で自動整理される
 - `job_start` が使えれば非同期、なければ同期フォールバック
 - 無効化する場合: `let g:yurii_pkm_autosync = 0`
 
