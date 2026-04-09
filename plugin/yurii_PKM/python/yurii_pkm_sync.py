@@ -12,6 +12,7 @@ from typing import Iterable
 # Regex
 # ---------------------------------------------------------------------------
 LINK_RE    = re.compile(r'\[([^\]]+)\]\(([^)]+)\)')
+FIXED_LINK_TEXT_MARKER = "pkm:fixed-text"
 TITLE_RE   = re.compile(r'^title:\s*(.*)$', re.IGNORECASE)
 FILETYPE_RE = re.compile(r'^filetype:\s*(.*)$', re.IGNORECASE)
 H1_RE      = re.compile(r'^#\s+(.+)$')
@@ -435,6 +436,10 @@ def update_titles_in_file(path: Path) -> bool:
             continue
 
         target_text = m.group(2)
+        suffix = m.group(3)
+        if FIXED_LINK_TEXT_MARKER in suffix:
+            result.append(line)
+            continue
         if '\x00' in target_text:
             result.append(line)
             continue
@@ -454,7 +459,7 @@ def update_titles_in_file(path: Path) -> bool:
 
         title = get_title(target)
         text = title if title else Path(target_text).stem
-        new_line = f"[{text}]({target_text})"
+        new_line = f"[{text}]({target_text}){suffix}"
         if new_line != line:
             modified = True
             line = new_line
@@ -645,6 +650,38 @@ def _rewrite_link_target(lines: list[str], old_name: str, new_name: str) -> list
     return result
 
 
+def retitle_links(target_file: Path, root: Path, old_title: str, new_title: str) -> int:
+    """Rename link text old_title -> new_title only for links targeting target_file."""
+    target_resolved = target_file.resolve()
+    changed_files = 0
+
+    for p in iter_notes(root):
+        lines = read_lines(p)
+        modified = False
+        out: list[str] = []
+
+        for line in lines:
+            def _repl(m: re.Match[str]) -> str:
+                nonlocal modified
+                text = m.group(1)
+                rel_target = m.group(2)
+                if text != old_title:
+                    return m.group(0)
+                resolved = (p.parent / rel_target).resolve()
+                if resolved != target_resolved:
+                    return m.group(0)
+                modified = True
+                return f"[{new_title}]({rel_target})"
+
+            out.append(LINK_RE.sub(_repl, line))
+
+        if modified:
+            write_lines(p, out)
+            changed_files += 1
+
+    return changed_files
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
@@ -655,6 +692,7 @@ def main(argv: list[str]) -> int:
               "  yurii_pkm_sync.py update ROOT\n"
               "  yurii_pkm_sync.py update_one FILE ROOT\n"
               "  yurii_pkm_sync.py update_titles FILE\n"
+              "  yurii_pkm_sync.py retitle_links FILE ROOT OLD_TITLE NEW_TITLE\n"
               "  yurii_pkm_sync.py rename_prefix FILE NEW_PREFIX ROOT",
               file=sys.stderr)
         return 2
@@ -687,6 +725,19 @@ def main(argv: list[str]) -> int:
         path = Path(argv[2])
         changed = update_titles_in_file(path)
         print(f"yurii_PKM: {'updated' if changed else 'no changes in'} {path.name}")
+        return 0
+
+    if mode == "retitle_links":
+        if len(argv) < 6:
+            print("usage: yurii_pkm_sync.py retitle_links FILE ROOT OLD_TITLE NEW_TITLE",
+                  file=sys.stderr)
+            return 2
+        target_file = Path(argv[2])
+        root = Path(argv[3])
+        old_title = argv[4]
+        new_title = argv[5]
+        changed = retitle_links(target_file, root, old_title, new_title)
+        print(f"yurii_PKM: retitled {changed} file(s)")
         return 0
 
     if mode == "nf":
