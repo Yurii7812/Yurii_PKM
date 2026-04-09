@@ -114,6 +114,143 @@ function! yurii_pkm#current_title() abort
   return expand('%:t:r')
 endfunction
 
+function! s:outline_collect() abort
+  let l:items = []
+  let l:lines = getline(1, '$')
+  for lnum in range(1, len(l:lines))
+    let l:line = l:lines[lnum - 1]
+    if l:line =~# '^\s*#\+\s\+'
+      let l:indent = matchstr(l:line, '^\s*')
+      let l:head = matchstr(l:line, '#\+')
+      let l:title = trim(substitute(l:line, '^\s*#\+\s\+', '', ''))
+      call add(l:items, {
+            \ 'src_lnum': lnum,
+            \ 'indent': l:indent,
+            \ 'level': strlen(l:head),
+            \ 'title': l:title,
+            \ })
+    endif
+  endfor
+  return l:items
+endfunction
+
+function! s:outline_editor_lines(items) abort
+  let l:lines = [
+        \ '# OutlineEdit: 見出しを編集して :write で反映',
+        \ '# ← / → : 見出しレベル変更（# の数を減増）',
+        \ '# Visual選択して ← / → : 選択範囲を一括変更',
+        \ '# q で閉じる / ZZ で保存して閉じる',
+        \ '',
+        \ ]
+  for l:item in a:items
+    call add(l:lines, repeat('#', l:item.level) . ' ' . l:item.title)
+  endfor
+  return l:lines
+endfunction
+
+function! s:outline_shift_range(first, last, delta) abort
+  let l:base = get(b:, 'yurii_outline_base', 6)
+  let l:last_edit = l:base + len(get(b:, 'yurii_outline_items', [])) - 1
+  let l:start = max([a:first, l:base])
+  let l:end = min([a:last, l:last_edit])
+  if l:start > l:end
+    return
+  endif
+
+  for lnum in range(l:start, l:end)
+    let l:line = getline(lnum)
+    if l:line !~# '^\s*#\+\s\+'
+      continue
+    endif
+    let l:level = strlen(matchstr(l:line, '#\+')) + a:delta
+    let l:level = max([1, l:level])
+    let l:title = trim(substitute(l:line, '^\s*#\+\s\+', '', ''))
+    call setline(lnum, repeat('#', l:level) . ' ' . l:title)
+  endfor
+endfunction
+
+function! yurii_pkm#outline_shift_current(delta) abort
+  call s:outline_shift_range(line('.'), line('.'), a:delta)
+endfunction
+
+function! yurii_pkm#outline_shift_visual(delta) range abort
+  call s:outline_shift_range(a:firstline, a:lastline, a:delta)
+endfunction
+
+function! yurii_pkm#outline_editor_apply() abort
+  if !get(b:, 'yurii_outline_editor', 0)
+    return
+  endif
+  let l:src_buf = get(b:, 'yurii_outline_src_bufnr', -1)
+  let l:items = get(b:, 'yurii_outline_items', [])
+  let l:base = get(b:, 'yurii_outline_base', 6)
+  if l:src_buf < 0 || empty(l:items)
+    echoerr 'OutlineEdit: invalid editor state'
+    return
+  endif
+
+  for l:i in range(0, len(l:items) - 1)
+    let l:src = l:items[l:i]
+    let l:line = trim(getline(l:base + l:i))
+    if l:line =~# '^#\+\s\+'
+      let l:new_level = strlen(matchstr(l:line, '^#\+'))
+      let l:new_title = trim(substitute(l:line, '^#\+\s\+', '', ''))
+    else
+      let l:new_level = max([1, get(l:src, 'level', 1)])
+      let l:new_title = empty(l:line) ? get(l:src, 'title', '') : l:line
+    endif
+    let l:new_line = get(l:src, 'indent', '') . repeat('#', l:new_level) . ' ' . l:new_title
+    call setbufline(l:src_buf, l:src.src_lnum, l:new_line)
+  endfor
+
+  setlocal nomodified
+  echom 'OutlineEdit: 反映しました'
+endfunction
+
+function! yurii_pkm#outline_edit() abort
+  if !s:is_markdown_file(expand('%:p'))
+    echoerr 'yurii_PKM: OutlineEdit は Markdown ファイルでのみ利用できます'
+    return
+  endif
+
+  let l:items = s:outline_collect()
+  if empty(l:items)
+    echom 'yurii_PKM: 見出しが見つかりませんでした'
+    return
+  endif
+
+  let l:origin_win = win_getid()
+  vertical botright new
+  call setline(1, s:outline_editor_lines(l:items))
+
+  let b:yurii_outline_editor = 1
+  let b:yurii_outline_src_bufnr = winbufnr(l:origin_win)
+  let b:yurii_outline_items = deepcopy(l:items)
+  let b:yurii_outline_base = 6
+
+  setlocal buftype=acwrite
+  setlocal bufhidden=wipe
+  setlocal noswapfile
+  setlocal nobuflisted
+  setlocal filetype=markdown
+  setlocal nonumber
+  setlocal norelativenumber
+  setlocal foldcolumn=0
+  setlocal signcolumn=no
+  setlocal nowrap
+  setlocal modifiable
+
+  execute 'autocmd! BufWriteCmd <buffer> call yurii_pkm#outline_editor_apply()'
+  nnoremap <silent><buffer> q  <Cmd>bd!<CR>
+  nnoremap <silent><buffer> ZZ <Cmd>write<Bar>bd!<CR>
+  nnoremap <silent><buffer> <Left>  <Cmd>call yurii_pkm#outline_shift_current(-1)<CR>
+  nnoremap <silent><buffer> <Right> <Cmd>call yurii_pkm#outline_shift_current(1)<CR>
+  xnoremap <silent><buffer> <Left>  :<C-u>call yurii_pkm#outline_shift_visual(-1)<CR>
+  xnoremap <silent><buffer> <Right> :<C-u>call yurii_pkm#outline_shift_visual(1)<CR>
+
+  call cursor(b:yurii_outline_base, 1)
+endfunction
+
 
 function! s:state_dir() abort
   if exists('*stdpath')
