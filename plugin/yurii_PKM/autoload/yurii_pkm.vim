@@ -2330,6 +2330,7 @@ function! yurii_pkm#linkify_selection() abort range
 
   let l:link = '[' . l:text . '](' . l:target . ') <!-- ' . s:fixed_link_text_marker . ' -->'
 
+
   if len(l:lines) == 1
     let l:line = l:lines[0]
     let l:newline = strpart(l:line, 0, l:scol - 1) . l:link . strpart(l:line, l:ecol)
