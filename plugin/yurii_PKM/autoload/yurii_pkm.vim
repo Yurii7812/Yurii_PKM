@@ -126,6 +126,7 @@ function! s:outline_collect() abort
       let l:title = substitute(l:line, '^\s*#\+\s\+', '', '')
       let l:title = substitute(l:title, '^\s\+', '', '')
       let l:title = substitute(l:title, '\s\+$', '', '')
+
       call add(l:items, {
             \ 'src_lnum': lnum,
             \ 'indent': l:indent,
@@ -135,6 +136,7 @@ function! s:outline_collect() abort
     endif
     let lnum += 1
   endwhile
+
   return l:items
 endfunction
 
@@ -218,6 +220,7 @@ function! yurii_pkm#outline_edit() abort
   endif
 
   let l:items = s:outline_collect()
+
   if empty(l:items)
     echom 'yurii_PKM: 見出しが見つかりませんでした'
     return
@@ -253,6 +256,8 @@ function! yurii_pkm#outline_edit() abort
   xnoremap <silent><buffer> <Right> :<C-u>call yurii_pkm#outline_shift_visual(1)<CR>
 
   call cursor(b:yurii_outline_base, 1)
+
+main
 endfunction
 
 
