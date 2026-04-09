@@ -254,9 +254,9 @@ function! yurii_pkm#outline_edit() abort
     autocmd BufWriteCmd <buffer> call yurii_pkm#outline_editor_apply()
   augroup END
   command! -buffer OutlineApply call yurii_pkm#outline_editor_apply()
-  nnoremap <silent><buffer> q  <Cmd>OutlineApply<Bar>bd!<CR>
+  nnoremap <silent><buffer> q  <Cmd>call yurii_pkm#outline_editor_apply()<CR><Cmd>bd!<CR>
   nnoremap <silent><buffer> Q  <Cmd>bd!<CR>
-  nnoremap <silent><buffer> ZZ <Cmd>OutlineApply<Bar>bd!<CR>
+  nnoremap <silent><buffer> ZZ <Cmd>call yurii_pkm#outline_editor_apply()<CR><Cmd>bd!<CR>
 
   nnoremap <silent><buffer> <Left>  <Cmd>call yurii_pkm#outline_shift_current(-1)<CR>
   nnoremap <silent><buffer> <Right> <Cmd>call yurii_pkm#outline_shift_current(1)<CR>
