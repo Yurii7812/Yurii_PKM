@@ -145,7 +145,7 @@ function! s:outline_editor_lines(items) abort
   call add(l:lines, '# OutlineEdit: 見出しを編集して :write で反映')
   call add(l:lines, '# <- / -> : 見出しレベル変更（# の数を減増）')
   call add(l:lines, '# Visual選択して <- / -> : 選択範囲を一括変更')
-  call add(l:lines, '# q で閉じる / ZZ または :OutlineApply で反映')
+  call add(l:lines, '# q / ZZ / :OutlineApply で反映（Q は保存せず閉じる）')
   call add(l:lines, '')
 
   for l:item in a:items
@@ -254,7 +254,8 @@ function! yurii_pkm#outline_edit() abort
     autocmd BufWriteCmd <buffer> call yurii_pkm#outline_editor_apply()
   augroup END
   command! -buffer OutlineApply call yurii_pkm#outline_editor_apply()
-  nnoremap <silent><buffer> q  <Cmd>bd!<CR>
+  nnoremap <silent><buffer> q  <Cmd>OutlineApply<Bar>bd!<CR>
+  nnoremap <silent><buffer> Q  <Cmd>bd!<CR>
   nnoremap <silent><buffer> ZZ <Cmd>OutlineApply<Bar>bd!<CR>
 
   nnoremap <silent><buffer> <Left>  <Cmd>call yurii_pkm#outline_shift_current(-1)<CR>
