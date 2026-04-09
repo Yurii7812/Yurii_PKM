@@ -145,6 +145,7 @@ nnoremap <silent> gp <Cmd>call yurii_pkm#paste_charwise()<CR>
 nnoremap <silent> \l        <Cmd>call yurii_pkm#linkify_filename_under_cursor()<CR>
 xnoremap <silent> \l        :<C-u>call yurii_pkm#linkify_selection()<CR>
 nnoremap <silent> \p        <Cmd>call yurii_pkm#paste_clipboard_link_here()<CR>
+xnoremap <silent> \p        :<C-u>call yurii_pkm#linkify_selection()<CR>
 nnoremap <silent> \oe       <Cmd>OutlineEdit<CR>
 
 " ---------------------------------------------------------------------------
