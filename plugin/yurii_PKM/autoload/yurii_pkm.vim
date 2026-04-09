@@ -115,16 +115,18 @@ function! yurii_pkm#current_title() abort
 endfunction
 
 function! s:outline_collect() abort
-
   let l:items = []
-  let l:lines = getline(1, '$')
-  for lnum in range(1, len(l:lines))
-    let l:line = l:lines[lnum - 1]
- codex/fix-unknown-function-error-for-outline_edit-5t9dia
+  let l:max_lnum = line('$')
+  let lnum = 1
+  while lnum <= l:max_lnum
+    let l:line = getline(lnum)
     if l:line =~# '^\s*#\+\s\+'
       let l:indent = matchstr(l:line, '^\s*')
       let l:head = matchstr(l:line, '#\+')
-      let l:title = trim(substitute(l:line, '^\s*#\+\s\+', '', ''))
+      let l:title = substitute(l:line, '^\s*#\+\s\+', '', '')
+      let l:title = substitute(l:title, '^\s\+', '', '')
+      let l:title = substitute(l:title, '\s\+$', '', '')
+
       call add(l:items, {
             \ 'src_lnum': lnum,
             \ 'indent': l:indent,
@@ -132,7 +134,9 @@ function! s:outline_collect() abort
             \ 'title': l:title,
             \ })
     endif
-  endfor
+    let lnum += 1
+  endwhile
+
   return l:items
 endfunction
 
@@ -253,6 +257,7 @@ function! yurii_pkm#outline_edit() abort
 
   call cursor(b:yurii_outline_base, 1)
 
+main
 endfunction
 
 
