@@ -2324,11 +2324,15 @@ function! yurii_pkm#linkify_selection() abort range
   endif
 
   if len(l:lines) == 1
-    let l:selected = strpart(l:lines[0], l:scol - 1, l:ecol - l:scol + 1)
+    let l:start_char = charidx(l:lines[0], l:scol - 1)
+    let l:end_char = charidx(l:lines[0], l:ecol - 1) + 1
+    let l:selected = strcharpart(l:lines[0], l:start_char, l:end_char - l:start_char)
   else
     let l:selected_lines = copy(l:lines)
-    let l:selected_lines[0] = strpart(l:selected_lines[0], l:scol - 1)
-    let l:selected_lines[-1] = strpart(l:selected_lines[-1], 0, l:ecol)
+    let l:first_start_char = charidx(l:selected_lines[0], l:scol - 1)
+    let l:last_end_char = charidx(l:selected_lines[-1], l:ecol - 1) + 1
+    let l:selected_lines[0] = strcharpart(l:selected_lines[0], l:first_start_char)
+    let l:selected_lines[-1] = strcharpart(l:selected_lines[-1], 0, l:last_end_char)
     let l:selected = join(l:selected_lines, "\n")
   endif
 
@@ -2343,11 +2347,15 @@ function! yurii_pkm#linkify_selection() abort range
 
   if len(l:lines) == 1
     let l:line = l:lines[0]
-    let l:newline = strpart(l:line, 0, l:scol - 1) . l:link . strpart(l:line, l:ecol)
+    let l:start_char = charidx(l:line, l:scol - 1)
+    let l:end_char = charidx(l:line, l:ecol - 1) + 1
+    let l:newline = strcharpart(l:line, 0, l:start_char) . l:link . strcharpart(l:line, l:end_char)
     call setline(l:sline, l:newline)
   else
-    let l:prefix = strpart(l:lines[0], 0, l:scol - 1)
-    let l:suffix = strpart(l:lines[-1], l:ecol)
+    let l:first_start_char = charidx(l:lines[0], l:scol - 1)
+    let l:last_end_char = charidx(l:lines[-1], l:ecol - 1) + 1
+    let l:prefix = strcharpart(l:lines[0], 0, l:first_start_char)
+    let l:suffix = strcharpart(l:lines[-1], l:last_end_char)
     call setline(l:sline, l:prefix . l:link . l:suffix)
     if l:eline > l:sline
       execute (l:sline + 1) . ',' . l:eline . 'delete _'
