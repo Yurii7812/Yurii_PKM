@@ -12,6 +12,7 @@ from typing import Iterable
 # Regex
 # ---------------------------------------------------------------------------
 LINK_RE    = re.compile(r'\[([^\]]+)\]\(([^)]+)\)')
+FIXED_LINK_TEXT_MARKER = "pkm:fixed-text"
 TITLE_RE   = re.compile(r'^title:\s*(.*)$', re.IGNORECASE)
 FILETYPE_RE = re.compile(r'^filetype:\s*(.*)$', re.IGNORECASE)
 H1_RE      = re.compile(r'^#\s+(.+)$')
@@ -435,6 +436,10 @@ def update_titles_in_file(path: Path) -> bool:
             continue
 
         target_text = m.group(2)
+        suffix = m.group(3)
+        if FIXED_LINK_TEXT_MARKER in suffix:
+            result.append(line)
+            continue
         if '\x00' in target_text:
             result.append(line)
             continue
@@ -454,7 +459,7 @@ def update_titles_in_file(path: Path) -> bool:
 
         title = get_title(target)
         text = title if title else Path(target_text).stem
-        new_line = f"[{text}]({target_text})"
+        new_line = f"[{text}]({target_text}){suffix}"
         if new_line != line:
             modified = True
             line = new_line

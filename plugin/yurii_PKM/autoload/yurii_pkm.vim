@@ -8,6 +8,7 @@
 " ---------------------------------------------------------------------------
 
 let s:link_pat = '\v\[[^\]]+\]\([^)]*\)'
+let s:fixed_link_text_marker = 'pkm:fixed-text'
 
 function! s:sep() abort
   return has('win32') ? '\' : '/'
@@ -1128,15 +1129,19 @@ function! yurii_pkm#update_current_buffer() abort
     endif
 
     if (l:in_branch || l:in_back) && l:line =~# '\[[^\]]\+\]([^)]\+\.md)'
-      let l:lm = matchlist(l:line, '\(\[[^\]]\+\](\([^)]\+\))\)')
+      let l:lm = matchlist(l:line, '^\(\[[^\]]\+\](\([^)]\+\))\)\(.*\)$')
       if !empty(l:lm)
         let l:link_part = l:lm[1]
         let l:target    = trim(l:lm[2])
+        let l:suffix    = get(l:lm, 3, '')
+        if l:suffix =~# s:fixed_link_text_marker
+          continue
+        endif
         let l:filepath  = expand('%:p:h') . s:sep() . l:target
         if filereadable(l:filepath)
           let l:title = s:get_title(l:filepath)
           if !empty(l:title)
-            let l:new_line = '[' . l:title . '](' . l:target . ')'
+            let l:new_line = '[' . l:title . '](' . l:target . ')' . l:suffix
             if l:new_line !=# l:line
               call setline(l:i, l:new_line)
               let l:modified = 1
@@ -2323,7 +2328,8 @@ function! yurii_pkm#linkify_selection() abort range
     return
   endif
 
-  let l:link = '[' . l:text . '](' . l:target . ')'
+  let l:link = '[' . l:text . '](' . l:target . ') <!-- ' . s:fixed_link_text_marker . ' -->'
+
 
   if len(l:lines) == 1
     let l:line = l:lines[0]
