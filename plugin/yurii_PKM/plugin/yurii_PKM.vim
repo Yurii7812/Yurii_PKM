@@ -257,7 +257,7 @@ function! s:setup_conceal() abort
   silent! syntax clear yuriiConcealClose
 
   " リンク全体は region で保持し、見える本文だけを水色にする
-  syntax region yuriiLinkRegion start=/\[/ end=/)/ keepend contains=yuriiLinkText,yuriiConcealOpen,yuriiConcealClose
+  syntax region yuriiLinkRegion start=/\[/ end=/\](\([^)]\+\))/ keepend contains=yuriiLinkText,yuriiConcealOpen,yuriiConcealClose
   syntax match yuriiLinkText /\%(\[\)\@<=[^\]]\+\ze\](\([^)]\+\))/ contained
   let l:link_color_gui = get(g:, 'yurii_pkm_link_color_gui', '#66CCFF')
   let l:link_color_cterm = get(g:, 'yurii_pkm_link_color_cterm', '81')
