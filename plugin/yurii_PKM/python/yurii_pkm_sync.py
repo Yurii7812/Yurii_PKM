@@ -192,7 +192,8 @@ def parse_links(lines: list[str]) -> list[tuple[str, str]]:
 def outbound_links_until_back(lines: list[str]) -> list[tuple[str, str]]:
     """Collect markdown links used for backlink graph.
 
-    Includes links in body/Branch/Back and stops at `___` separator.
+    Includes links in body/Branch, but excludes Back section links.
+    Stops at `___` separator.
     """
     result: list[tuple[str, str]] = []
     in_yaml = False
@@ -216,6 +217,8 @@ def outbound_links_until_back(lines: list[str]) -> list[tuple[str, str]]:
             continue
 
         if SEP_RE.match(stripped):
+            break
+        if is_section_header(stripped, "back"):
             break
         if is_section_header(stripped, "branch"):
             continue
