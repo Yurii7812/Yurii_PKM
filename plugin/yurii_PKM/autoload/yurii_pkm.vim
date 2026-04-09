@@ -247,7 +247,11 @@ function! yurii_pkm#outline_edit() abort
   setlocal nowrap
   setlocal modifiable
 
-  execute 'autocmd! BufWriteCmd <buffer> call yurii_pkm#outline_editor_apply()'
+  augroup yurii_pkm_outline_editor
+    autocmd! * <buffer>
+    autocmd BufWriteCmd <buffer> call yurii_pkm#outline_editor_apply()
+  augroup END
+
   nnoremap <silent><buffer> q  <Cmd>bd!<CR>
   nnoremap <silent><buffer> ZZ <Cmd>write<Bar>bd!<CR>
   nnoremap <silent><buffer> <Left>  <Cmd>call yurii_pkm#outline_shift_current(-1)<CR>
