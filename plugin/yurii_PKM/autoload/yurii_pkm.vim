@@ -1262,6 +1262,36 @@ function! s:update_one_done(target_fp, job, status) abort
   endif
 endfunction
 
+" タイトル変更時は、参照元ノートのリンクタイトルも即時更新する
+function! s:run_update_all_for_title_change() abort
+  if !filereadable(g:yurii_pkm_python)
+    return
+  endif
+  let l:root = s:get_pkm_root()
+  if empty(l:root) || !filereadable(s:index_path(l:root))
+    return
+  endif
+
+  let l:py  = s:python_cmd()
+  let l:cmd = l:py . ' ' . shellescape(g:yurii_pkm_python)
+        \    . ' update ' . shellescape(l:root)
+
+  if has('job') && has('channel')
+    call job_start(['/bin/sh', '-c', l:cmd], {
+          \ 'exit_cb': function('s:title_change_update_done'),
+          \ 'out_io':  'null',
+          \ 'err_io':  'null',
+          \ })
+  else
+    call system(l:cmd)
+    checktime
+  endif
+endfunction
+
+function! s:title_change_update_done(job, status) abort
+  call s:reload_current()
+endfunction
+
 " ---------------------------------------------------------------------------
 " rename_title (:NT)
 " ---------------------------------------------------------------------------
@@ -1325,6 +1355,7 @@ function! yurii_pkm#rename_title_with_default(default) abort
   endif
   write
   call yurii_pkm#clear_title_cache()
+  call s:run_update_all_for_title_change()
 endfunction
 
 function! yurii_pkm#rename_title(args) abort
