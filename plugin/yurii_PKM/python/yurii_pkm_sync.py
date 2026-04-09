@@ -190,7 +190,10 @@ def parse_links(lines: list[str]) -> list[tuple[str, str]]:
 
 
 def outbound_links_until_back(lines: list[str]) -> list[tuple[str, str]]:
-    """Collect markdown links in the note body and legacy Branch area until Back."""
+    """Collect markdown links used for backlink graph.
+
+    Includes links in body/Branch/Back and stops at `___` separator.
+    """
     result: list[tuple[str, str]] = []
     in_yaml = False
     in_fence = False
@@ -212,7 +215,7 @@ def outbound_links_until_back(lines: list[str]) -> list[tuple[str, str]]:
         if in_fence:
             continue
 
-        if is_section_header(stripped, "back"):
+        if SEP_RE.match(stripped):
             break
         if is_section_header(stripped, "branch"):
             continue
