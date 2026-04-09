@@ -8,6 +8,7 @@
 " ---------------------------------------------------------------------------
 
 let s:link_pat = '\v\[[^\]]+\]\([^)]*\)'
+let s:fixed_link_text_marker = 'pkm:fixed-text'
 
 function! s:sep() abort
   return has('win32') ? '\' : '/'
@@ -1133,10 +1134,12 @@ function! yurii_pkm#update_current_buffer() abort
         let l:link_text = get(l:lm, 2, '')
         let l:target    = trim(get(l:lm, 3, ''))
         let l:suffix    = get(l:lm, 4, '')
+
         let l:target_stem = fnamemodify(fnamemodify(l:target, ':t'), ':r')
         if l:link_text !=# l:target_stem
           continue
         endif
+
         let l:filepath  = expand('%:p:h') . s:sep() . l:target
         if filereadable(l:filepath)
           let l:title = s:get_title(l:filepath)
@@ -2337,6 +2340,7 @@ function! yurii_pkm#linkify_selection() abort range
 
   let l:link = '[' . l:text . '](' . l:target . ')'
 
+
   if len(l:lines) == 1
     let l:line = l:lines[0]
     let l:newline = strpart(l:line, 0, l:scol - 1) . l:link . strpart(l:line, l:ecol)
@@ -2350,6 +2354,7 @@ function! yurii_pkm#linkify_selection() abort range
     endif
   endif
 endfunction
+
 
 " ---------------------------------------------------------------------------
 " :YN - Yank Note name

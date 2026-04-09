@@ -94,6 +94,7 @@ let g:yurii_pkm_default_atomic_prefix = 'C'
 - `yn` / `:YN` : 現在ファイル名をヤンク
 - `\l` / `:Linkify` : ファイル名テキストを Markdown リンク化
 - Visual `\l` / `:LinkifySelection` : 選択文字列をクリップボードのターゲットへリンク化
+
 - `\p` / `:PasteLink` : クリップボードのリンクを挿入
 - Visual `\p` : 選択文字列をクリップボードのターゲットへリンク化（Visual `\l` と同等）
 - `p` : `"+p` へマップ（システムクリップボード貼り付け）

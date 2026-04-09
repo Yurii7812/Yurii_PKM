@@ -65,6 +65,7 @@ command!          YN         call yurii_pkm#yank_name()
 command!          AT         call yurii_pkm#at_add()
 command!          Linkify    call yurii_pkm#linkify_filename_under_cursor()
 command!          LinkifySelection call yurii_pkm#linkify_selection()
+command!          LinkFixedToggle call yurii_pkm#toggle_fixed_link_text_under_cursor()
 command!          PasteLink  call yurii_pkm#paste_clipboard_link_here()
 command!          SortYomi   call yurii_pkm#sort_yomi()
 command!          YuriiIndex call yurii_pkm#open_index()
@@ -144,6 +145,7 @@ nnoremap <silent> p  "+p
 nnoremap <silent> gp <Cmd>call yurii_pkm#paste_charwise()<CR>
 nnoremap <silent> \l        <Cmd>call yurii_pkm#linkify_filename_under_cursor()<CR>
 xnoremap <silent> \l        :<C-u>call yurii_pkm#linkify_selection()<CR>
+nnoremap <silent> \L        <Cmd>call yurii_pkm#toggle_fixed_link_text_under_cursor()<CR>
 nnoremap <silent> \p        <Cmd>call yurii_pkm#paste_clipboard_link_here()<CR>
 xnoremap <silent> \p        :<C-u>call yurii_pkm#linkify_selection()<CR>
 nnoremap <silent> \oe       <Cmd>OutlineEdit<CR>
