@@ -1428,6 +1428,7 @@ function! yurii_pkm#create_note(prefix, title, open_after, insert_mode) abort
     execute 'edit ' . fnameescape(l:file)
     let &autoindent = l:save_ai
     let &smartindent = l:save_si
+
     startinsert
     call cursor(s:new_note_insert_line(), 1)
   endif
@@ -1661,6 +1662,7 @@ function! s:new_note_no_title(prefix) abort
 
   call yurii_pkm#push_history()
   execute 'edit ' . fnameescape(l:file)
+
   startinsert
   call cursor(s:new_note_insert_line(), 1)
 endfunction
@@ -2063,6 +2065,7 @@ function! yurii_pkm#new_quick(args) abort
 
   call yurii_pkm#push_history()
   execute 'edit ' . fnameescape(l:file)
+
   startinsert
   call cursor(s:new_note_insert_line(), 1)
 endfunction
