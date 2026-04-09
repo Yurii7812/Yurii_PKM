@@ -114,6 +114,45 @@ function! yurii_pkm#current_title() abort
   return expand('%:t:r')
 endfunction
 
+function! yurii_pkm#outline_edit() abort
+  if !s:is_markdown_file(expand('%:p'))
+    echoerr 'yurii_PKM: OutlineEdit は Markdown ファイルでのみ利用できます'
+    return
+  endif
+
+  let l:items = []
+  let l:lines = getline(1, '$')
+  for lnum in range(1, len(l:lines))
+    let l:line = l:lines[lnum - 1]
+    if l:line =~# '^#\+\s\+'
+      let l:level = strlen(matchstr(l:line, '^#\+'))
+      let l:title = substitute(l:line, '^#\+\s\+', '', '')
+      call add(l:items, {
+            \ 'bufnr': bufnr('%'),
+            \ 'lnum': lnum,
+            \ 'col': 1,
+            \ 'text': repeat('  ', max([0, l:level - 1])) . l:title,
+            \ })
+    endif
+  endfor
+
+  if empty(l:items)
+    echom 'yurii_PKM: 見出しが見つかりませんでした'
+    return
+  endif
+
+  " Vim バージョン差異の吸収:
+  " - what(dict) 形式を先に試す（title も同時設定できる）
+  " - 失敗したら 3 引数形式にフォールバック
+  let v:errmsg = ''
+  silent! call setloclist(0, [], 'r', {'title': 'PKM Outline', 'items': l:items})
+  if !empty(v:errmsg)
+    let v:errmsg = ''
+    silent! call setloclist(0, l:items, 'r')
+  endif
+  lopen
+endfunction
+
 
 function! s:state_dir() abort
   if exists('*stdpath')
