@@ -141,14 +141,13 @@ function! s:outline_collect() abort
 endfunction
 
 function! s:outline_editor_lines(items) abort
-  let l:lines = [
-        \ '# OutlineEdit: 見出しを編集して :write で反映',
-        \ '# ← / → : 見出しレベル変更（# の数を減増）',
-        \ '# Visual選択して ← / → : 選択範囲を一括変更',
-        \ '# q で閉じる / ZZ または :OutlineApply で反映',
+  let l:lines = []
+  call add(l:lines, '# OutlineEdit: 見出しを編集して :write で反映')
+  call add(l:lines, '# <- / -> : 見出しレベル変更（# の数を減増）')
+  call add(l:lines, '# Visual選択して <- / -> : 選択範囲を一括変更')
+  call add(l:lines, '# q で閉じる / ZZ または :OutlineApply で反映')
+  call add(l:lines, '')
 
-        \ '',
-        \ ]
   for l:item in a:items
     call add(l:lines, repeat('#', l:item.level) . ' ' . l:item.title)
   endfor
