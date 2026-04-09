@@ -13,6 +13,7 @@ from typing import Iterable
 # ---------------------------------------------------------------------------
 LINK_RE    = re.compile(r'\[([^\]]+)\]\(([^)]+)\)')
 TITLE_RE   = re.compile(r'^title:\s*(.*)$', re.IGNORECASE)
+FILETYPE_RE = re.compile(r'^filetype:\s*(.*)$', re.IGNORECASE)
 H1_RE      = re.compile(r'^#\s+(.+)$')
 SEP_RE     = re.compile(r'^_{3,}\s*$')
 SECTION_NAMES = {"branch", "back"}
@@ -92,6 +93,26 @@ def note_title(lines: list[str], path: Path) -> str:
             if m:
                 return m.group(1).strip()
     return path.stem
+
+
+def note_filetype(lines: list[str], path: Path) -> str:
+    in_yaml = False
+    for line in lines[:40]:
+        stripped = line.strip()
+        if stripped == "---":
+            in_yaml = not in_yaml
+            continue
+        if not in_yaml:
+            continue
+        m = FILETYPE_RE.match(line)
+        if m:
+            value = m.group(1).strip().upper()
+            return value[:1] if value else ""
+
+    stem = path.stem
+    if "_" in stem:
+        return stem.split("_", 1)[0].upper()[:1]
+    return ""
 
 
 def find_section(lines: list[str], name: str) -> tuple[int, int]:
@@ -202,42 +223,42 @@ def outbound_links_until_back(lines: list[str]) -> list[tuple[str, str]]:
     return result
 
 
-def sort_back_links(link_lines: list[str], self_prefix: str, include_index: bool = True) -> list[str]:
-    """Sort Back section links.
-
-    Order: K_ links -> blank line -> all other note links -> blank line -> index.md.
-    Older non-K prefixes (A_, C_, S_, etc.) are treated like the N-group.
-    """
-    other_links: list[str] = []
-    k_links: list[str] = []
-    index_line = ""
+def sort_back_links(link_lines: list[str], from_dir: Path, include_index: bool = True) -> list[str]:
+    """Sort Back section links into category/note blocks based on target filetype."""
+    note_links: list[str] = []
+    category_links: list[str] = []
+    index_line = "[Index](index.md)"
 
     for line in link_lines:
         m = re.search(r'\(([^)]+)\)', line)
         if not m:
-            other_links.append(line)
             continue
-        fname = m.group(1).strip().split('/')[-1]
-        if fname == 'index.md':
+        target = m.group(1).strip()
+        fname = target.split('/')[-1]
+        if fname.lower() == 'index.md':
             index_line = line
-        elif fname.startswith('K_') or fname.startswith('k_'):
-            k_links.append(line)
-        else:
-            other_links.append(line)
+            continue
 
-    k_links.sort(key=str.lower)
-    other_links.sort(key=str.lower)
+        target_path = (from_dir / target).resolve()
+        target_type = get_filetype(target_path)
+        if target_type == "K":
+            category_links.append(line)
+        else:
+            note_links.append(line)
+
+    category_links.sort(key=str.lower)
+    note_links.sort(key=str.lower)
 
     result: list[str] = []
-    if k_links:
-        result.extend(k_links)
-    if k_links and other_links:
-        result.append("")
-    if other_links:
-        result.extend(other_links)
+    if category_links:
+        result.append("category:")
+        result.extend(category_links)
+    if note_links:
+        if result:
+            result.append("")
+        result.append("note:")
+        result.extend(note_links)
     if include_index:
-        if not index_line:
-            index_line = '[index](index.md)'
         if result:
             result.append("")
         result.append(index_line)
@@ -247,7 +268,6 @@ def sort_back_links(link_lines: list[str], self_prefix: str, include_index: bool
 def build_back(parent_paths: list[Path], note_path: Path, existing_lines: list[str]) -> list[str]:
     """Build Back section content from parent paths."""
     from_dir = note_path.parent
-    self_prefix = note_path.stem.split('_')[0] if '_' in note_path.stem else ''
     include_index = note_path.name != 'index.md'
 
     existing_index = ''
@@ -267,9 +287,9 @@ def build_back(parent_paths: list[Path], note_path: Path, existing_lines: list[s
         deduped_parents.append(rp)
 
     raw = [make_link_line(p, get_title(p), from_dir) for p in deduped_parents]
-    result = sort_back_links(raw, self_prefix, include_index=include_index)
+    result = sort_back_links(raw, from_dir, include_index=include_index)
 
-    if include_index and existing_index and result and result[-1].startswith('[index]'):
+    if include_index and existing_index and result and result[-1].lower().startswith('[index]'):
         result[-1] = existing_index
 
     return result
@@ -332,6 +352,7 @@ def create_f_and_link(current_file: Path, root: Path) -> Path:
 # ---------------------------------------------------------------------------
 
 _title_cache: dict[Path, str] = {}
+_filetype_cache: dict[Path, str] = {}
 
 def get_title(path: Path) -> str:
     path = path.resolve()
@@ -344,6 +365,18 @@ def get_title(path: Path) -> str:
     lines = read_lines(path)
     t = note_title(lines, path)
     _title_cache[path] = t
+    return t
+
+
+def get_filetype(path: Path) -> str:
+    path = path.resolve()
+    if not is_markdown_file(path) or not path.exists():
+        return ""
+    if path in _filetype_cache:
+        return _filetype_cache[path]
+    lines = read_lines(path)
+    t = note_filetype(lines, path)
+    _filetype_cache[path] = t
     return t
 
 

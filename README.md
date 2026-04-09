@@ -68,8 +68,8 @@ let g:yurii_pkm_default_atomic_prefix = 'C'
 ### 1) ノート作成
 
 - `nf` : クイックノート作成（タイトルなし）
-- `nn` : `N` プレフィクスで新規ノート作成
-- `nk` : `K` プレフィクスで新規ノート作成
+- `nn` : プレフィクスなしの新規ノート作成（YAML `filetype: N`）
+- `nk` : プレフィクスなしの新規ノート作成（YAML `filetype: K`）
 - `na` / `:NA` : 現在位置に A ノート作成
 - `:NF` : 引数付きクイック作成
 - ビジュアルモードでも `nf` / `nn` / `nk` に対応
@@ -100,12 +100,13 @@ let g:yurii_pkm_default_atomic_prefix = 'C'
 
 - `:UpdateMD [path]` : リンクタイトル等の一括更新
 - `:UpdateAll [path]` / `:UpdateALL [path]` : 同等コマンド
+- Back セクションは、該当リンクがあるときだけ `category:`（K系）/`note:`（N系）見出しを自動表示
 - `.md` 保存時に AutoSync（`g:yurii_pkm_autosync=1` 時）
 
 ### 6) 変換・リネーム
 
 - `\se` / `:SE` : S ノートを展開して関連ファイルを開く
-- `mp` / `:RP` : プレフィクス変更＋関連リンク更新
+- `mp` / `:RP` : YAML の `filetype` を変更
 
 ### 7) インデックス・ユーティリティ
 
