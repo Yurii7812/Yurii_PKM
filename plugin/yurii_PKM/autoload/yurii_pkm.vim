@@ -1034,19 +1034,29 @@ function! yurii_pkm#timestamp_yaml() abort
   return strftime('%Y-%m-%d %H:%M:%S')
 endfunction
 
-function! yurii_pkm#note_template(title) abort
-  return [
+function! yurii_pkm#note_template(title, ...) abort
+  let l:filetype = a:0 >= 1 ? a:1 : ''
+  let l:header = [
         \ '---',
         \ 'time: ' . yurii_pkm#timestamp_yaml(),
         \ 'title: ' . a:title,
-        \ '---',
+        \ ]
+  if !empty(l:filetype)
+    call add(l:header, 'filetype: ' . toupper(l:filetype))
+  endif
+  call add(l:header, '---')
+  return l:header + [
         \ '',
         \ '# ' . a:title,
         \ '',
         \ '',
         \ '',
         \ '# Back',
-        \ '[index](index.md)',
+        \ 'category:',
+        \ '',
+        \ 'note:',
+        \ '',
+        \ '[Index](index.md)',
         \ ]
 endfunction
 
@@ -1382,7 +1392,7 @@ function! yurii_pkm#create_note(prefix, title, open_after, insert_mode) abort
   let l:parent_file  = expand('%:p')
   let l:parent_title = yurii_pkm#current_title()
 
-  let l:tmpl = yurii_pkm#note_template(a:title)
+  let l:tmpl = yurii_pkm#note_template(a:title, a:prefix)
   if filereadable(l:parent_file)
     let l:parent_link = yurii_pkm#make_link(l:parent_file, l:parent_title)
     call insert(l:tmpl, l:parent_link, len(l:tmpl) - 1)
@@ -1485,7 +1495,9 @@ function! s:new_note_no_title(prefix) abort
   endif
 
   let l:title = yurii_pkm#timestamp_filename()
-  let l:fname = a:prefix . '_' . l:title . '.md'
+  let l:filetype = toupper(a:prefix)
+  let l:no_prefix_name = (l:filetype ==# 'N' || l:filetype ==# 'K')
+  let l:fname = l:no_prefix_name ? (l:title . '.md') : (a:prefix . '_' . l:title . '.md')
   let l:dir   = expand('%:p:h')
   let l:file  = l:dir . s:sep() . l:fname
   let l:link  = yurii_pkm#make_link(l:fname, l:title)
@@ -1517,12 +1529,17 @@ function! s:new_note_no_title(prefix) abort
             \ '---',
             \ 'time: ' . yurii_pkm#timestamp_yaml(),
             \ 'title: ' . l:title,
+            \ 'filetype: ' . l:filetype,
             \ '---',
             \ '',
             \ '# ' . l:title,
             \ '',
-            \ l:parent_link_line,
             \ '# Back',
+            \ 'category:',
+            \ '',
+            \ 'note:',
+            \ l:parent_link_line,
+            \ '',
             \ '[Index](index.md)' ]
       let l:cursor_line = 8
     else
@@ -1532,13 +1549,17 @@ function! s:new_note_no_title(prefix) abort
             \ '---',
             \ 'time: ' . yurii_pkm#timestamp_yaml(),
             \ 'title: ' . l:title,
+            \ 'filetype: ' . l:filetype,
             \ '---',
             \ '',
             \ '# ' . l:title,
             \ '',
+            \ '# Back',
+            \ 'category:',
+            \ '',
+            \ 'note:',
             \ l:parent_link_line,
             \ '',
-            \ '# Back',
             \ '[Index](index.md)' ]
       let l:cursor_line = 8
     endif
@@ -1549,11 +1570,16 @@ function! s:new_note_no_title(prefix) abort
           \ '---',
           \ 'time: ' . yurii_pkm#timestamp_yaml(),
           \ 'title: ' . l:title,
+          \ 'filetype: ' . l:filetype,
           \ '---',
           \ '',
           \ '# ' . l:title,
           \ '',
           \ '# Back',
+          \ 'category:',
+          \ '',
+          \ 'note:',
+          \ '',
           \ '[Index](index.md)' ]
     let l:cursor_line = 7
   else
@@ -1562,6 +1588,7 @@ function! s:new_note_no_title(prefix) abort
           \ '---',
           \ 'time: ' . yurii_pkm#timestamp_yaml(),
           \ 'title: ' . l:title,
+          \ 'filetype: ' . l:filetype,
           \ '---',
           \ '',
           \ '# ' . l:title,
@@ -1569,9 +1596,13 @@ function! s:new_note_no_title(prefix) abort
           \ '',
           \ '' ]
     call add(l:content, '# Back')
+    call add(l:content, 'category:')
+    call add(l:content, '')
+    call add(l:content, 'note:')
     if !l:no_parent_link
       call add(l:content, l:parent_link_line)
     endif
+    call add(l:content, '')
     call add(l:content, '[Index](index.md)')
     let l:cursor_line = 8
   endif
@@ -1600,8 +1631,12 @@ function! s:new_note_no_title(prefix) abort
           " Back セクションがなければ末尾に追加
           call add(l:plines, '')
           call add(l:plines, '# Back')
+          call add(l:plines, 'category:')
+          call add(l:plines, '')
+          call add(l:plines, 'note:')
+          call add(l:plines, '')
           call add(l:plines, '[Index](index.md)')
-          let l:back_idx = len(l:plines) - 2
+          let l:back_idx = len(l:plines) - 5
         endif
         " Back 行の直後（back_idx + 1）に挿入
         call insert(l:plines, l:new_link, l:back_idx + 1)
@@ -1654,7 +1689,9 @@ function! s:visual_new_note(prefix, mode) abort
   let l:dir          = expand('%:p:h')
 
   let l:title = yurii_pkm#timestamp_filename()
-  let l:fname = a:prefix . '_' . l:title . '.md'
+  let l:filetype = toupper(a:prefix)
+  let l:no_prefix_name = (l:filetype ==# 'N' || l:filetype ==# 'K')
+  let l:fname = l:no_prefix_name ? (l:title . '.md') : (a:prefix . '_' . l:title . '.md')
   let l:file  = l:dir . s:sep() . l:fname
   let l:parent_link_line = yurii_pkm#make_link(l:parent_file, l:parent_title)
   let l:link_to_new      = yurii_pkm#make_link(l:fname, l:title)
@@ -1670,25 +1707,34 @@ function! s:visual_new_note(prefix, mode) abort
             \ '---',
             \ 'time: ' . yurii_pkm#timestamp_yaml(),
             \ 'title: ' . l:title,
+            \ 'filetype: ' . l:filetype,
             \ '---',
             \ '',
             \ '# ' . l:title,
             \ '',
-            \ l:parent_link_line,
             \ '# Back',
+            \ 'category:',
+            \ '',
+            \ 'note:',
+            \ l:parent_link_line,
+            \ '',
             \ '[Index](index.md)' ]
     else
       let l:content = [
             \ '---',
             \ 'time: ' . yurii_pkm#timestamp_yaml(),
             \ 'title: ' . l:title,
+            \ 'filetype: ' . l:filetype,
             \ '---',
             \ '',
             \ '# ' . l:title,
             \ '',
+            \ '# Back',
+            \ 'category:',
+            \ '',
+            \ 'note:',
             \ l:parent_link_line,
             \ '',
-            \ '# Back',
             \ '[Index](index.md)' ]
     endif
     " 選択テキストを本文（Back の直前）に挿入
@@ -1702,6 +1748,7 @@ function! s:visual_new_note(prefix, mode) abort
           \ '---',
           \ 'time: ' . yurii_pkm#timestamp_yaml(),
           \ 'title: ' . l:title,
+          \ 'filetype: ' . l:filetype,
           \ '---',
           \ '',
           \ '# ' . l:title,
@@ -1709,7 +1756,11 @@ function! s:visual_new_note(prefix, mode) abort
     call extend(l:content, l:sel_lines)
     call add(l:content, '')
     call add(l:content, '# Back')
+    call add(l:content, 'category:')
+    call add(l:content, '')
+    call add(l:content, 'note:')
     call add(l:content, l:parent_link_line)
+    call add(l:content, '')
     call add(l:content, '[Index](index.md)')
   endif
 
@@ -1746,8 +1797,12 @@ function! s:visual_new_note(prefix, mode) abort
         if l:back_idx2 < 0
           call add(l:plines, '')
           call add(l:plines, '# Back')
+          call add(l:plines, 'category:')
+          call add(l:plines, '')
+          call add(l:plines, 'note:')
+          call add(l:plines, '')
           call add(l:plines, '[Index](index.md)')
-          let l:back_idx2 = len(l:plines) - 2
+          let l:back_idx2 = len(l:plines) - 5
         endif
         call insert(l:plines, l:link_to_new, l:back_idx2 + 1)
         call writefile(l:plines, l:parent_fp)
@@ -1986,8 +2041,12 @@ function! yurii_pkm#new_quick(args) abort
         if l:back_idx < 0
           call add(l:plines, '')
           call add(l:plines, '# Back')
+          call add(l:plines, 'category:')
+          call add(l:plines, '')
+          call add(l:plines, 'note:')
+          call add(l:plines, '')
           call add(l:plines, '[Index](index.md)')
-          let l:back_idx = len(l:plines) - 2
+          let l:back_idx = len(l:plines) - 5
         endif
         call insert(l:plines, l:new_link, l:back_idx + 1)
         call writefile(l:plines, l:parent_fp)
@@ -2281,8 +2340,12 @@ function! yurii_pkm#at_add() abort
     if !l:found_back
       call add(l:lines, '')
       call add(l:lines, '# Back')
-      call add(l:lines, '[index](index.md)')
-      let l:back_idx = len(l:lines) - 2
+      call add(l:lines, 'category:')
+      call add(l:lines, '')
+      call add(l:lines, 'note:')
+      call add(l:lines, '')
+      call add(l:lines, '[Index](index.md)')
+      let l:back_idx = len(l:lines) - 5
     endif
 
     call insert(l:lines, l:new_link, l:back_idx)
@@ -2341,78 +2404,70 @@ endfunction
 " ---------------------------------------------------------------------------
 
 function! yurii_pkm#rename_prefix() abort
-  let l:fname = expand('%:t')
-
-  " 現在のプレフィクスを抽出
-  let l:cur_prefix = matchstr(l:fname, '^[^_]\+')
-  if empty(l:cur_prefix) || l:fname !~# '_'
-    echo 'Error: cannot determine prefix from filename: ' . l:fname
-    return
+  let l:lines = getline(1, '$')
+  let l:cur_type = ''
+  let l:yaml_start = -1
+  let l:yaml_end = -1
+  for l:i in range(0, len(l:lines) - 1)
+    if l:lines[l:i] ==# '---'
+      if l:yaml_start < 0
+        let l:yaml_start = l:i
+      else
+        let l:yaml_end = l:i
+        break
+      endif
+    endif
+  endfor
+  if l:yaml_start == 0 && l:yaml_end > 0
+    for l:i in range(l:yaml_start + 1, l:yaml_end - 1)
+      if l:lines[l:i] =~? '^filetype:\s*'
+        let l:cur_type = toupper(trim(substitute(l:lines[l:i], '^filetype:\s*', '', 'i')))
+        break
+      endif
+    endfor
+  endif
+  if empty(l:cur_type)
+    let l:cur_type = 'N'
   endif
 
   " 新プレフィクスを1文字即時入力
-  echon 'prefix [' . l:cur_prefix . '] → '
+  echon 'filetype [' . l:cur_type . '] → '
   let l:char = nr2char(getchar())
   redraw
   if l:char !~# '^[a-zA-Z]$'
     echo 'Cancelled'
     return
   endif
-  let l:new_prefix = toupper(l:char)
-  if l:new_prefix ==# toupper(l:cur_prefix)
-    echo 'Prefix unchanged'
+  let l:new_type = toupper(l:char)
+  if l:new_type ==# l:cur_type
+    echo 'Filetype unchanged'
     return
   endif
 
   " 未保存の変更があれば保存
-  if &modified | silent write | endif
-
-  let l:old_path = expand('%:p')
-  let l:root     = yurii_pkm#ensure_root_and_index()
-  if empty(l:root)
-    return
-  endif
-  let l:py       = s:python_cmd()
-  let l:cmd      = l:py . ' ' . shellescape(g:yurii_pkm_python)
-        \        . ' rename_prefix '
-        \        . shellescape(l:old_path) . ' '
-        \        . shellescape(l:new_prefix) . ' '
-        \        . shellescape(l:root)
-
-  let l:out = system(l:cmd)
-  if v:shell_error
-    echoerr 'rename_prefix error: ' . substitute(l:out, '\n\+$', '', '')
-    return
-  endif
-
-  " NEW_PATH: 行から新しいファイルパスを取得
-  let l:new_path = ''
-  for l:line in split(l:out, "\n")
-    if l:line =~# '^NEW_PATH:'
-      let l:new_path = substitute(l:line, '^NEW_PATH:', '', '')
-      break
+  if l:yaml_start == 0 && l:yaml_end > 0
+    let l:done = 0
+    for l:i in range(l:yaml_start + 1, l:yaml_end - 1)
+      if l:lines[l:i] =~? '^filetype:\s*'
+        let l:lines[l:i] = 'filetype: ' . l:new_type
+        let l:done = 1
+        break
+      endif
+    endfor
+    if !l:done
+      call insert(l:lines, 'filetype: ' . l:new_type, l:yaml_start + 1)
     endif
-  endfor
-
-  " 新しいファイルをバッファで開く（editの前にechoすると上書きされるので後でechomsg）
-  if !empty(l:new_path) && filereadable(l:new_path)
-    call yurii_pkm#clear_title_cache()
-    silent execute 'edit ' . fnameescape(l:new_path)
-    redraw
-    " 1行サマリ: "Renamed S_ → K_  (3 files updated)"
-    let l:summary_lines = filter(split(l:out, "\n"), 'v:val !~# "^NEW_PATH:" && v:val !=# ""')
-    let l:renamed_line  = get(l:summary_lines, 0, '')
-    let l:updated_line  = get(l:summary_lines, 1, '')
-    let l:count_str = ''
-    if l:updated_line =~# '^Updated links in:'
-      let l:count_str = '  (' . len(split(substitute(l:updated_line, '^Updated links in:\s*', '', ''), ',')) . ' files updated)'
-    elseif l:updated_line =~# '^No other'
-      let l:count_str = '  (no links to update)'
-    endif
-    echo l:renamed_line . l:count_str
   else
-    echoerr 'rename_prefix: new file not found: ' . l:new_path
+    call insert(l:lines, '---', 0)
+    call insert(l:lines, 'filetype: ' . l:new_type, 1)
+    call insert(l:lines, '---', 2)
   endif
+  call setline(1, l:lines)
+  if len(l:lines) < line('$')
+    execute (len(l:lines) + 1) . ',$delete _'
+  endif
+  silent write
+  echo 'Filetype changed: ' . l:cur_type . ' → ' . l:new_type
 endfunction
 
 
