@@ -1617,7 +1617,7 @@ function! s:new_note_no_title(prefix) abort
     endif
     call add(l:content, '')
     call add(l:content, '[Index](index.md)')
-    let l:cursor_line = 8
+    let l:cursor_line = 9
   endif
 
   call writefile(l:content, l:file)
@@ -2007,7 +2007,7 @@ function! yurii_pkm#new_quick(args) abort
       call add(l:content, l:parent_link_line)
     endif
     call add(l:content, '[Index](index.md)')
-    let l:cursor_line = 8
+    let l:cursor_line = 9
   endif
 
   call writefile(l:content, l:file)
