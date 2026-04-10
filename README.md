@@ -111,7 +111,7 @@ let g:yurii_pkm_default_atomic_prefix = 'C'
 
 ### 6) 変換・リネーム
 
-- `\se` / `:ExpandToT`（旧 `:SE`）: S ノートを展開して関連ファイルを開く（元ファイルへリンクは追加しない）
+- `\se` / `:ExpandLinks`（旧 `:SE` / `:ExpandToT`）: S ノートを展開して関連ファイルを開く（元ファイルへリンクは追加しない）
 - `mp` / `:RP` : YAML の `filetype` を変更
 
 ### 7) インデックス・ユーティリティ
@@ -147,7 +147,8 @@ let g:yurii_pkm_default_atomic_prefix = 'C'
 | 更新 | `:UpdateMD`, `:UpdateAll`, `:UpdateALL` |
 | 編集 | `:NT`, `:RP`, `:OutlineEdit` |
 | 移動 | `:YuriiIndex`, `:YuriiChooseIndexDir` |
-| 変換 | `:ExpandToT`（旧 `:SE`）, `:SortYomi`, `:Linkify`, `:LinkifySelection`, `:PasteLink` |
+| 変換 | `:ExpandLinks`（旧 `:SE` / `:ExpandToT`）, `:SortYomi`, `:Linkify`, `:LinkifySelection`, `:PasteLink` |
+
 | テーブル | `:TN`, `:TA`, `:TRE`, `:TCSV`, `:TableToCsv`, `:CsvToTable`, `:TAR`, `:TAC`, `:TDR`, `:TDC` |
 
 ---
