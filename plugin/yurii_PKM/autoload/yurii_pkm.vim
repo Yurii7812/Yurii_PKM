@@ -2594,11 +2594,6 @@ function! yurii_pkm#expand_s_under_cursor(...) abort
   endif
 
   let l:t_fname = fnamemodify(l:t_path, ':t')
-  let l:t_title = s:get_title(l:t_path)
-  let l:t_link  = yurii_pkm#make_link(l:t_fname, l:t_title)
-
-  call append(line('$'), ['', l:t_link])
-  silent write
   execute 'edit ' . fnameescape(l:t_path)
 
   echo 'Expanded: ' . l:t_fname . ' (depth=' . l:depth . ')'

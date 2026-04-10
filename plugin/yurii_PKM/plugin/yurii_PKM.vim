@@ -70,6 +70,8 @@ command!          PasteLink  call yurii_pkm#paste_clipboard_link_here()
 command!          SortYomi   call yurii_pkm#sort_yomi()
 command!          YuriiIndex call yurii_pkm#open_index()
 command!          YuriiChooseIndexDir call yurii_pkm#choose_index_root()
+command! -nargs=? ExpandLinks call yurii_pkm#expand_s_under_cursor(<q-args>)
+command! -nargs=? ExpandToT  call yurii_pkm#expand_s_under_cursor(<q-args>)
 command! -nargs=? SE         call yurii_pkm#expand_s_under_cursor(<q-args>)
 command!          RP         call yurii_pkm#rename_prefix()
 command!          OutlineEdit call yurii_pkm#outline_edit()
@@ -181,8 +183,6 @@ function! s:expand_s_and_open() abort
     return
   endif
   let l:t_path = substitute(l:result, '\n\+$', '', '')
-  " 元ファイルを警告なしでリロード（append_link_to_source による変更を反映）
-  set autoread | checktime
   " BS で戻れるよう元ファイルを履歴に積む（go_back が期待する辞書形式）
   call add(g:yurii_pkm_history, {'file': l:file, 'pos': getpos('.')})
   if len(g:yurii_pkm_history) > g:yurii_pkm_history_max
