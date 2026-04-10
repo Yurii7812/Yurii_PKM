@@ -148,6 +148,7 @@ let g:yurii_pkm_default_atomic_prefix = 'C'
 | 編集 | `:NT`, `:RP`, `:OutlineEdit` |
 | 移動 | `:YuriiIndex`, `:YuriiChooseIndexDir` |
 | 変換 | `:ExpandLinks`（旧 `:SE` / `:ExpandToT`）, `:SortYomi`, `:Linkify`, `:LinkifySelection`, `:PasteLink` |
+
 | テーブル | `:TN`, `:TA`, `:TRE`, `:TCSV`, `:TableToCsv`, `:CsvToTable`, `:TAR`, `:TAC`, `:TDR`, `:TDC` |
 
 ---

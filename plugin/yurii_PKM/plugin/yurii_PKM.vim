@@ -71,6 +71,7 @@ command!          SortYomi   call yurii_pkm#sort_yomi()
 command!          YuriiIndex call yurii_pkm#open_index()
 command!          YuriiChooseIndexDir call yurii_pkm#choose_index_root()
 command! -nargs=? ExpandLinks call yurii_pkm#expand_s_under_cursor(<q-args>)
+
 command! -nargs=? ExpandToT  call yurii_pkm#expand_s_under_cursor(<q-args>)
 command! -nargs=? SE         call yurii_pkm#expand_s_under_cursor(<q-args>)
 command!          RP         call yurii_pkm#rename_prefix()
