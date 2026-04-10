@@ -1674,7 +1674,7 @@ function! s:new_note_no_title(prefix) abort
   execute 'edit ' . fnameescape(l:file)
 
   startinsert
-  call cursor(s:new_note_insert_line(), 1)
+  call cursor(l:cursor_line, 1)
 endfunction
 
 " ---------------------------------------------------------------------------
@@ -2062,7 +2062,7 @@ function! yurii_pkm#new_quick(args) abort
   execute 'edit ' . fnameescape(l:file)
 
   startinsert
-  call cursor(s:new_note_insert_line(), 1)
+  call cursor(l:cursor_line, 1)
 endfunction
 
 
