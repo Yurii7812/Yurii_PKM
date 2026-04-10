@@ -284,60 +284,11 @@ def build_expanded_content(source_path: Path, depth: int) -> list[str]:
     return content
 
 
-def append_link_to_source(file_path: Path, t_path: Path) -> None:
-    """元ファイルの末尾（Backセクションがあればその直前）にTファイルへのリンクを追記する。"""
-    lines = file_path.read_text(encoding='utf-8').splitlines()
-
-    # Back セクションの位置を探す
-    back_index = None
-    in_fence = False
-    for i, line in enumerate(lines):
-        stripped = line.strip()
-        if stripped.startswith('```'):
-            in_fence = not in_fence
-            continue
-        if not in_fence and is_section_header(stripped, 'back'):
-            back_index = i
-            break
-
-    # 相対パスでリンクを作成
-    rel = t_path.name  # 同じディレクトリ前提でなければ relative_to を使う
-    try:
-        rel = str(t_path.relative_to(file_path.parent))
-    except ValueError:
-        rel = str(t_path)
-    link_line = f'[{t_path.stem}]({rel})'
-
-    # すでに同じリンクがあれば追記しない
-    if any(link_line in l for l in lines):
-        return
-
-    if back_index is not None:
-        # Back の直前に空行＋リンクを挿入
-        insert_at = back_index
-        # 直前が空行でなければ空行を入れる
-        if insert_at > 0 and lines[insert_at - 1].strip() != '':
-            lines.insert(insert_at, '')
-            insert_at += 1
-        lines.insert(insert_at, link_line)
-    else:
-        # Back セクションなし: 末尾に追記
-        if lines and lines[-1].strip() != '':
-            lines.append('')
-        lines.append(link_line)
-
-    text = '\n'.join(lines)
-    if not text.endswith('\n'):
-        text += '\n'
-    file_path.write_text(text, encoding='utf-8')
-
-
 def expand_note(file_path: Path, root: Path, depth: int) -> Path:
     ts = timestamp_filename()
     t_path = root / f'T_{ts}.md'
     root.mkdir(parents=True, exist_ok=True)
     write_lines(t_path, build_expanded_content(file_path, depth))
-    append_link_to_source(file_path, t_path)
     return t_path
 
 
