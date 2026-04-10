@@ -1560,40 +1560,22 @@ function! s:new_note_no_title(prefix) abort
   let l:is_k = (a:prefix ==? 'K')
 
   if l:reverse_link
-    if l:is_k
-      " nk b モード: リンクあり、空行なし
-      " # title / (空) / [リンク] / Back / [index]
-      let l:content = [
-            \ '---',
-            \ 'time: ' . yurii_pkm#timestamp_yaml(),
-            \ 'title: ' . l:title,
-            \ 'filetype: ' . l:filetype,
-            \ '---',
-            \ '',
-            \ '# ' . l:title,
-            \ '',
-            \ '# Back',
-            \ l:parent_link_line,
-            \ '[Index](index.md)' ]
-      let l:cursor_line = 8
-    else
-      " nn/nf b モード: リンク後に空行あり
-      " # title / (空) / [リンク] / (空) / Back / [index]
-      let l:content = [
-            \ '---',
-            \ 'time: ' . yurii_pkm#timestamp_yaml(),
-            \ 'title: ' . l:title,
-            \ 'filetype: ' . l:filetype,
-            \ '---',
-            \ '',
-            \ '# ' . l:title,
-            \ '',
-            \ '# Back',
-            \ l:parent_link_line,
-            \ '',
-            \ '[Index](index.md)' ]
-      let l:cursor_line = 8
-    endif
+    " b モード: 本文先頭に親リンク、Back は Index のみ
+    " # title / (空) / [親リンク] / (空) / Back / [index]
+    let l:content = [
+          \ '---',
+          \ 'time: ' . yurii_pkm#timestamp_yaml(),
+          \ 'title: ' . l:title,
+          \ 'filetype: ' . l:filetype,
+          \ '---',
+          \ '',
+          \ '# ' . l:title,
+          \ '',
+          \ l:parent_link_line,
+          \ '',
+          \ '# Back',
+          \ '[Index](index.md)' ]
+    let l:cursor_line = 9
   elseif l:is_k
     " nk の h/Enter/o モード: 空行1つ、body なし
     " # title / (空) / Back / [index]
@@ -1984,34 +1966,19 @@ function! yurii_pkm#new_quick(args) abort
   let l:is_k = (l:prefix ==? 'K')
 
   if l:reverse_link
-    if l:is_k
-      let l:content = [
-            \ '---',
-            \ 'time: ' . yurii_pkm#timestamp_yaml(),
-            \ 'title: ' . l:title,
-            \ '---',
-            \ '',
-            \ '# ' . l:title,
-            \ '',
-            \ '# Back',
-            \ l:parent_link_line,
-            \ '[Index](index.md)' ]
-      let l:cursor_line = 8
-    else
-      let l:content = [
-            \ '---',
-            \ 'time: ' . yurii_pkm#timestamp_yaml(),
-            \ 'title: ' . l:title,
-            \ '---',
-            \ '',
-            \ '# ' . l:title,
-            \ '',
-            \ '# Back',
-            \ l:parent_link_line,
-            \ '',
-            \ '[Index](index.md)' ]
-      let l:cursor_line = 8
-    endif
+    let l:content = [
+          \ '---',
+          \ 'time: ' . yurii_pkm#timestamp_yaml(),
+          \ 'title: ' . l:title,
+          \ '---',
+          \ '',
+          \ '# ' . l:title,
+          \ '',
+          \ l:parent_link_line,
+          \ '',
+          \ '# Back',
+          \ '[Index](index.md)' ]
+    let l:cursor_line = 9
   elseif l:is_k
     let l:content = [
           \ '---',
