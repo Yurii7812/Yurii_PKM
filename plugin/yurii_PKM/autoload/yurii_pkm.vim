@@ -1573,9 +1573,10 @@ function! s:new_note_no_title(prefix) abort
           \ '',
           \ l:parent_link_line,
           \ '',
+          \ '',
           \ '# Back',
           \ '[Index](index.md)' ]
-    " 親リンクの次の空行にカーソルを置く
+    " 親リンク直後の空行（Back 前にもう1行空ける）にカーソルを置く
     let l:cursor_line = 10
   elseif l:is_k
     " nk の h/Enter/o モード: 空行1つ、body なし
