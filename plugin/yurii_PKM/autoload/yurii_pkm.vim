@@ -2250,27 +2250,6 @@ function! yurii_pkm#linkify_filename_under_cursor() abort
 endfunction
 
 function! yurii_pkm#linkify_selection() abort range
-  let l:clipboard = s:clipboard_text()
-  if empty(l:clipboard)
-    echo 'Error: clipboard is empty'
-    return
-  endif
-
-  let l:targets = s:extract_targets_from_clipboard(l:clipboard)
-  if empty(l:targets)
-    echo 'Error: no valid link target in clipboard'
-    return
-  endif
-  let l:target = l:targets[0]
-
-  if s:is_markdown_target(l:target)
-    let l:path = yurii_pkm#resolve_link(l:target)
-    if !filereadable(l:path)
-      echo 'Error: not found: ' . l:target
-      return
-    endif
-  endif
-
   let l:sline = line("'<")
   let l:eline = line("'>")
   let l:scol  = col("'<")
@@ -2309,6 +2288,27 @@ function! yurii_pkm#linkify_selection() abort range
   if empty(l:text)
     echo 'No visual selection'
     return
+  endif
+
+  let l:target = 'N_' . yurii_pkm#timestamp_filename() . '.md'
+  let l:new_file = expand('%:p:h') . s:sep() . l:target
+  let l:parent_file = expand('%:t')
+  let l:parent_title = yurii_pkm#current_title()
+
+  if !filereadable(l:new_file)
+    let l:new_content = [
+          \ '---',
+          \ 'time: ' . yurii_pkm#timestamp_yaml(),
+          \ 'title: ' . l:text,
+          \ '---',
+          \ '',
+          \ '# ' . l:text,
+          \ '',
+          \ '# Back',
+          \ yurii_pkm#make_link(l:parent_file, l:parent_title),
+          \ '[Index](index.md)'
+          \ ]
+    call writefile(l:new_content, l:new_file)
   endif
 
   let l:link = '[' . l:text . '](' . l:target . ')'
