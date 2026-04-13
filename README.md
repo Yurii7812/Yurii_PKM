@@ -93,7 +93,7 @@ let g:yurii_pkm_default_atomic_prefix = 'C'
 - `at` / `:AT` : クリップボード側ノートへ逆リンク追加
 - `yn` / `:YN` : 現在ファイル名をヤンク
 - `\l` / `:Linkify` : ファイル名テキストを Markdown リンク化
-- Visual `\l` / `:LinkifySelection` : 選択文字列をタイトルにした `N_*.md` を作成し、新規ノートへのリンクに置換
+- Visual `\l` / `:LinkifySelection` : 選択文字列をタイトルにした `<timestamp>.md`（YAML `filetype: N`）を作成し、新規ノートへのリンクに置換
 
 - `\p` / `:PasteLink` : クリップボードのリンクを挿入
 - Visual `\p` : 選択文字列をクリップボードのターゲットへリンク化

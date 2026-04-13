@@ -2319,7 +2319,7 @@ function! yurii_pkm#linkify_selection_new_note() abort range
     return
   endif
 
-  let l:target = 'N_' . yurii_pkm#timestamp_filename() . '.md'
+  let l:target = yurii_pkm#timestamp_filename() . '.md'
   let l:new_file = expand('%:p:h') . s:sep() . l:target
   let l:parent_file = expand('%:t')
   let l:parent_title = yurii_pkm#current_title()
@@ -2328,6 +2328,7 @@ function! yurii_pkm#linkify_selection_new_note() abort range
     let l:new_content = [
           \ '---',
           \ 'time: ' . yurii_pkm#timestamp_yaml(),
+          \ 'filetype: N',
           \ 'title: ' . l:text,
           \ '---',
           \ '',
