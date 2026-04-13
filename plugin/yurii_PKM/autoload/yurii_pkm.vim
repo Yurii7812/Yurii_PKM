@@ -2252,6 +2252,7 @@ endfunction
 function! yurii_pkm#linkify_selection() abort range
   let l:vmode = visualmode()
   let l:is_linewise = (l:vmode ==# 'V')
+
   let l:sline = line("'<")
   let l:eline = line("'>")
   let l:scol  = col("'<")
