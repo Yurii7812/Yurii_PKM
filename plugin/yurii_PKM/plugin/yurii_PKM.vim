@@ -64,7 +64,7 @@ command! -nargs=* BC         call yurii_pkm#add_from_clipboard(<f-args>)
 command!          YN         call yurii_pkm#yank_name()
 command!          AT         call yurii_pkm#at_add()
 command!          Linkify    call yurii_pkm#linkify_filename_under_cursor()
-command!          LinkifySelection call yurii_pkm#linkify_selection()
+command!          LinkifySelection call yurii_pkm#linkify_selection_new_note()
 command!          LinkFixedToggle call yurii_pkm#toggle_fixed_link_text_under_cursor()
 command!          PasteLink  call yurii_pkm#paste_clipboard_link_here()
 command!          SortYomi   call yurii_pkm#sort_yomi()
@@ -147,10 +147,10 @@ nnoremap <silent> p  "+p
 " gp: 以前の独自貼り付け（改行末尾を落として行下に追加）
 nnoremap <silent> gp <Cmd>call yurii_pkm#paste_charwise()<CR>
 nnoremap <silent> \l        <Cmd>call yurii_pkm#linkify_filename_under_cursor()<CR>
-xnoremap <silent> \l        :<C-u>call yurii_pkm#linkify_selection()<CR>
+xnoremap <silent> \l        :<C-u>call yurii_pkm#linkify_selection_new_note()<CR>
 nnoremap <silent> \L        <Cmd>call yurii_pkm#toggle_fixed_link_text_under_cursor()<CR>
 nnoremap <silent> \p        <Cmd>call yurii_pkm#paste_clipboard_link_here()<CR>
-xnoremap <silent> \p        :<C-u>call yurii_pkm#linkify_selection()<CR>
+xnoremap <silent> \p        :<C-u>call yurii_pkm#linkify_selection_from_clipboard()<CR>
 nnoremap <silent> \oe       <Cmd>OutlineEdit<CR>
 
 " ---------------------------------------------------------------------------
