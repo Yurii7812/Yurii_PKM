@@ -2250,6 +2250,9 @@ function! yurii_pkm#linkify_filename_under_cursor() abort
 endfunction
 
 function! yurii_pkm#linkify_selection() abort range
+  let l:vmode = visualmode()
+  let l:is_linewise = (l:vmode ==# 'V')
+
   let l:sline = line("'<")
   let l:eline = line("'>")
   let l:scol  = col("'<")
@@ -2271,7 +2274,9 @@ function! yurii_pkm#linkify_selection() abort range
     return
   endif
 
-  if len(l:lines) == 1
+  if l:is_linewise
+    let l:selected = join(l:lines, "\n")
+  elseif len(l:lines) == 1
     let l:start_char = charidx(l:lines[0], l:scol - 1)
     let l:end_char = charidx(l:lines[0], l:ecol - 1) + 1
     let l:selected = strcharpart(l:lines[0], l:start_char, l:end_char - l:start_char)
@@ -2314,7 +2319,12 @@ function! yurii_pkm#linkify_selection() abort range
   let l:link = '[' . l:text . '](' . l:target . ')'
 
 
-  if len(l:lines) == 1
+  if l:is_linewise
+    call setline(l:sline, l:link)
+    if l:eline > l:sline
+      execute (l:sline + 1) . ',' . l:eline . 'delete _'
+    endif
+  elseif len(l:lines) == 1
     let l:line = l:lines[0]
     let l:start_char = charidx(l:line, l:scol - 1)
     let l:end_char = charidx(l:line, l:ecol - 1) + 1
