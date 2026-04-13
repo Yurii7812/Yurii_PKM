@@ -2274,6 +2274,7 @@ function! s:replace_visual_selection_with_link(link, is_linewise, sline, eline, 
 endfunction
 
 function! yurii_pkm#linkify_selection_new_note() abort range
+
   let l:vmode = visualmode()
   let l:is_linewise = (l:vmode ==# 'V')
 
@@ -2339,6 +2340,7 @@ function! yurii_pkm#linkify_selection_new_note() abort range
           \ '[Index](index.md)'
           \ ]
     call writefile(l:new_content, l:new_file)
+
   endif
 
   let l:link = '[' . l:text . '](' . l:target . ')'
@@ -2358,6 +2360,7 @@ function! yurii_pkm#linkify_selection_from_clipboard() abort range
   let l:eline = line("'>")
   let l:scol  = col("'<")
   let l:ecol  = col("'>")
+
 
   if l:sline <= 0 || l:eline <= 0
     echo 'No visual selection'
