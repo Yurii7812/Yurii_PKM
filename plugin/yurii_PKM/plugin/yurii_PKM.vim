@@ -150,7 +150,7 @@ nnoremap <silent> \l        <Cmd>call yurii_pkm#linkify_filename_under_cursor()<
 xnoremap <silent> \l        :<C-u>call yurii_pkm#linkify_selection()<CR>
 nnoremap <silent> \L        <Cmd>call yurii_pkm#toggle_fixed_link_text_under_cursor()<CR>
 nnoremap <silent> \p        <Cmd>call yurii_pkm#paste_clipboard_link_here()<CR>
-xnoremap <silent> \p        :<C-u>call yurii_pkm#linkify_selection()<CR>
+xnoremap <silent> \p        :<C-u>call yurii_pkm#linkify_selection_from_clipboard()<CR>
 nnoremap <silent> \oe       <Cmd>OutlineEdit<CR>
 
 " ---------------------------------------------------------------------------

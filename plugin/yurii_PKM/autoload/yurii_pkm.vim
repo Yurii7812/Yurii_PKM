@@ -2249,6 +2249,30 @@ function! yurii_pkm#linkify_filename_under_cursor() abort
   call setline('.', l:newline)
 endfunction
 
+function! s:replace_visual_selection_with_link(link, is_linewise, sline, eline, scol, ecol, lines) abort
+  if a:is_linewise
+    call setline(a:sline, a:link)
+    if a:eline > a:sline
+      execute (a:sline + 1) . ',' . a:eline . 'delete _'
+    endif
+  elseif len(a:lines) == 1
+    let l:line = a:lines[0]
+    let l:start_char = charidx(l:line, a:scol - 1)
+    let l:end_char = charidx(l:line, a:ecol - 1) + 1
+    let l:newline = strcharpart(l:line, 0, l:start_char) . a:link . strcharpart(l:line, l:end_char)
+    call setline(a:sline, l:newline)
+  else
+    let l:first_start_char = charidx(a:lines[0], a:scol - 1)
+    let l:last_end_char = charidx(a:lines[-1], a:ecol - 1) + 1
+    let l:prefix = strcharpart(a:lines[0], 0, l:first_start_char)
+    let l:suffix = strcharpart(a:lines[-1], l:last_end_char)
+    call setline(a:sline, l:prefix . a:link . l:suffix)
+    if a:eline > a:sline
+      execute (a:sline + 1) . ',' . a:eline . 'delete _'
+    endif
+  endif
+endfunction
+
 function! yurii_pkm#linkify_selection() abort range
   let l:vmode = visualmode()
   let l:is_linewise = (l:vmode ==# 'V')
@@ -2317,29 +2341,78 @@ function! yurii_pkm#linkify_selection() abort range
   endif
 
   let l:link = '[' . l:text . '](' . l:target . ')'
+  call s:replace_visual_selection_with_link(l:link, l:is_linewise, l:sline, l:eline, l:scol, l:ecol, l:lines)
+endfunction
 
+function! yurii_pkm#linkify_selection_from_clipboard() abort range
+  let l:vmode = visualmode()
+  let l:is_linewise = (l:vmode ==# 'V')
+
+  let l:sline = line("'<")
+  let l:eline = line("'>")
+  let l:scol  = col("'<")
+  let l:ecol  = col("'>")
+
+  if l:sline <= 0 || l:eline <= 0
+    echo 'No visual selection'
+    return
+  endif
+
+  if l:sline > l:eline || (l:sline == l:eline && l:scol > l:ecol)
+    let [l:sline, l:eline] = [l:eline, l:sline]
+    let [l:scol, l:ecol] = [l:ecol, l:scol]
+  endif
+
+  let l:lines = getline(l:sline, l:eline)
+  if empty(l:lines)
+    echo 'No visual selection'
+    return
+  endif
 
   if l:is_linewise
-    call setline(l:sline, l:link)
-    if l:eline > l:sline
-      execute (l:sline + 1) . ',' . l:eline . 'delete _'
-    endif
+    let l:selected = join(l:lines, "\n")
   elseif len(l:lines) == 1
-    let l:line = l:lines[0]
-    let l:start_char = charidx(l:line, l:scol - 1)
-    let l:end_char = charidx(l:line, l:ecol - 1) + 1
-    let l:newline = strcharpart(l:line, 0, l:start_char) . l:link . strcharpart(l:line, l:end_char)
-    call setline(l:sline, l:newline)
+    let l:start_char = charidx(l:lines[0], l:scol - 1)
+    let l:end_char = charidx(l:lines[0], l:ecol - 1) + 1
+    let l:selected = strcharpart(l:lines[0], l:start_char, l:end_char - l:start_char)
   else
-    let l:first_start_char = charidx(l:lines[0], l:scol - 1)
-    let l:last_end_char = charidx(l:lines[-1], l:ecol - 1) + 1
-    let l:prefix = strcharpart(l:lines[0], 0, l:first_start_char)
-    let l:suffix = strcharpart(l:lines[-1], l:last_end_char)
-    call setline(l:sline, l:prefix . l:link . l:suffix)
-    if l:eline > l:sline
-      execute (l:sline + 1) . ',' . l:eline . 'delete _'
+    let l:selected_lines = copy(l:lines)
+    let l:first_start_char = charidx(l:selected_lines[0], l:scol - 1)
+    let l:last_end_char = charidx(l:selected_lines[-1], l:ecol - 1) + 1
+    let l:selected_lines[0] = strcharpart(l:selected_lines[0], l:first_start_char)
+    let l:selected_lines[-1] = strcharpart(l:selected_lines[-1], 0, l:last_end_char)
+    let l:selected = join(l:selected_lines, "\n")
+  endif
+
+  let l:text = trim(substitute(l:selected, '\n\+', ' ', 'g'))
+  if empty(l:text)
+    echo 'No visual selection'
+    return
+  endif
+
+  let l:clipboard = s:clipboard_text()
+  if empty(l:clipboard)
+    echo 'Error: clipboard is empty'
+    return
+  endif
+
+  let l:targets = s:extract_targets_from_clipboard(l:clipboard)
+  if empty(l:targets)
+    echo 'Error: no valid link target in clipboard'
+    return
+  endif
+
+  let l:target = l:targets[0]
+  if l:target =~# '\.md$'
+    let l:path = yurii_pkm#resolve_link(l:target)
+    if !filereadable(l:path)
+      echo 'Error: not found: ' . l:target
+      return
     endif
   endif
+
+  let l:link = '[' . l:text . '](' . l:target . ')'
+  call s:replace_visual_selection_with_link(l:link, l:is_linewise, l:sline, l:eline, l:scol, l:ecol, l:lines)
 endfunction
 
 
