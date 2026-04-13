@@ -2273,7 +2273,8 @@ function! s:replace_visual_selection_with_link(link, is_linewise, sline, eline, 
   endif
 endfunction
 
-function! yurii_pkm#linkify_selection() abort range
+function! yurii_pkm#linkify_selection_new_note() abort range
+
   let l:vmode = visualmode()
   let l:is_linewise = (l:vmode ==# 'V')
 
@@ -2319,29 +2320,36 @@ function! yurii_pkm#linkify_selection() abort range
     return
   endif
 
-  let l:clipboard = s:clipboard_text()
-  if empty(l:clipboard)
-    echo 'Error: clipboard is empty'
-    return
-  endif
+  let l:target = yurii_pkm#timestamp_filename() . '.md'
+  let l:new_file = expand('%:p:h') . s:sep() . l:target
+  let l:parent_file = expand('%:t')
+  let l:parent_title = yurii_pkm#current_title()
 
-  let l:targets = s:extract_targets_from_clipboard(l:clipboard)
-  if empty(l:targets)
-    echo 'Error: no valid link target in clipboard'
-    return
-  endif
+  if !filereadable(l:new_file)
+    let l:new_content = [
+          \ '---',
+          \ 'time: ' . yurii_pkm#timestamp_yaml(),
+          \ 'filetype: N',
+          \ 'title: ' . l:text,
+          \ '---',
+          \ '',
+          \ '# ' . l:text,
+          \ '',
+          \ '# Back',
+          \ yurii_pkm#make_link(l:parent_file, l:parent_title),
+          \ '[Index](index.md)'
+          \ ]
+    call writefile(l:new_content, l:new_file)
 
-  let l:target = l:targets[0]
-  if l:target =~# '\.md$'
-    let l:path = yurii_pkm#resolve_link(l:target)
-    if !filereadable(l:path)
-      echo 'Error: not found: ' . l:target
-      return
-    endif
   endif
 
   let l:link = '[' . l:text . '](' . l:target . ')'
   call s:replace_visual_selection_with_link(l:link, l:is_linewise, l:sline, l:eline, l:scol, l:ecol, l:lines)
+endfunction
+
+" Backward compatibility: :LinkifySelection から呼ばれる既存関数名
+function! yurii_pkm#linkify_selection() abort range
+  return yurii_pkm#linkify_selection_new_note()
 endfunction
 
 function! yurii_pkm#linkify_selection_from_clipboard() abort range
@@ -2352,6 +2360,7 @@ function! yurii_pkm#linkify_selection_from_clipboard() abort range
   let l:eline = line("'>")
   let l:scol  = col("'<")
   let l:ecol  = col("'>")
+
 
   if l:sline <= 0 || l:eline <= 0
     echo 'No visual selection'
