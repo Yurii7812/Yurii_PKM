@@ -2566,6 +2566,113 @@ function! yurii_pkm#sort_yomi() abort
   edit!
 endfunction
 
+function! s:extract_time_digits(text) abort
+  let l:digits = substitute(a:text, '\D', '', 'g')
+  if strlen(l:digits) >= 14
+    return strpart(l:digits, 0, 14)
+  endif
+  return ''
+endfunction
+
+function! s:link_time_key(line) abort
+  let l:m = matchlist(a:line, '\v\[[^\]]+\]\(([^)]+)\)')
+  let l:target = get(l:m, 1, '')
+  if empty(l:target)
+    return '00000000000000'
+  endif
+
+  let l:path = yurii_pkm#resolve_link(l:target)
+  if filereadable(l:path)
+    let l:head = readfile(l:path, '', 40)
+    let l:in_yaml = 0
+    for l:line in l:head
+      if l:line =~# '^---\s*$'
+        if l:in_yaml
+          break
+        endif
+        let l:in_yaml = 1
+        continue
+      endif
+      if l:in_yaml && l:line =~? '^time:\s*'
+        let l:key = s:extract_time_digits(matchstr(l:line, ':\s*\zs.*'))
+        if !empty(l:key)
+          return l:key
+        endif
+      endif
+    endfor
+    let l:mtime = getftime(l:path)
+    if l:mtime > 0
+      return strftime('%Y%m%d%H%M%S', l:mtime)
+    endif
+  endif
+
+  let l:stem = fnamemodify(l:target, ':t:r')
+  let l:from_name = matchstr(l:stem, '\d\{12,14}')
+  if strlen(l:from_name) == 12
+    return '20' . l:from_name
+  elseif strlen(l:from_name) >= 14
+    return strpart(l:from_name, 0, 14)
+  endif
+  return '00000000000000'
+endfunction
+
+function! s:sort_time_compare(a, b) abort
+  let l:ka = get(a:a, 'key', '00000000000000')
+  let l:kb = get(a:b, 'key', '00000000000000')
+  if l:ka ==# l:kb
+    return a:a.idx - a:b.idx
+  endif
+  return l:ka <# l:kb ? -1 : 1
+endfunction
+
+function! yurii_pkm#sort_time(...) abort
+  let l:descending = a:0 >= 1 ? a:1 : 0
+  let l:branch = s:find_section_line('branch')
+  if l:branch <= 0
+    echo 'Branch section not found'
+    return
+  endif
+  let l:back = s:find_section_line('back')
+  let l:end = l:back > l:branch ? l:back - 1 : line('$')
+  if l:end <= l:branch
+    echo 'No Branch links to sort'
+    return
+  endif
+
+  let l:entries = []
+  for lnum in range(l:branch + 1, l:end)
+    let l:line = getline(lnum)
+    if l:line =~# s:link_pat
+      call add(l:entries, {
+            \ 'lnum': lnum,
+            \ 'line': l:line,
+            \ 'key': s:link_time_key(l:line),
+            \ 'idx': len(l:entries),
+            \ })
+    endif
+  endfor
+
+  if len(l:entries) <= 1
+    echo 'No Branch links to sort'
+    return
+  endif
+
+  call sort(l:entries, 's:sort_time_compare')
+  if l:descending
+    call reverse(l:entries)
+  endif
+
+  let l:i = 0
+  for lnum in range(l:branch + 1, l:end)
+    if getline(lnum) =~# s:link_pat
+      call setline(lnum, l:entries[l:i].line)
+      let l:i += 1
+    endif
+  endfor
+
+  echo 'Branch links sorted by time' . (l:descending ? ' (desc)' : ' (asc)')
+endfunction
+
 " ---------------------------------------------------------------------------
 " :RP - Rename Prefix
 "   現在のファイルのプレフィクスを変更し、PKMルート配下の全リンクを更新する
