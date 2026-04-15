@@ -232,9 +232,41 @@ def outbound_links_until_back(lines: list[str]) -> list[tuple[str, str]]:
 
 def sort_back_links(link_lines: list[str], from_dir: Path, include_index: bool = True) -> list[str]:
     """Sort Back section links into category/note blocks based on target filetype."""
-    note_links: list[str] = []
-    category_links: list[str] = []
+    note_links: list[tuple[datetime, str]] = []
+    category_links: list[tuple[datetime, str]] = []
     index_line = "[Index](index.md)"
+
+    def sort_datetime(target_path: Path) -> datetime:
+        stem = target_path.stem
+        if "_" in stem:
+            _, ts = stem.split("_", 1)
+            if re.fullmatch(r"\d{12}", ts):
+                try:
+                    return datetime.strptime(ts, "%y%m%d%H%M%S")
+                except ValueError:
+                    pass
+
+        lines = read_lines(target_path)
+        in_yaml = False
+        for line in lines[:40]:
+            stripped = line.strip()
+            if stripped == "---":
+                in_yaml = not in_yaml
+                continue
+            if not in_yaml:
+                continue
+            if stripped.lower().startswith("time:"):
+                value = stripped.split(":", 1)[1].strip().strip('"\'')
+                for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+                    try:
+                        return datetime.strptime(value, fmt)
+                    except ValueError:
+                        pass
+
+        try:
+            return datetime.fromtimestamp(target_path.stat().st_mtime)
+        except OSError:
+            return datetime.min
 
     for line in link_lines:
         m = re.search(r'\(([^)]+)\)', line)
@@ -248,23 +280,24 @@ def sort_back_links(link_lines: list[str], from_dir: Path, include_index: bool =
 
         target_path = (from_dir / target).resolve()
         target_type = get_filetype(target_path)
+        dt = sort_datetime(target_path)
         if target_type == "K":
-            category_links.append(line)
+            category_links.append((dt, line))
         else:
-            note_links.append(line)
+            note_links.append((dt, line))
 
-    category_links.sort(key=str.lower)
-    note_links.sort(key=str.lower)
+    category_links.sort(key=lambda x: x[0], reverse=True)
+    note_links.sort(key=lambda x: x[0], reverse=True)
 
     result: list[str] = []
     if category_links:
         result.append("category:")
-        result.extend(category_links)
+        result.extend(line for _, line in category_links)
     if note_links:
         if result:
             result.append("")
         result.append("note:")
-        result.extend(note_links)
+        result.extend(line for _, line in note_links)
     if include_index:
         if result:
             result.append("")

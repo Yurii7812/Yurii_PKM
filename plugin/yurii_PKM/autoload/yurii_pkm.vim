@@ -1515,6 +1515,7 @@ endfunction
 
 " ---------------------------------------------------------------------------
 " タイトル入力なし、h/o/b/t選択あり (nf / nn / nk 共通内部実装)
+
 " ---------------------------------------------------------------------------
 
 function! s:new_note_no_title(prefix) abort
@@ -1523,6 +1524,7 @@ function! s:new_note_no_title(prefix) abort
   let l:parent_title = yurii_pkm#current_title()
 
   echon 'mode: (O)rphan (H)ere (B)ack (T)op Enter=body-end: '
+
   let l:char = getchar()
   redraw
 
@@ -1543,6 +1545,7 @@ function! s:new_note_no_title(prefix) abort
   elseif l:mode =~? '^h$'
     let l:insert_at_cursor = 1
   elseif l:mode =~? '^t$'
+
     let l:insert_at_top = 1
   elseif l:mode =~? '^b$'
     let l:reverse_link = 1
@@ -1876,6 +1879,7 @@ endfunction
 
 function! s:visual_select_mode(prefix) abort
   echon 'mode: (O)rphan (H)ere (B)ack (T)op Enter=body-end: '
+
   let l:char = getchar()
   redraw
   if l:char == 27 || l:char == 3
@@ -1887,6 +1891,7 @@ function! s:visual_select_mode(prefix) abort
 endfunction
 
 " nf用: prefix入力 → h/o/b/t選択
+
 function! yurii_pkm#new_quick_no_title() abort
   echo 'prefix (a-z): '
   let l:char = getchar()
@@ -1904,6 +1909,7 @@ function! yurii_pkm#new_quick_no_title() abort
 endfunction
 
 " nn / nk用: prefix固定 → h/o/b/t選択
+
 function! yurii_pkm#new_prefix_note(prefix) abort
   call s:new_note_no_title(a:prefix)
 endfunction
@@ -1913,6 +1919,7 @@ endfunction
 "   1. プレフィックス1文字入力（即時確定）
 "   2. タイトル入力
 "   3. モード選択: (O)rphan / (H)ere / (B)ack / (T)op / Enter=branch
+
 " ---------------------------------------------------------------------------
 
 function! yurii_pkm#new_quick(args) abort
@@ -1938,6 +1945,7 @@ function! yurii_pkm#new_quick(args) abort
   let l:title = input('title: ', a:args)
 
   echon "\nmode: (O)rphan (H)ere (B)ack (T)op Enter=body-end: "
+
   let l:raw2 = getchar()
   redraw
   if l:raw2 == 27 || l:raw2 == 3
