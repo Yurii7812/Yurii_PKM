@@ -1514,7 +1514,8 @@ function! yurii_pkm#new_here_typed(prefix) abort
 endfunction
 
 " ---------------------------------------------------------------------------
-" タイトル入力なし、h/o/b/c選択あり (nf / nn / nk 共通内部実装)
+" タイトル入力なし、h/o/b/t選択あり (nf / nn / nk 共通内部実装)
+
 " ---------------------------------------------------------------------------
 
 function! s:new_note_no_title(prefix) abort
@@ -1522,7 +1523,8 @@ function! s:new_note_no_title(prefix) abort
   let l:parent_file  = expand('%:t')
   let l:parent_title = yurii_pkm#current_title()
 
-  echon 'mode: (O)rphan (H)ere (B)ack (C)top Enter=body-end: '
+  echon 'mode: (O)rphan (H)ere (B)ack (T)op Enter=body-end: '
+
   let l:char = getchar()
   redraw
 
@@ -1542,7 +1544,8 @@ function! s:new_note_no_title(prefix) abort
     let l:no_parent_link = 1
   elseif l:mode =~? '^h$'
     let l:insert_at_cursor = 1
-  elseif l:mode =~? '^c$'
+  elseif l:mode =~? '^t$'
+
     let l:insert_at_top = 1
   elseif l:mode =~? '^b$'
     let l:reverse_link = 1
@@ -1875,7 +1878,8 @@ function! yurii_pkm#visual_new_prefix_note(prefix) abort
 endfunction
 
 function! s:visual_select_mode(prefix) abort
-  echon 'mode: (O)rphan (H)ere (B)ack (C)top Enter=body-end: '
+  echon 'mode: (O)rphan (H)ere (B)ack (T)op Enter=body-end: '
+
   let l:char = getchar()
   redraw
   if l:char == 27 || l:char == 3
@@ -1886,7 +1890,8 @@ function! s:visual_select_mode(prefix) abort
   call s:visual_new_note(a:prefix, l:mode)
 endfunction
 
-" nf用: prefix入力 → h/o/b/c選択
+" nf用: prefix入力 → h/o/b/t選択
+
 function! yurii_pkm#new_quick_no_title() abort
   echo 'prefix (a-z): '
   let l:char = getchar()
@@ -1903,7 +1908,8 @@ function! yurii_pkm#new_quick_no_title() abort
   call s:new_note_no_title(toupper(l:ch))
 endfunction
 
-" nn / nk用: prefix固定 → h/o/b/c選択
+" nn / nk用: prefix固定 → h/o/b/t選択
+
 function! yurii_pkm#new_prefix_note(prefix) abort
   call s:new_note_no_title(a:prefix)
 endfunction
@@ -1912,7 +1918,8 @@ endfunction
 " :NQ - Quick new child (旧 QuickNewChildWithMode に忠実)
 "   1. プレフィックス1文字入力（即時確定）
 "   2. タイトル入力
-"   3. モード選択: (O)rphan / (H)ere / (B)ack / (C)top / Enter=branch
+"   3. モード選択: (O)rphan / (H)ere / (B)ack / (T)op / Enter=branch
+
 " ---------------------------------------------------------------------------
 
 function! yurii_pkm#new_quick(args) abort
@@ -1937,7 +1944,8 @@ function! yurii_pkm#new_quick(args) abort
 
   let l:title = input('title: ', a:args)
 
-  echon "\nmode: (O)rphan (H)ere (B)ack (C)top Enter=body-end: "
+  echon "\nmode: (O)rphan (H)ere (B)ack (T)op Enter=body-end: "
+
   let l:raw2 = getchar()
   redraw
   if l:raw2 == 27 || l:raw2 == 3
@@ -1955,7 +1963,7 @@ function! yurii_pkm#new_quick(args) abort
     let l:no_parent_link = 1
   elseif l:mode =~? '^h$'
     let l:insert_at_cursor = 1
-  elseif l:mode =~? '^c$'
+  elseif l:mode =~? '^t$'
     let l:insert_at_top = 1
   elseif l:mode =~? '^b$'
     let l:reverse_link = 1

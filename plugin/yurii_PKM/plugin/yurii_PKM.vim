@@ -59,7 +59,7 @@ command!          CheckPrefix call yurii_pkm#check_missing_prefix_in_current_dir
 command! -nargs=* NF         call yurii_pkm#new_quick(<q-args>)
 command!          NA         call yurii_pkm#new_here_typed('A')
 command! -nargs=* CA         call yurii_pkm#add_clipboard_to_branch()
-command! -nargs=* CC         call yurii_pkm#add_clipboard_to_top()
+command! -nargs=* TT         call yurii_pkm#add_clipboard_to_top()
 command! -nargs=? NT         call yurii_pkm#rename_title(<q-args>)
 command! -nargs=* BC         call yurii_pkm#add_from_clipboard(<f-args>)
 command!          YN         call yurii_pkm#yank_name()
@@ -133,7 +133,7 @@ vnoremap <nowait> <silent> nn  <Esc><Cmd>call yurii_pkm#visual_new_prefix_note('
 vnoremap <nowait> <silent> nk  <Esc><Cmd>call yurii_pkm#visual_new_prefix_note('K')<CR>
 nnoremap <nowait> <silent> na  <Cmd>call yurii_pkm#new_here_typed('A')<CR>
 nnoremap <nowait> <silent> ca  <Cmd>call yurii_pkm#add_clipboard_to_branch()<CR>
-nnoremap <nowait> <silent> cc  <Cmd>call yurii_pkm#add_clipboard_to_top()<CR>
+nnoremap <nowait> <silent> tt  <Cmd>call yurii_pkm#add_clipboard_to_top()<CR>
 " nt: タイトル変更（空欄から開始）
 nnoremap <nowait> <silent> nt  <Cmd>call yurii_pkm#rename_title_with_default('')<CR>
 " nT: 現在タイトルを残して編集
