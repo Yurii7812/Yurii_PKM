@@ -1061,6 +1061,19 @@ function! s:new_note_insert_line() abort
   return min([8, line('$')])
 endfunction
 
+function! s:body_top_insert_line() abort
+  let l:max = min([120, line('$')])
+  for lnum in range(1, l:max)
+    if getline(lnum) =~# '^#\s\+'
+      if lnum < line('$') && getline(lnum + 1) =~# '^\s*$'
+        return lnum + 1
+      endif
+      return lnum
+    endif
+  endfor
+  return 1
+endfunction
+
 function! yurii_pkm#note_template(title, ...) abort
   let l:filetype = a:0 >= 1 ? a:1 : ''
   let l:header = [
@@ -1501,7 +1514,7 @@ function! yurii_pkm#new_here_typed(prefix) abort
 endfunction
 
 " ---------------------------------------------------------------------------
-" タイトル入力なし、h/o/b選択あり (nf / nn / nk 共通内部実装)
+" タイトル入力なし、h/o/b/t選択あり (nf / nn / nk 共通内部実装)
 " ---------------------------------------------------------------------------
 
 function! s:new_note_no_title(prefix) abort
@@ -1509,7 +1522,7 @@ function! s:new_note_no_title(prefix) abort
   let l:parent_file  = expand('%:t')
   let l:parent_title = yurii_pkm#current_title()
 
-  echon 'mode: (O)rphan (H)ere (B)ack Enter=body-end: '
+  echon 'mode: (O)rphan (H)ere (B)ack (T)op Enter=body-end: '
   let l:char = getchar()
   redraw
 
@@ -1521,6 +1534,7 @@ function! s:new_note_no_title(prefix) abort
   let l:mode = nr2char(l:char)
 
   let l:insert_at_cursor = 0
+  let l:insert_at_top    = 0
   let l:no_parent_link   = 0
   let l:reverse_link     = 0
 
@@ -1528,6 +1542,8 @@ function! s:new_note_no_title(prefix) abort
     let l:no_parent_link = 1
   elseif l:mode =~? '^h$'
     let l:insert_at_cursor = 1
+  elseif l:mode =~? '^t$'
+    let l:insert_at_top = 1
   elseif l:mode =~? '^b$'
     let l:reverse_link = 1
   endif
@@ -1546,6 +1562,9 @@ function! s:new_note_no_title(prefix) abort
     setlocal noautoindent nosmartindent
     if l:insert_at_cursor
       call append(l:parent_line, l:link)
+    elseif l:insert_at_top
+      let l:ins = s:body_top_insert_line()
+      call append(l:ins, l:link)
     else
       let l:ins = s:branch_end_line()
       call append(l:ins, l:link)
@@ -1856,7 +1875,7 @@ function! yurii_pkm#visual_new_prefix_note(prefix) abort
 endfunction
 
 function! s:visual_select_mode(prefix) abort
-  echon 'mode: (O)rphan (H)ere (B)ack Enter=body-end: '
+  echon 'mode: (O)rphan (H)ere (B)ack (T)op Enter=body-end: '
   let l:char = getchar()
   redraw
   if l:char == 27 || l:char == 3
@@ -1867,7 +1886,7 @@ function! s:visual_select_mode(prefix) abort
   call s:visual_new_note(a:prefix, l:mode)
 endfunction
 
-" nf用: prefix入力 → h/o/b選択
+" nf用: prefix入力 → h/o/b/t選択
 function! yurii_pkm#new_quick_no_title() abort
   echo 'prefix (a-z): '
   let l:char = getchar()
@@ -1884,7 +1903,7 @@ function! yurii_pkm#new_quick_no_title() abort
   call s:new_note_no_title(toupper(l:ch))
 endfunction
 
-" nn / nk用: prefix固定 → h/o/b選択
+" nn / nk用: prefix固定 → h/o/b/t選択
 function! yurii_pkm#new_prefix_note(prefix) abort
   call s:new_note_no_title(a:prefix)
 endfunction
@@ -1893,7 +1912,7 @@ endfunction
 " :NQ - Quick new child (旧 QuickNewChildWithMode に忠実)
 "   1. プレフィックス1文字入力（即時確定）
 "   2. タイトル入力
-"   3. モード選択: (O)rphan / (H)ere / (B)ack / Enter=branch
+"   3. モード選択: (O)rphan / (H)ere / (B)ack / (T)op / Enter=branch
 " ---------------------------------------------------------------------------
 
 function! yurii_pkm#new_quick(args) abort
@@ -1918,7 +1937,7 @@ function! yurii_pkm#new_quick(args) abort
 
   let l:title = input('title: ', a:args)
 
-  echon "\nmode: (O)rphan (H)ere (B)ack Enter=body-end: "
+  echon "\nmode: (O)rphan (H)ere (B)ack (T)op Enter=body-end: "
   let l:raw2 = getchar()
   redraw
   if l:raw2 == 27 || l:raw2 == 3
@@ -1928,6 +1947,7 @@ function! yurii_pkm#new_quick(args) abort
   let l:mode = nr2char(l:raw2)
 
   let l:insert_at_cursor = 0
+  let l:insert_at_top    = 0
   let l:no_parent_link   = 0
   let l:reverse_link     = 0
 
@@ -1935,6 +1955,8 @@ function! yurii_pkm#new_quick(args) abort
     let l:no_parent_link = 1
   elseif l:mode =~? '^h$'
     let l:insert_at_cursor = 1
+  elseif l:mode =~? '^t$'
+    let l:insert_at_top = 1
   elseif l:mode =~? '^b$'
     let l:reverse_link = 1
   endif
@@ -1954,6 +1976,9 @@ function! yurii_pkm#new_quick(args) abort
     setlocal noautoindent nosmartindent
     if l:insert_at_cursor
       call append(l:parent_line, l:link)
+    elseif l:insert_at_top
+      let l:ins = s:body_top_insert_line()
+      call append(l:ins, l:link)
     else
       let l:ins = s:branch_end_line()
       call append(l:ins, l:link)
@@ -2215,6 +2240,43 @@ function! yurii_pkm#add_clipboard_to_branch() abort
     echo 'Error: back section not found'
     return
   endif
+  for l:lk in l:links
+    call append(l:ins, l:lk)
+    let l:ins += 1
+  endfor
+  silent write
+endfunction
+
+function! yurii_pkm#add_clipboard_to_top() abort
+  let l:clipboard = s:clipboard_text()
+  if empty(l:clipboard)
+    echo 'Error: clipboard is empty'
+    return
+  endif
+
+  let l:links = []
+  for l:raw in split(l:clipboard, "\n")
+    let l:target = s:extract_target(l:raw)
+    if empty(l:target)
+      continue
+    endif
+    let l:path = yurii_pkm#resolve_link(l:target)
+    if !filereadable(l:path)
+      echo 'Warning: not found: ' . l:target
+      continue
+    endif
+    let l:link = s:link_from_target(l:target)
+    if !empty(l:link)
+      call add(l:links, l:link)
+    endif
+  endfor
+
+  if empty(l:links)
+    echo 'Error: no valid links in clipboard'
+    return
+  endif
+
+  let l:ins = s:body_top_insert_line()
   for l:lk in l:links
     call append(l:ins, l:lk)
     let l:ins += 1
