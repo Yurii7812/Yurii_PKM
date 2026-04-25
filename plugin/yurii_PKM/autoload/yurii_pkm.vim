@@ -1063,23 +1063,16 @@ function! yurii_pkm#timestamp_yaml() abort
 endfunction
 
 function! s:new_note_insert_line() abort
-  let l:max = min([120, line('$')])
-  for lnum in range(1, l:max)
-    if s:is_section_header_text(getline(lnum), 'back')
-      let l:direct = max([1, lnum - 1])
-      let l:upper  = max([1, lnum - 2])
-      if l:upper >= 1 && getline(l:upper) =~# '^\s*$'
-        return l:upper
-      endif
-      return l:direct
-    endif
-  endfor
-
-
   let l:max = min([40, line('$')])
   for lnum in range(1, l:max)
     if getline(lnum) =~# '^#\s\+'
-      if lnum < line('$') && getline(lnum + 1) =~# '^\s*$'
+      " H1 の下に空行が複数ある場合は中央の空行に置く（本文入力開始位置）
+      if lnum + 2 <= line('$')
+            \ && getline(lnum + 1) =~# '^\s*$'
+            \ && getline(lnum + 2) =~# '^\s*$'
+        return lnum + 2
+      endif
+      if lnum + 1 <= line('$') && getline(lnum + 1) =~# '^\s*$'
         return lnum + 1
       endif
       return min([lnum + 1, line('$')])
@@ -1637,11 +1630,13 @@ function! s:new_note_no_title(prefix) abort
           \ '',
           \ '# ' . l:title,
           \ '',
+          \ '',
+          \ '',
           \ '# Up',
           \ '# Down',
           \ '# BackLink',
           \ '[Index](index.md)' ]
-    let l:cursor_line = 7
+    let l:cursor_line = 8
   else
     " nn/nf の h/Enter/o モード: 従来どおり
     let l:content = [
@@ -1652,11 +1647,13 @@ function! s:new_note_no_title(prefix) abort
           \ '',
           \ '# ' . l:title,
           \ '',
+          \ '',
+          \ '',
           \ '# Up',
           \ '# Down',
           \ '# BackLink',
           \ '[Index](index.md)' ]
-    let l:cursor_line = 9
+    let l:cursor_line = 8
   endif
 
   call writefile(l:content, l:file)
@@ -2029,11 +2026,13 @@ function! yurii_pkm#new_quick(args) abort
           \ '',
           \ '# ' . l:title,
           \ '',
+          \ '',
+          \ '',
           \ '# Up',
           \ '# Down',
           \ '# BackLink',
           \ '[Index](index.md)' ]
-    let l:cursor_line = 7
+    let l:cursor_line = 8
   else
     let l:content = [
           \ '---',
@@ -2043,11 +2042,13 @@ function! yurii_pkm#new_quick(args) abort
           \ '',
           \ '# ' . l:title,
           \ '',
+          \ '',
+          \ '',
           \ '# Up',
           \ '# Down',
           \ '# BackLink',
           \ '[Index](index.md)' ]
-    let l:cursor_line = 9
+    let l:cursor_line = 8
   endif
 
   call writefile(l:content, l:file)

@@ -106,7 +106,7 @@ filetype [N] →    → 新しい filetype を1文字入力（a-z、大文字に
 `.md` ファイルを保存すると、バックグラウンドで `update_one` が自動実行される。
 
 - Back セクションへの逆リンク追加、リンクタイトル更新などが自動的に行われる
-- Back セクションは、該当リンクがある場合のみ `category:`（Kのfiletype）と `note:`（Nのfiletype）が表示される
+- Back セクションは、Kのfiletypeがある場合のみ `category:` を表示し、Nのfiletypeは見出しなしで表示される
 - リンク表示名の自動更新は `[xxx](xxx.md)` のように表示名がターゲットstemと一致するもののみ（手動表示名は維持）
 
 - `job_start` が使えれば非同期、なければ同期フォールバック
