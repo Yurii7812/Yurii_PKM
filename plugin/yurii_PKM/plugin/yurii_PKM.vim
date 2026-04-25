@@ -138,9 +138,9 @@ nnoremap <nowait> <silent> tt  <Cmd>call yurii_pkm#add_clipboard_to_top()<CR>
 nnoremap <nowait> <silent> nt  <Cmd>call yurii_pkm#rename_title_with_default('')<CR>
 " nT: 現在タイトルを残して編集
 nnoremap <nowait> <silent> nT  <Cmd>call yurii_pkm#rename_title('')<CR>
-" at: クリップボードのファイルのBranchに現在ファイルへのリンクを追加
+" at: クリップボードのファイルのDownに現在ファイルへのリンクを追加
 nnoremap <nowait> <silent> at  <Cmd>call yurii_pkm#at_add()<CR>
-" bc: クリップボードのファイル名をBranchに追加
+" bc: クリップボードのファイル名をDownに追加
 nnoremap <nowait> <silent> bc  <Cmd>call yurii_pkm#add_from_clipboard()<CR>
 " yn: 現在のファイル名をヤンク
 nnoremap <nowait> <silent> yn  <Cmd>call yurii_pkm#yank_name()<CR>
