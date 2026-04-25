@@ -85,12 +85,28 @@ set backspace=indent,eol,start
 
 
 " 既定アプリで開く
+function! s:open_with_default_app(path) abort
+  let l:path = empty(a:path) ? expand('%:p') : a:path
+  if empty(l:path)
+    echohl WarningMsg | echom 'open-default: path is empty' | echohl None
+    return
+  endif
 
-if has('wsl')
-  nnoremap gm :call system('explorer.exe ' . shellescape(system('wslpath -w ' . expand('%:p'))))<CR>
-else
-  nnoremap gm :call system('xdg-open ' . shellescape(expand('%:p')) . ' &>/dev/null 2>&1 &')<CR>
-endif
+  if has('wsl')
+    let l:winpath = substitute(system('wslpath -w ' . shellescape(l:path)), '\n\+$', '', '')
+    if executable('wslview')
+      call system('wslview ' . shellescape(l:path) . ' >/dev/null 2>&1 &')
+    elseif !empty(l:winpath)
+      call system('cmd.exe /C start "" ' . shellescape(l:winpath) . ' >NUL 2>&1')
+    else
+      echohl WarningMsg | echom 'open-default: failed to convert WSL path' | echohl None
+    endif
+  else
+    call system('xdg-open ' . shellescape(l:path) . ' >/dev/null 2>&1 &')
+  endif
+endfunction
+
+nnoremap <silent> gm :<C-u>call <SID>open_with_default_app(expand('%:p'))<CR>
 
 " 保存のショートカット
 nnoremap \w :w<CR>
