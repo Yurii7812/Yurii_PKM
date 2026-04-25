@@ -706,7 +706,12 @@ function! s:bare_section_name(text) abort
 endfunction
 
 function! s:is_section_header_text(text, name) abort
-  return s:bare_section_name(a:text) ==# tolower(a:name)
+  let l:sec = s:bare_section_name(a:text)
+  let l:target = tolower(a:name)
+  if l:target ==# 'back' || l:target ==# 'backlink'
+    return l:sec ==# 'back' || l:sec ==# 'backlink'
+  endif
+  return l:sec ==# l:target
 endfunction
 
 function! s:find_section_index_in_lines(lines, name) abort
@@ -1113,7 +1118,8 @@ function! yurii_pkm#note_template(title, ...) abort
         \ '',
         \ '# Down',
         \ '',
-        \ '# Back',
+        \ '# BackLink',
+
         \ '[Index](index.md)',
         \ ]
 endfunction
@@ -1619,7 +1625,7 @@ function! s:new_note_no_title(prefix) abort
           \ '# Down',
           \ l:parent_link_line,
           \ '',
-          \ '# Back',
+          \ '# BackLink',
           \ '[Index](index.md)' ]
     let l:cursor_line = 8
   elseif l:is_k
@@ -1637,7 +1643,8 @@ function! s:new_note_no_title(prefix) abort
           \ '',
           \ '# Down',
           \ '',
-          \ '# Back',
+          \ '# BackLink',
+
           \ '[Index](index.md)' ]
     let l:cursor_line = 7
   else
@@ -1654,7 +1661,8 @@ function! s:new_note_no_title(prefix) abort
           \ '',
           \ '# Down',
           \ '',
-          \ '# Back',
+          \ '# BackLink',
+
           \ '[Index](index.md)' ]
     let l:cursor_line = 9
   endif
@@ -1682,7 +1690,7 @@ function! s:new_note_no_title(prefix) abort
         if l:back_idx < 0
           " Back セクションがなければ末尾に追加
           call add(l:plines, '')
-          call add(l:plines, '# Back')
+          call add(l:plines, '# BackLink')
           call add(l:plines, 'category:')
           call add(l:plines, '')
           call add(l:plines, 'note:')
@@ -1769,7 +1777,8 @@ function! s:visual_new_note(prefix, mode) abort
             \ '# Down',
             \ l:parent_link_line,
             \ '',
-            \ '# Back',
+            \ '# BackLink',
+
             \ '[Index](index.md)' ]
     else
       let l:content = [
@@ -1785,7 +1794,8 @@ function! s:visual_new_note(prefix, mode) abort
             \ '# Down',
             \ l:parent_link_line,
             \ '',
-            \ '# Back',
+            \ '# BackLink',
+
             \ '',
             \ '[Index](index.md)' ]
     endif
@@ -1810,7 +1820,8 @@ function! s:visual_new_note(prefix, mode) abort
     call add(l:content, '')
     call add(l:content, '# Down')
     call add(l:content, '')
-    call add(l:content, '# Back')
+    call add(l:content, '# BackLink')
+
     call add(l:content, '[Index](index.md)')
   endif
 
@@ -1846,7 +1857,7 @@ function! s:visual_new_note(prefix, mode) abort
       if index(l:plines, l:link_to_new) < 0
         if l:back_idx2 < 0
           call add(l:plines, '')
-          call add(l:plines, '# Back')
+          call add(l:plines, '# BackLink')
           call add(l:plines, 'category:')
           call add(l:plines, '')
           call add(l:plines, 'note:')
@@ -2033,7 +2044,7 @@ function! yurii_pkm#new_quick(args) abort
           \ '# Down',
           \ l:parent_link_line,
           \ '',
-          \ '# Back',
+          \ '# BackLink',
           \ '[Index](index.md)' ]
     let l:cursor_line = 8
   elseif l:is_k
@@ -2049,7 +2060,8 @@ function! yurii_pkm#new_quick(args) abort
           \ '',
           \ '# Down',
           \ '',
-          \ '# Back',
+          \ '# BackLink',
+
           \ '[Index](index.md)' ]
     let l:cursor_line = 7
   else
@@ -2065,7 +2077,8 @@ function! yurii_pkm#new_quick(args) abort
           \ '',
           \ '# Down',
           \ '',
-          \ '# Back',
+          \ '# BackLink',
+
           \ '[Index](index.md)' ]
     let l:cursor_line = 9
   endif
@@ -2092,7 +2105,7 @@ function! yurii_pkm#new_quick(args) abort
       if index(l:plines, l:new_link) < 0
         if l:back_idx < 0
           call add(l:plines, '')
-          call add(l:plines, '# Back')
+          call add(l:plines, '# BackLink')
           call add(l:plines, 'category:')
           call add(l:plines, '')
           call add(l:plines, 'note:')
@@ -2433,7 +2446,8 @@ function! yurii_pkm#linkify_selection_new_note() abort range
           \ '',
           \ '# Down',
           \ '',
-          \ '# Back',
+          \ '# BackLink',
+
           \ '[Index](index.md)'
           \ ]
     call writefile(l:new_content, l:new_file)
@@ -2621,7 +2635,7 @@ function! yurii_pkm#at_add() abort
 
     if l:back_idx >= len(l:lines)
       call add(l:lines, '')
-      call add(l:lines, '# Back')
+      call add(l:lines, '# BackLink')
       call add(l:lines, '[Index](index.md)')
       let l:back_idx = len(l:lines) - 2
     endif

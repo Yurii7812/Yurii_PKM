@@ -17,7 +17,8 @@ TITLE_RE   = re.compile(r'^title:\s*(.*)$', re.IGNORECASE)
 FILETYPE_RE = re.compile(r'^filetype:\s*(.*)$', re.IGNORECASE)
 H1_RE      = re.compile(r'^#\s+(.+)$')
 SEP_RE     = re.compile(r'^_{3,}\s*$')
-SECTION_NAMES = {"up", "down", "branch", "back"}
+SECTION_NAMES = {"up", "down", "branch", "back", "backlink"}
+
 
 
 def bare_section_name(text: str) -> str:
@@ -27,7 +28,11 @@ def bare_section_name(text: str) -> str:
 
 
 def is_section_header(text: str, name: str) -> bool:
-    return bare_section_name(text) == name.lower()
+    section = bare_section_name(text)
+    target = name.lower()
+    if target in {"back", "backlink"}:
+        return section in {"back", "backlink"}
+    return section == target
 
 
 def is_markdown_file(path: Path) -> bool:
@@ -178,8 +183,9 @@ def ensure_sections(lines: list[str]) -> list[str]:
         lines = list(lines) + ["# Up"]
     if find_section(lines, "down")[0] < 0:
         lines = list(lines) + ["", "# Down"]
-    if find_section(lines, "back")[0] < 0:
-        lines = list(lines) + ["", "# Back"]
+    if find_section(lines, "backlink")[0] < 0:
+        lines = list(lines) + ["", "# BackLink"]
+
     return lines
 
 
@@ -219,6 +225,40 @@ def outbound_links_from_down(lines: list[str]) -> list[tuple[str, str]]:
         for text, target in LINK_RE.findall(line):
             result.append((text, target))
 
+    return result
+
+
+def outbound_links_for_backlink(lines: list[str]) -> list[tuple[str, str]]:
+    """Collect markdown links from body text (exclude Up/Down/BackLink sections)."""
+    result: list[tuple[str, str]] = []
+    in_yaml = False
+    in_fence = False
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if i == 0 and stripped == "---":
+            in_yaml = True
+            continue
+        if in_yaml:
+            if stripped == "---":
+                in_yaml = False
+            continue
+
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        if SEP_RE.match(stripped):
+            break
+        if (is_section_header(stripped, "up")
+                or is_section_header(stripped, "down")
+                or is_section_header(stripped, "branch")
+                or is_section_header(stripped, "back")
+                or is_section_header(stripped, "backlink")):
+            break
+
+        for text, target in LINK_RE.findall(line):
+            result.append((text, target))
     return result
 
 
@@ -360,7 +400,7 @@ def create_f_and_link(current_file: Path, root: Path) -> Path:
         "",
         "",
         "",
-        "# Back",
+        "# BackLink",
         "[index](index.md)",
     ]
     root.mkdir(parents=True, exist_ok=True)
@@ -523,11 +563,13 @@ def build_up(parent_paths: list[Path], note_path: Path) -> list[str]:
 
 
 def update_up_sections(root: Path) -> int:
-    """Scan all notes; write Up sections from Down links (and legacy Branch links)."""
+    """Scan all notes; write Up from Down links and BackLink from body links."""
+
     root = root.resolve()
     all_paths = list(iter_notes(root))
 
     children_of: dict[Path, list[Path]] = {}
+    backlinks_children_of: dict[Path, list[Path]] = {}
     lines_map: dict[Path, list[str]] = {}
 
     for p in all_paths:
@@ -536,7 +578,10 @@ def update_up_sections(root: Path) -> int:
             lines = ensure_sections(lines)
         lines_map[p] = lines
         kids: list[Path] = []
+        body_kids: list[Path] = []
         seen: set[Path] = set()
+        body_seen: set[Path] = set()
+
         for _, target in outbound_links_from_down(lines):
             if '\x00' in target:
                 continue
@@ -547,25 +592,46 @@ def update_up_sections(root: Path) -> int:
                 continue
             seen.add(resolved)
             kids.append(resolved)
+        for _, target in outbound_links_for_backlink(lines):
+            if '\x00' in target:
+                continue
+            resolved = (p.parent / target).resolve()
+            if not is_markdown_file(resolved):
+                continue
+            if resolved in body_seen:
+                continue
+            body_seen.add(resolved)
+            body_kids.append(resolved)
         children_of[p] = kids
+        backlinks_children_of[p] = body_kids
 
     parents_of: dict[Path, list[Path]] = {p: [] for p in all_paths}
+    backlinks_parents_of: dict[Path, list[Path]] = {p: [] for p in all_paths}
     for parent, kids in children_of.items():
         for child in kids:
             if child in parents_of:
                 parents_of[child].append(parent)
+    for parent, kids in backlinks_children_of.items():
+        for child in kids:
+            if child in backlinks_parents_of:
+                backlinks_parents_of[child].append(parent)
 
     changed = 0
     for p in all_paths:
         lines = lines_map[p]
         if p.name == 'index.md':
-            new_lines = remove_section(lines, 'back')
+            new_lines = remove_section(remove_section(lines, 'back'), 'backlink')
         elif is_expand_generated_t_note(p, lines):
             new_lines = lines
         else:
             parents = sorted(set(parents_of.get(p, [])))
             new_up = build_up(parents, p)
             new_lines = replace_section(lines, "up", new_up)
+            backlinks_parents = sorted(set(backlinks_parents_of.get(p, [])))
+            existing_back = section_content(new_lines, "backlink")
+            new_back = build_back(backlinks_parents, p, existing_back)
+            new_lines = replace_section(new_lines, "backlink", new_back)
+
         if new_lines != lines:
             write_lines(p, new_lines)
             changed += 1
