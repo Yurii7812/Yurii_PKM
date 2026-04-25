@@ -706,7 +706,12 @@ function! s:bare_section_name(text) abort
 endfunction
 
 function! s:is_section_header_text(text, name) abort
-  return s:bare_section_name(a:text) ==# tolower(a:name)
+  let l:sec = s:bare_section_name(a:text)
+  let l:target = tolower(a:name)
+  if l:target ==# 'back' || l:target ==# 'backlink'
+    return l:sec ==# 'back' || l:sec ==# 'backlink'
+  endif
+  return l:sec ==# l:target
 endfunction
 
 function! s:find_section_index_in_lines(lines, name) abort
@@ -740,13 +745,32 @@ function! s:find_section_line(name) abort
   return l:found
 endfunction
 
-" Return line number just before 'back' section (for Branch append), or 0
-function! s:branch_end_line() abort
+" Return line number just before 'back' section (for Down append), or 0
+function! s:down_end_line() abort
+  let l:down = s:find_section_line('down')
+  if l:down > 0
+    let l:back_after_down = 0
+    for l:i in range(l:down + 1, line('$'))
+      if s:is_section_header_text(getline(l:i), 'back')
+        let l:back_after_down = l:i
+        break
+      endif
+    endfor
+    return l:back_after_down > 0 ? l:back_after_down - 1 : line('$')
+  endif
+
   let l:back = s:find_section_line('back')
   if l:back > 0
-    return l:back - 1
+    call append(l:back - 1, ['', '# Down'])
+    return l:back + 1
   endif
+  call append(line('$'), ['', '# Down'])
   return line('$')
+endfunction
+
+" Backward compatible name
+function! s:branch_end_line() abort
+  return s:down_end_line()
 endfunction
 
 
@@ -961,12 +985,15 @@ function! s:insert_link_below_cursor(link) abort
 endfunction
 
 function! s:link_already_present_in_branch(link) abort
-  let l:branch = s:find_section_line('branch')
-  if l:branch <= 0
+  let l:down = s:find_section_line('down')
+  if l:down <= 0
+    let l:down = s:find_section_line('branch')
+  endif
+  if l:down <= 0
     return 0
   endif
-  let l:end = s:branch_end_line()
-  for l:i in range(l:branch + 1, l:end)
+  let l:end = s:down_end_line()
+  for l:i in range(l:down + 1, l:end)
     if getline(l:i) ==# a:link
       return 1
     endif
@@ -1075,15 +1102,11 @@ function! s:body_top_insert_line() abort
 endfunction
 
 function! yurii_pkm#note_template(title, ...) abort
-  let l:filetype = a:0 >= 1 ? a:1 : ''
   let l:header = [
         \ '---',
         \ 'time: ' . yurii_pkm#timestamp_yaml(),
         \ 'title: ' . a:title,
         \ ]
-  if !empty(l:filetype)
-    call add(l:header, 'filetype: ' . toupper(l:filetype))
-  endif
   call add(l:header, '---')
   return l:header + [
         \ '',
@@ -1091,7 +1114,11 @@ function! yurii_pkm#note_template(title, ...) abort
         \ '',
         \ '',
         \ '',
-        \ '# Back',
+        \ '# Up',
+        \ '',
+        \ '# Down',
+        \ '',
+        \ '# BackLink',
         \ '[Index](index.md)',
         \ ]
 endfunction
@@ -1454,7 +1481,7 @@ function! yurii_pkm#create_note(prefix, title, open_after, insert_mode) abort
   let l:save_si = &smartindent
   setlocal noautoindent nosmartindent
   if a:insert_mode ==# 'branch'
-    let l:ins = s:branch_end_line()
+    let l:ins = s:down_end_line()
     call append(l:ins, l:link)
     silent write
   elseif a:insert_mode ==# 'cursor'
@@ -1523,7 +1550,7 @@ function! s:new_note_no_title(prefix) abort
   let l:parent_file  = expand('%:t')
   let l:parent_title = yurii_pkm#current_title()
 
-  echon 'mode: (O)rphan (H)ere (B)ack (T)op Enter=body-end: '
+  echon 'mode: (O)rphan (H)ere (B)ack (T)op Enter=down: '
 
   let l:char = getchar()
   redraw
@@ -1569,7 +1596,7 @@ function! s:new_note_no_title(prefix) abort
       let l:ins = s:body_top_insert_line()
       call append(l:ins, l:link)
     else
-      let l:ins = s:branch_end_line()
+      let l:ins = s:down_end_line()
       call append(l:ins, l:link)
     endif
     let &autoindent = l:save_ai
@@ -1588,18 +1615,18 @@ function! s:new_note_no_title(prefix) abort
           \ '---',
           \ 'time: ' . yurii_pkm#timestamp_yaml(),
           \ 'title: ' . l:title,
-          \ 'filetype: ' . l:filetype,
           \ '---',
           \ '',
           \ '# ' . l:title,
           \ '',
+          \ '# Up',
+          \ '',
+          \ '# Down',
           \ l:parent_link_line,
           \ '',
-          \ '',
-          \ '# Back',
+          \ '# BackLink',
           \ '[Index](index.md)' ]
-    " 親リンク直後の空行（Back 前にもう1行空ける）にカーソルを置く
-    let l:cursor_line = 10
+    let l:cursor_line = 8
   elseif l:is_k
     " nk の h/Enter/o モード: 空行1つ、body なし
     " # title / (空) / Back / [index]
@@ -1607,16 +1634,15 @@ function! s:new_note_no_title(prefix) abort
           \ '---',
           \ 'time: ' . yurii_pkm#timestamp_yaml(),
           \ 'title: ' . l:title,
-          \ 'filetype: ' . l:filetype,
           \ '---',
           \ '',
           \ '# ' . l:title,
           \ '',
-          \ '# Back',
-          \ 'category:',
+          \ '# Up',
           \ '',
-          \ 'note:',
+          \ '# Down',
           \ '',
+          \ '# BackLink',
           \ '[Index](index.md)' ]
     let l:cursor_line = 7
   else
@@ -1625,22 +1651,16 @@ function! s:new_note_no_title(prefix) abort
           \ '---',
           \ 'time: ' . yurii_pkm#timestamp_yaml(),
           \ 'title: ' . l:title,
-          \ 'filetype: ' . l:filetype,
           \ '---',
           \ '',
           \ '# ' . l:title,
           \ '',
+          \ '# Up',
           \ '',
-          \ '' ]
-    call add(l:content, '# Back')
-    call add(l:content, 'category:')
-    call add(l:content, '')
-    call add(l:content, 'note:')
-    if !l:no_parent_link
-      call add(l:content, l:parent_link_line)
-    endif
-    call add(l:content, '')
-    call add(l:content, '[Index](index.md)')
+          \ '# Down',
+          \ '',
+          \ '# BackLink',
+          \ '[Index](index.md)' ]
     let l:cursor_line = 9
   endif
 
@@ -1667,7 +1687,7 @@ function! s:new_note_no_title(prefix) abort
         if l:back_idx < 0
           " Back セクションがなければ末尾に追加
           call add(l:plines, '')
-          call add(l:plines, '# Back')
+          call add(l:plines, '# BackLink')
           call add(l:plines, 'category:')
           call add(l:plines, '')
           call add(l:plines, 'note:')
@@ -1745,26 +1765,32 @@ function! s:visual_new_note(prefix, mode) abort
             \ '---',
             \ 'time: ' . yurii_pkm#timestamp_yaml(),
             \ 'title: ' . l:title,
-            \ 'filetype: ' . l:filetype,
             \ '---',
             \ '',
             \ '# ' . l:title,
             \ '',
-            \ '# Back',
+            \ '# Up',
+            \ '',
+            \ '# Down',
             \ l:parent_link_line,
+            \ '',
+            \ '# BackLink',
             \ '[Index](index.md)' ]
     else
       let l:content = [
             \ '---',
             \ 'time: ' . yurii_pkm#timestamp_yaml(),
             \ 'title: ' . l:title,
-            \ 'filetype: ' . l:filetype,
             \ '---',
             \ '',
             \ '# ' . l:title,
             \ '',
-            \ '# Back',
+            \ '# Up',
+            \ '',
+            \ '# Down',
             \ l:parent_link_line,
+            \ '',
+            \ '# BackLink',
             \ '',
             \ '[Index](index.md)' ]
     endif
@@ -1779,19 +1805,17 @@ function! s:visual_new_note(prefix, mode) abort
           \ '---',
           \ 'time: ' . yurii_pkm#timestamp_yaml(),
           \ 'title: ' . l:title,
-          \ 'filetype: ' . l:filetype,
           \ '---',
           \ '',
           \ '# ' . l:title,
           \ '' ]
     call extend(l:content, l:sel_lines)
     call add(l:content, '')
-    call add(l:content, '# Back')
-    call add(l:content, 'category:')
+    call add(l:content, '# Up')
     call add(l:content, '')
-    call add(l:content, 'note:')
-    call add(l:content, l:parent_link_line)
+    call add(l:content, '# Down')
     call add(l:content, '')
+    call add(l:content, '# BackLink')
     call add(l:content, '[Index](index.md)')
   endif
 
@@ -1827,7 +1851,7 @@ function! s:visual_new_note(prefix, mode) abort
       if index(l:plines, l:link_to_new) < 0
         if l:back_idx2 < 0
           call add(l:plines, '')
-          call add(l:plines, '# Back')
+          call add(l:plines, '# BackLink')
           call add(l:plines, 'category:')
           call add(l:plines, '')
           call add(l:plines, 'note:')
@@ -1878,7 +1902,7 @@ function! yurii_pkm#visual_new_prefix_note(prefix) abort
 endfunction
 
 function! s:visual_select_mode(prefix) abort
-  echon 'mode: (O)rphan (H)ere (B)ack (T)op Enter=body-end: '
+  echon 'mode: (O)rphan (H)ere (B)ack (T)op Enter=down: '
 
   let l:char = getchar()
   redraw
@@ -1918,7 +1942,7 @@ endfunction
 " :NQ - Quick new child (旧 QuickNewChildWithMode に忠実)
 "   1. プレフィックス1文字入力（即時確定）
 "   2. タイトル入力
-"   3. モード選択: (O)rphan / (H)ere / (B)ack / (T)op / Enter=branch
+"   3. モード選択: (O)rphan / (H)ere / (B)ack / (T)op / Enter=down
 
 " ---------------------------------------------------------------------------
 
@@ -1944,7 +1968,7 @@ function! yurii_pkm#new_quick(args) abort
 
   let l:title = input('title: ', a:args)
 
-  echon "\nmode: (O)rphan (H)ere (B)ack (T)op Enter=body-end: "
+  echon "\nmode: (O)rphan (H)ere (B)ack (T)op Enter=down: "
 
   let l:raw2 = getchar()
   redraw
@@ -1988,7 +2012,7 @@ function! yurii_pkm#new_quick(args) abort
       let l:ins = s:body_top_insert_line()
       call append(l:ins, l:link)
     else
-      let l:ins = s:branch_end_line()
+      let l:ins = s:down_end_line()
       call append(l:ins, l:link)
     endif
     let &autoindent = l:save_ai
@@ -2009,11 +2033,14 @@ function! yurii_pkm#new_quick(args) abort
           \ '',
           \ '# ' . l:title,
           \ '',
+          \ '# Up',
+          \ '',
+          \ '# Down',
           \ l:parent_link_line,
           \ '',
-          \ '# Back',
+          \ '# BackLink',
           \ '[Index](index.md)' ]
-    let l:cursor_line = 9
+    let l:cursor_line = 8
   elseif l:is_k
     let l:content = [
           \ '---',
@@ -2023,7 +2050,11 @@ function! yurii_pkm#new_quick(args) abort
           \ '',
           \ '# ' . l:title,
           \ '',
-          \ '# Back',
+          \ '# Up',
+          \ '',
+          \ '# Down',
+          \ '',
+          \ '# BackLink',
           \ '[Index](index.md)' ]
     let l:cursor_line = 7
   else
@@ -2035,13 +2066,12 @@ function! yurii_pkm#new_quick(args) abort
           \ '',
           \ '# ' . l:title,
           \ '',
+          \ '# Up',
           \ '',
-          \ '' ]
-    call add(l:content, '# Back')
-    if !l:no_parent_link
-      call add(l:content, l:parent_link_line)
-    endif
-    call add(l:content, '[Index](index.md)')
+          \ '# Down',
+          \ '',
+          \ '# BackLink',
+          \ '[Index](index.md)' ]
     let l:cursor_line = 9
   endif
 
@@ -2067,7 +2097,7 @@ function! yurii_pkm#new_quick(args) abort
       if index(l:plines, l:new_link) < 0
         if l:back_idx < 0
           call add(l:plines, '')
-          call add(l:plines, '# Back')
+          call add(l:plines, '# BackLink')
           call add(l:plines, 'category:')
           call add(l:plines, '')
           call add(l:plines, 'note:')
@@ -2161,9 +2191,9 @@ function! yurii_pkm#add_from_clipboard(...) abort
       call append(l:ins, l:lk)
     endfor
   else
-    let l:ins = s:branch_end_line()
+    let l:ins = s:down_end_line()
     if l:ins <= 0
-      echo 'Error: back section not found'
+      echo 'Error: down section not found'
       return
     endif
     for l:lk in l:links
@@ -2243,9 +2273,9 @@ function! yurii_pkm#add_clipboard_to_branch() abort
     return
   endif
 
-  let l:ins = s:branch_end_line()
+  let l:ins = s:down_end_line()
   if l:ins <= 0
-    echo 'Error: back section not found'
+    echo 'Error: down section not found'
     return
   endif
   for l:lk in l:links
@@ -2399,14 +2429,16 @@ function! yurii_pkm#linkify_selection_new_note() abort range
     let l:new_content = [
           \ '---',
           \ 'time: ' . yurii_pkm#timestamp_yaml(),
-          \ 'filetype: N',
           \ 'title: ' . l:text,
           \ '---',
           \ '',
           \ '# ' . l:text,
           \ '',
-          \ '# Back',
-          \ yurii_pkm#make_link(l:parent_file, l:parent_title),
+          \ '# Up',
+          \ '',
+          \ '# Down',
+          \ '',
+          \ '# BackLink',
           \ '[Index](index.md)'
           \ ]
     call writefile(l:new_content, l:new_file)
@@ -2562,31 +2594,44 @@ function! yurii_pkm#at_add() abort
     endif
 
     let l:lines = readfile(l:target_fp)
+    let l:down_idx = -1
     let l:back_idx = len(l:lines)
-    let l:found_back = 0
     for l:i in range(0, len(l:lines) - 1)
+      if l:down_idx < 0 && s:is_section_header_text(l:lines[l:i], 'down')
+        let l:down_idx = l:i
+      endif
       if s:is_section_header_text(l:lines[l:i], 'back')
         let l:back_idx = l:i
-        let l:found_back = 1
         break
       endif
     endfor
 
-    let l:search_end = l:back_idx - 1
-    if l:search_end >= 0 && index(l:lines[0 : l:search_end], l:new_link) >= 0
+    if index(l:lines, l:new_link) >= 0
       let l:already += 1
       continue
     endif
 
-    if !l:found_back
-      call add(l:lines, '')
-      call add(l:lines, '# Back')
-      call add(l:lines, '[Index](index.md)')
-      let l:back_idx = len(l:lines) - 2
-
+    if l:down_idx < 0
+      if l:back_idx < len(l:lines)
+        call insert(l:lines, '', l:back_idx)
+        call insert(l:lines, '# Down', l:back_idx + 1)
+        let l:down_idx = l:back_idx + 1
+        let l:back_idx += 2
+      else
+        call add(l:lines, '')
+        call add(l:lines, '# Down')
+        let l:down_idx = len(l:lines) - 1
+      endif
     endif
 
-    call insert(l:lines, l:new_link, l:back_idx)
+    if l:back_idx >= len(l:lines)
+      call add(l:lines, '')
+      call add(l:lines, '# BackLink')
+      call add(l:lines, '[Index](index.md)')
+      let l:back_idx = len(l:lines) - 2
+    endif
+
+    call insert(l:lines, l:new_link, l:down_idx + 1)
     call writefile(l:lines, l:target_fp)
     call s:run_update_one_for(l:target_fp)
     let l:added += 1
@@ -3592,7 +3637,7 @@ function! s:csv_lines_to_table(lines, indent) abort
 endfunction
 
 function! s:append_current_file_branch_link(link) abort
-  let l:ins = s:branch_end_line()
+  let l:ins = s:down_end_line()
   if l:ins <= 0
     return 0
   endif
