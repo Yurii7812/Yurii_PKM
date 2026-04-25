@@ -37,6 +37,10 @@ endif
 if !exists('g:yurii_pkm_auto_save_on_command')
   let g:yurii_pkm_auto_save_on_command = 1
 endif
+if !exists('g:yurii_pkm_markdown_conceal_links')
+  " 既定は 1: [text](url) は text のみ表示
+  let g:yurii_pkm_markdown_conceal_links = 1
+endif
 " リンク色は .vimrc 側で設定する想定
 
 " Python スクリプトのパス
@@ -254,8 +258,13 @@ function! s:setup_conceal() abort
     return
   endif
 
-  setlocal conceallevel=2
-  setlocal concealcursor=n
+  if get(g:, 'yurii_pkm_markdown_conceal_links', 0)
+    setlocal conceallevel=2
+    setlocal concealcursor=n
+  else
+    setlocal conceallevel=0
+    setlocal concealcursor=
+  endif
 
   " 再実行時の重複定義を防ぐ
   silent! syntax clear yuriiLinkRegion
@@ -264,15 +273,15 @@ function! s:setup_conceal() abort
   silent! syntax clear yuriiConcealClose
 
   " リンク全体は region で保持し、見える本文だけを水色にする
-  syntax region yuriiLinkRegion start=/\[/ end=/\](\([^)]\+\))/ keepend contains=yuriiLinkText,yuriiConcealOpen,yuriiConcealClose
-  syntax match yuriiLinkText /\%(\[\)\@<=[^\]]\+\ze\](\([^)]\+\))/ contained
+  syntax region yuriiLinkRegion start=/\[/ end=/\](\([^)\n]\+\))/ keepend oneline contains=yuriiLinkText,yuriiConcealOpen,yuriiConcealClose
+  syntax match yuriiLinkText /\%(\[\)\@<=[^\]\n]\+\ze\](\([^)\n]\+\))/ contained
   let l:link_color_gui = get(g:, 'yurii_pkm_link_color_gui', '#66CCFF')
   let l:link_color_cterm = get(g:, 'yurii_pkm_link_color_cterm', '81')
   execute 'highlight yuriiLinkText term=underline cterm=underline gui=underline ctermfg=' . l:link_color_cterm . ' guifg=' . l:link_color_gui
 
   " [ と ](xxx) を隠して、リンク本文だけ見せる
   syntax match yuriiConcealOpen /\[/ contained conceal
-  syntax match yuriiConcealClose /\](\([^)]\+\))/ contained conceal
+  syntax match yuriiConcealClose /\](\([^)\n]\+\))/ contained conceal
 
   " エラー強調を無効化（_ や -> が赤くなるのを防ぐ）
   highlight clear markdownError
