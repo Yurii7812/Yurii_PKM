@@ -184,7 +184,17 @@ def ensure_sections(lines: list[str]) -> list[str]:
     if find_section(lines, "down")[0] < 0:
         lines = list(lines) + ["", "# Down"]
     if find_section(lines, "backlink")[0] < 0:
-        lines = list(lines) + ["", "# BackLink"]
+        down_start, down_end = find_section(lines, "down")
+        down_is_last_empty_section = (
+            down_start >= 0
+            and down_end == len(lines)
+            and len(lines[down_start + 1:down_end]) == 0
+        )
+
+        if down_is_last_empty_section:
+            lines = list(lines) + ["# BackLink"]
+        else:
+            lines = list(lines) + ["", "# BackLink"]
 
     return lines
 
