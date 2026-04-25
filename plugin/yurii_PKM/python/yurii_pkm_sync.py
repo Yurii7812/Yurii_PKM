@@ -328,7 +328,6 @@ def sort_back_links(link_lines: list[str], from_dir: Path, include_index: bool =
     if note_links:
         if result:
             result.append("")
-        result.append("note:")
         result.extend(line for _, line in note_links)
     if include_index:
         if result:
