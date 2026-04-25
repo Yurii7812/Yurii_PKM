@@ -607,6 +607,9 @@ def update_up_sections(root: Path) -> int:
             resolved = (p.parent / target).resolve()
             if not is_markdown_file(resolved):
                 continue
+            # If the same link already exists in Down, keep it only as a Down link.
+            if resolved in seen:
+                continue
             if resolved in body_seen:
                 continue
             body_seen.add(resolved)
