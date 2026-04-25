@@ -607,6 +607,9 @@ def update_up_sections(root: Path) -> int:
             resolved = (p.parent / target).resolve()
             if not is_markdown_file(resolved):
                 continue
+            # If the same link already exists in Down, keep it only as a Down link.
+            if resolved in seen:
+                continue
             if resolved in body_seen:
                 continue
             body_seen.add(resolved)
@@ -636,7 +639,11 @@ def update_up_sections(root: Path) -> int:
             parents = sorted(set(parents_of.get(p, [])))
             new_up = build_up(parents, p)
             new_lines = replace_section(lines, "up", new_up)
-            backlinks_parents = sorted(set(backlinks_parents_of.get(p, [])))
+            down_children = set(children_of.get(p, []))
+            backlinks_parents = sorted(
+                parent for parent in set(backlinks_parents_of.get(p, []))
+                if parent not in down_children
+            )
             existing_back = section_content(new_lines, "backlink")
             new_back = build_back(backlinks_parents, p, existing_back)
             new_lines = replace_section(new_lines, "backlink", new_back)
