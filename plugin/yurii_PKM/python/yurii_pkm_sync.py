@@ -20,6 +20,7 @@ SEP_RE     = re.compile(r'^_{3,}\s*$')
 SECTION_NAMES = {"up", "down", "branch", "back", "backlink"}
 
 
+
 def bare_section_name(text: str) -> str:
     stripped = text.strip()
     stripped = re.sub(r'^#+\s*', '', stripped)
@@ -184,6 +185,7 @@ def ensure_sections(lines: list[str]) -> list[str]:
         lines = list(lines) + ["", "# Down"]
     if find_section(lines, "backlink")[0] < 0:
         lines = list(lines) + ["", "# BackLink"]
+
     return lines
 
 
@@ -240,6 +242,7 @@ def outbound_links_for_backlink(lines: list[str]) -> list[tuple[str, str]]:
             if stripped == "---":
                 in_yaml = False
             continue
+
         if stripped.startswith("```"):
             in_fence = not in_fence
             continue
@@ -253,6 +256,7 @@ def outbound_links_for_backlink(lines: list[str]) -> list[tuple[str, str]]:
                 or is_section_header(stripped, "back")
                 or is_section_header(stripped, "backlink")):
             break
+
         for text, target in LINK_RE.findall(line):
             result.append((text, target))
     return result
@@ -560,6 +564,7 @@ def build_up(parent_paths: list[Path], note_path: Path) -> list[str]:
 
 def update_up_sections(root: Path) -> int:
     """Scan all notes; write Up from Down links and BackLink from body links."""
+
     root = root.resolve()
     all_paths = list(iter_notes(root))
 
@@ -576,6 +581,7 @@ def update_up_sections(root: Path) -> int:
         body_kids: list[Path] = []
         seen: set[Path] = set()
         body_seen: set[Path] = set()
+
         for _, target in outbound_links_from_down(lines):
             if '\x00' in target:
                 continue
@@ -625,6 +631,7 @@ def update_up_sections(root: Path) -> int:
             existing_back = section_content(new_lines, "backlink")
             new_back = build_back(backlinks_parents, p, existing_back)
             new_lines = replace_section(new_lines, "backlink", new_back)
+
         if new_lines != lines:
             write_lines(p, new_lines)
             changed += 1
