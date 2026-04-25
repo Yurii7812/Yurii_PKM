@@ -261,9 +261,13 @@ function! s:setup_conceal() abort
   if get(g:, 'yurii_pkm_markdown_conceal_links', 0)
     setlocal conceallevel=2
     setlocal concealcursor=n
+    " conceal + linebreak の組み合わせで、隠した URL 部分を基準に不自然な折返しが
+    " 発生しやすいため、markdown では行折返しを通常の wrap に戻す。
+    setlocal nolinebreak
   else
     setlocal conceallevel=0
     setlocal concealcursor=
+    setlocal linebreak
   endif
 
   " 再実行時の重複定義を防ぐ
