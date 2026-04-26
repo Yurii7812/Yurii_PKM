@@ -1553,7 +1553,7 @@ function! yurii_pkm#new_here_typed(prefix) abort
 endfunction
 
 " ---------------------------------------------------------------------------
-" タイトル入力なし、h/o/b/t選択あり (nf / nn / nk 共通内部実装)
+" タイトル入力なし、h/o/b/d選択あり (nf / nn / nk 共通内部実装)
 
 " ---------------------------------------------------------------------------
 
@@ -1562,7 +1562,7 @@ function! s:new_note_no_title(prefix) abort
   let l:parent_file  = expand('%:t')
   let l:parent_title = yurii_pkm#current_title()
 
-  echon 'mode: (O)rphan (H)ere (B)ack (T)op Enter=down: '
+  echon 'mode: (O)rphan (H)ere (B)ack (D)ownLast Enter=down: '
 
   let l:char = getchar()
   redraw
@@ -1575,7 +1575,7 @@ function! s:new_note_no_title(prefix) abort
   let l:mode = nr2char(l:char)
 
   let l:insert_at_cursor = 0
-  let l:insert_at_top    = 0
+  let l:insert_at_down_end = 0
   let l:no_parent_link   = 0
   let l:reverse_link     = 0
 
@@ -1583,9 +1583,8 @@ function! s:new_note_no_title(prefix) abort
     let l:no_parent_link = 1
   elseif l:mode =~? '^h$'
     let l:insert_at_cursor = 1
-  elseif l:mode =~? '^t$'
-
-    let l:insert_at_top = 1
+  elseif l:mode =~? '^d$'
+    let l:insert_at_down_end = 1
   elseif l:mode =~? '^b$'
     let l:reverse_link = 1
   endif
@@ -1604,8 +1603,8 @@ function! s:new_note_no_title(prefix) abort
     setlocal noautoindent nosmartindent
     if l:insert_at_cursor
       call append(l:parent_line, l:link)
-    elseif l:insert_at_top
-      let l:ins = s:body_top_insert_line()
+    elseif l:insert_at_down_end
+      let l:ins = s:down_end_line()
       call append(l:ins, l:link)
     else
       if a:prefix ==? 'N'
@@ -1902,7 +1901,7 @@ function! yurii_pkm#visual_new_prefix_note(prefix) abort
 endfunction
 
 function! s:visual_select_mode(prefix) abort
-  echon 'mode: (O)rphan (H)ere (B)ack (T)op Enter=down: '
+  echon 'mode: (O)rphan (H)ere (B)ack (D)ownLast Enter=down: '
 
   let l:char = getchar()
   redraw
@@ -1914,7 +1913,7 @@ function! s:visual_select_mode(prefix) abort
   call s:visual_new_note(a:prefix, l:mode)
 endfunction
 
-" nf用: prefix入力 → h/o/b/t選択
+" nf用: prefix入力 → h/o/b/d選択
 
 function! yurii_pkm#new_quick_no_title() abort
   echo 'prefix (a-z): '
@@ -1932,7 +1931,7 @@ function! yurii_pkm#new_quick_no_title() abort
   call s:new_note_no_title(toupper(l:ch))
 endfunction
 
-" nn / nk用: prefix固定 → h/o/b/t選択
+" nn / nk用: prefix固定 → h/o/b/d選択
 
 function! yurii_pkm#new_prefix_note(prefix) abort
   call s:new_note_no_title(a:prefix)
@@ -1942,7 +1941,7 @@ endfunction
 " :NQ - Quick new child (旧 QuickNewChildWithMode に忠実)
 "   1. プレフィックス1文字入力（即時確定）
 "   2. タイトル入力
-"   3. モード選択: (O)rphan / (H)ere / (B)ack / (T)op / Enter=down
+"   3. モード選択: (O)rphan / (H)ere / (B)ack / (D)ownLast / Enter=down
 
 " ---------------------------------------------------------------------------
 
@@ -1968,7 +1967,7 @@ function! yurii_pkm#new_quick(args) abort
 
   let l:title = input('title: ', a:args)
 
-  echon "\nmode: (O)rphan (H)ere (B)ack (T)op Enter=down: "
+  echon "\nmode: (O)rphan (H)ere (B)ack (D)ownLast Enter=down: "
 
   let l:raw2 = getchar()
   redraw
@@ -1979,7 +1978,7 @@ function! yurii_pkm#new_quick(args) abort
   let l:mode = nr2char(l:raw2)
 
   let l:insert_at_cursor = 0
-  let l:insert_at_top    = 0
+  let l:insert_at_down_end = 0
   let l:no_parent_link   = 0
   let l:reverse_link     = 0
 
@@ -1987,8 +1986,8 @@ function! yurii_pkm#new_quick(args) abort
     let l:no_parent_link = 1
   elseif l:mode =~? '^h$'
     let l:insert_at_cursor = 1
-  elseif l:mode =~? '^t$'
-    let l:insert_at_top = 1
+  elseif l:mode =~? '^d$'
+    let l:insert_at_down_end = 1
   elseif l:mode =~? '^b$'
     let l:reverse_link = 1
   endif
@@ -2008,8 +2007,8 @@ function! yurii_pkm#new_quick(args) abort
     setlocal noautoindent nosmartindent
     if l:insert_at_cursor
       call append(l:parent_line, l:link)
-    elseif l:insert_at_top
-      let l:ins = s:body_top_insert_line()
+    elseif l:insert_at_down_end
+      let l:ins = s:down_end_line()
       call append(l:ins, l:link)
     else
       let l:ins = s:down_end_line()
