@@ -768,6 +768,24 @@ function! s:down_end_line() abort
   return line('$')
 endfunction
 
+" Return line number where appending inserts at top of Down section.
+" If Down is missing, create it (before Back if present, otherwise EOF).
+function! s:down_top_insert_line() abort
+  let l:down = s:find_section_line('down')
+  if l:down > 0
+    return l:down
+  endif
+
+  let l:back = s:find_section_line('back')
+  if l:back > 0
+    call append(l:back - 1, ['', '# Down'])
+    return l:back + 1
+  endif
+
+  call append(line('$'), ['', '# Down'])
+  return line('$')
+endfunction
+
 " Backward compatible name
 function! s:branch_end_line() abort
   return s:down_end_line()
@@ -1590,7 +1608,11 @@ function! s:new_note_no_title(prefix) abort
       let l:ins = s:body_top_insert_line()
       call append(l:ins, l:link)
     else
-      let l:ins = s:down_end_line()
+      if a:prefix ==? 'N'
+        let l:ins = s:down_top_insert_line()
+      else
+        let l:ins = s:down_end_line()
+      endif
       call append(l:ins, l:link)
     endif
     let &autoindent = l:save_ai
