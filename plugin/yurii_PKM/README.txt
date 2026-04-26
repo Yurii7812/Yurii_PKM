@@ -26,7 +26,7 @@
 ```
 1. prefix (a-z):    → 1文字即時確定（大文字に変換される）
 2. title:           → タイトル文字列を入力（Enter で確定）
-3. mode:            → O=Orphan / H=Here / B=Back / T=Top / Enter=Branch
+3. mode:            → O=Orphan / H=Here / B=Back / D=DownLast / Enter=Branch
 
 ```
 
@@ -36,7 +36,7 @@
 | `O` Orphan | 親ノートに一切リンクを追加しない独立ノートとして作成 |
 | `H` Here | カーソル行の直下にリンクを挿入 |
 | `B` Back | 新ノートの Branch に親へのリンクを入れる（逆リンク方式） |
-| `T` Top | 現在ノートの本文先頭（H1直下）にリンクを挿入 |
+| `D` DownLast | 親ノートの Branch 末尾にリンクを挿入（`Enter` は従来どおり先頭寄りに挿入） |
 
 
 ### タイトル変更
