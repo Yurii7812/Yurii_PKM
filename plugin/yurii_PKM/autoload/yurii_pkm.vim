@@ -2737,20 +2737,33 @@ endfunction
 
 function! yurii_pkm#sort_time(...) abort
   let l:descending = a:0 >= 1 ? a:1 : 0
-  let l:branch = s:find_section_line('branch')
-  if l:branch <= 0
-    echo 'Branch section not found'
-    return
+  let l:line1 = a:0 >= 2 ? a:2 : 0
+  let l:line2 = a:0 >= 3 ? a:3 : 0
+  let l:has_range = a:0 >= 4 ? a:4 : 0
+
+  if l:has_range > 0 && l:line1 > 0 && l:line2 >= l:line1
+    let l:start = l:line1
+    let l:end = l:line2
+    let l:scope = 'selected range'
+  else
+    let l:down = s:find_section_line('down')
+    if l:down <= 0
+      echo 'Down section not found'
+      return
+    endif
+    let l:back = s:find_section_line('back')
+    let l:start = l:down + 1
+    let l:end = l:back > l:down ? l:back - 1 : line('$')
+    let l:scope = 'Down links'
   endif
-  let l:back = s:find_section_line('back')
-  let l:end = l:back > l:branch ? l:back - 1 : line('$')
-  if l:end <= l:branch
-    echo 'No Branch links to sort'
+
+  if l:end < l:start
+    echo 'No links to sort'
     return
   endif
 
   let l:entries = []
-  for lnum in range(l:branch + 1, l:end)
+  for lnum in range(l:start, l:end)
     let l:line = getline(lnum)
     if l:line =~# s:link_pat
       call add(l:entries, {
@@ -2763,7 +2776,7 @@ function! yurii_pkm#sort_time(...) abort
   endfor
 
   if len(l:entries) <= 1
-    echo 'No Branch links to sort'
+    echo 'No links to sort'
     return
   endif
 
@@ -2773,14 +2786,14 @@ function! yurii_pkm#sort_time(...) abort
   endif
 
   let l:i = 0
-  for lnum in range(l:branch + 1, l:end)
+  for lnum in range(l:start, l:end)
     if getline(lnum) =~# s:link_pat
       call setline(lnum, l:entries[l:i].line)
       let l:i += 1
     endif
   endfor
 
-  echo 'Branch links sorted by time' . (l:descending ? ' (desc)' : ' (asc)')
+  echo l:scope . ' sorted by time' . (l:descending ? ' (desc)' : ' (asc)')
 endfunction
 
 " ---------------------------------------------------------------------------

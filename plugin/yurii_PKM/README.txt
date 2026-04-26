@@ -85,8 +85,8 @@ filetype [N] →    → 新しい filetype を1文字入力（a-z、大文字に
 |------|----------|------|
 | | `:YuriiIndex` | `index.md` を開く |
 | | `:SortYomi` | Branch セクションを読み仮名順にソート（`sort_yomi.py` 経由） |
-| | `:SortTime` | Branch セクションのリンク行を時刻（YAML `time:` → ファイル更新時刻）で昇順ソート |
-| | `:SortTime!` | Branch セクションのリンク行を時刻の降順（新しい順）でソート |
+| | `:SortTime` | 範囲選択がある場合は選択範囲のリンク行を、未選択時は Down セクションのリンク行を時刻で昇順ソート |
+| | `:SortTime!` | `:SortTime` と同じ対象を時刻の降順（新しい順）でソート |
 
 ---
 
