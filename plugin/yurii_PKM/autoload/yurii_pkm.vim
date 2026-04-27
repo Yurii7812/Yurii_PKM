@@ -973,6 +973,17 @@ function! s:extract_targets_from_clipboard(text) abort
   return l:targets
 endfunction
 
+function! s:is_filename_target(target) abort
+  let l:t = trim(a:target)
+  if empty(l:t)
+    return 0
+  endif
+  if l:t =~# '\v^\w\+://'
+    return 0
+  endif
+  return l:t =~# '\v(^|[\\/])[^\\/]+\.[A-Za-z0-9_-]+$'
+endfunction
+
 function! s:existing_title_for_target(target) abort
   let l:path = yurii_pkm#resolve_link(a:target)
   if filereadable(l:path) && s:is_markdown_target(a:target)
@@ -2490,21 +2501,28 @@ function! yurii_pkm#linkify_selection_from_clipboard() abort range
 
   let l:clipboard = s:clipboard_text()
   if empty(l:clipboard)
-    echo 'Error: clipboard is empty'
     return
   endif
 
   let l:targets = s:extract_targets_from_clipboard(l:clipboard)
   if empty(l:targets)
-    echo 'Error: no valid link target in clipboard'
     return
   endif
 
-  let l:target = l:targets[0]
+  let l:target = ''
+  for l:item in l:targets
+    if s:is_filename_target(l:item)
+      let l:target = l:item
+      break
+    endif
+  endfor
+  if empty(l:target)
+    return
+  endif
+
   if l:target =~# '\.md$'
     let l:path = yurii_pkm#resolve_link(l:target)
     if !filereadable(l:path)
-      echo 'Error: not found: ' . l:target
       return
     endif
   endif
