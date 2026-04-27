@@ -2440,6 +2440,15 @@ function! yurii_pkm#linkify_selection_new_note() abort range
     return
   endif
 
+  " 既存ファイル名が選択されている場合はそのままリンク化する
+  " - 非md: [filename.ext](filename.ext)
+  " - md: タイトル(取得できなければ拡張子なしファイル名)をリンク文字列に使う
+  if s:is_filename_target(l:text)
+    let l:link = s:link_from_target(l:text)
+    call s:replace_visual_selection_with_link(l:link, l:is_linewise, l:sline, l:eline, l:scol, l:ecol, l:lines)
+    return
+  endif
+
   let l:target = yurii_pkm#timestamp_filename() . '.md'
   let l:new_file = expand('%:p:h') . s:sep() . l:target
   let l:parent_file = expand('%:t')
@@ -2460,7 +2469,6 @@ function! yurii_pkm#linkify_selection_new_note() abort range
           \ l:parent_link,
           \ '',
           \ '# BackLink',
-
           \ '[Index](index.md)'
           \ ]
     call writefile(l:new_content, l:new_file)
