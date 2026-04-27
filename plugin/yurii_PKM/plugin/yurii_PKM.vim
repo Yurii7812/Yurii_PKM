@@ -136,6 +136,7 @@ vnoremap <nowait> <silent> nf  <Esc><Cmd>call yurii_pkm#visual_new_quick_no_titl
 vnoremap <nowait> <silent> nn  <Esc><Cmd>call yurii_pkm#visual_new_prefix_note('N')<CR>
 vnoremap <nowait> <silent> nk  <Esc><Cmd>call yurii_pkm#visual_new_prefix_note('K')<CR>
 nnoremap <nowait> <silent> na  <Cmd>call yurii_pkm#new_here_typed('A')<CR>
+" ca: クリップボードのリンクを # Up セクションへ追加
 nnoremap <nowait> <silent> ca  <Cmd>call yurii_pkm#add_clipboard_to_branch()<CR>
 nnoremap <nowait> <silent> tt  <Cmd>call yurii_pkm#add_clipboard_to_top()<CR>
 " nt: タイトル変更（空欄から開始）

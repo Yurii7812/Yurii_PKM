@@ -789,6 +789,20 @@ function! s:down_top_insert_line() abort
   return line('$')
 endfunction
 
+" Return insertion end line for # Up section (just before next section header / EOF).
+function! s:up_end_line() abort
+  let l:up = s:find_section_line('up')
+  if l:up <= 0
+    return 0
+  endif
+  for l:i in range(l:up + 1, line('$'))
+    if getline(l:i) =~# '^\s*#\+\s\+'
+      return l:i - 1
+    endif
+  endfor
+  return line('$')
+endfunction
+
 " Backward compatible name
 function! s:branch_end_line() abort
   return s:down_end_line()
@@ -1485,7 +1499,12 @@ function! yurii_pkm#create_note(prefix, title, open_after, insert_mode) abort
   let l:tmpl = yurii_pkm#note_template(a:title, a:prefix)
   if filereadable(l:parent_file)
     let l:parent_link = yurii_pkm#make_link(l:parent_file, l:parent_title)
-    call insert(l:tmpl, l:parent_link, len(l:tmpl) - 1)
+    let l:up_idx = index(l:tmpl, '# Up')
+    if l:up_idx >= 0
+      call insert(l:tmpl, l:parent_link, l:up_idx + 1)
+    else
+      call insert(l:tmpl, l:parent_link, len(l:tmpl) - 1)
+    endif
   endif
   call writefile(l:tmpl, l:file)
 
@@ -1554,7 +1573,7 @@ function! yurii_pkm#new_here_typed(prefix) abort
 endfunction
 
 " ---------------------------------------------------------------------------
-" タイトル入力なし、h/o/b/d選択あり (nf / nn / nk 共通内部実装)
+" タイトル入力なし、o/b/d選択あり (nf / nn / nk 共通内部実装, Enter=cursor)
 
 " ---------------------------------------------------------------------------
 
@@ -1563,7 +1582,7 @@ function! s:new_note_no_title(prefix) abort
   let l:parent_file  = expand('%:t')
   let l:parent_title = yurii_pkm#current_title()
 
-  echon 'mode: (O)rphan (H)ere (B)ack (D)ownLast Enter=down: '
+  echon 'mode: (O)rphan (B)ack (D)ownLast Enter=cursor: '
 
   let l:char = getchar()
   redraw
@@ -1582,12 +1601,12 @@ function! s:new_note_no_title(prefix) abort
 
   if l:mode =~? '^o$'
     let l:no_parent_link = 1
-  elseif l:mode =~? '^h$'
-    let l:insert_at_cursor = 1
   elseif l:mode =~? '^d$'
     let l:insert_at_down_end = 1
   elseif l:mode =~? '^b$'
     let l:reverse_link = 1
+  else
+    let l:insert_at_cursor = 1
   endif
 
   let l:title = yurii_pkm#timestamp_filename()
@@ -1654,6 +1673,7 @@ function! s:new_note_no_title(prefix) abort
           \ '',
           \ '',
           \ '# Up',
+          \ l:parent_link_line,
           \ '# BackLink',
           \ '[Index](index.md)' ]
     let l:cursor_line = 8
@@ -1670,6 +1690,7 @@ function! s:new_note_no_title(prefix) abort
           \ '',
           \ '',
           \ '# Up',
+          \ l:parent_link_line,
           \ '# BackLink',
           \ '[Index](index.md)' ]
     let l:cursor_line = 8
@@ -1801,7 +1822,7 @@ function! s:visual_new_note(prefix, mode) abort
     let l:insert_pos = l:back_idx
     call extend(l:content, l:sel_lines, l:insert_pos)
   else
-    " h / o / Enter モード: 本文に選択テキストを配置
+    " o / Enter モード: 本文に選択テキストを配置
     let l:content = [
           \ '---',
           \ 'time: ' . yurii_pkm#timestamp_yaml(),
@@ -1813,6 +1834,7 @@ function! s:visual_new_note(prefix, mode) abort
     call extend(l:content, l:sel_lines)
     call add(l:content, '')
     call add(l:content, '# Up')
+    call add(l:content, l:parent_link_line)
     call add(l:content, '# BackLink')
     call add(l:content, '[Index](index.md)')
   endif
@@ -1896,7 +1918,7 @@ function! yurii_pkm#visual_new_prefix_note(prefix) abort
 endfunction
 
 function! s:visual_select_mode(prefix) abort
-  echon 'mode: (O)rphan (H)ere (B)ack (D)ownLast Enter=down: '
+  echon 'mode: (O)rphan (B)ack (D)ownLast Enter=cursor: '
 
   let l:char = getchar()
   redraw
@@ -1908,7 +1930,7 @@ function! s:visual_select_mode(prefix) abort
   call s:visual_new_note(a:prefix, l:mode)
 endfunction
 
-" nf用: prefix入力 → h/o/b/d選択
+" nf用: prefix入力 → o/b/d選択（Enter=cursor）
 
 function! yurii_pkm#new_quick_no_title() abort
   echo 'prefix (a-z): '
@@ -1926,7 +1948,7 @@ function! yurii_pkm#new_quick_no_title() abort
   call s:new_note_no_title(toupper(l:ch))
 endfunction
 
-" nn / nk用: prefix固定 → h/o/b/d選択
+" nn / nk用: prefix固定 → o/b/d選択（Enter=cursor）
 
 function! yurii_pkm#new_prefix_note(prefix) abort
   call s:new_note_no_title(a:prefix)
@@ -1936,7 +1958,7 @@ endfunction
 " :NQ - Quick new child (旧 QuickNewChildWithMode に忠実)
 "   1. プレフィックス1文字入力（即時確定）
 "   2. タイトル入力
-"   3. モード選択: (O)rphan / (H)ere / (B)ack / (D)ownLast / Enter=down
+"   3. モード選択: (O)rphan / (B)ack / (D)ownLast / Enter=cursor
 
 " ---------------------------------------------------------------------------
 
@@ -1962,7 +1984,7 @@ function! yurii_pkm#new_quick(args) abort
 
   let l:title = input('title: ', a:args)
 
-  echon "\nmode: (O)rphan (H)ere (B)ack (D)ownLast Enter=down: "
+  echon "\nmode: (O)rphan (B)ack (D)ownLast Enter=cursor: "
 
   let l:raw2 = getchar()
   redraw
@@ -1979,12 +2001,12 @@ function! yurii_pkm#new_quick(args) abort
 
   if l:mode =~? '^o$'
     let l:no_parent_link = 1
-  elseif l:mode =~? '^h$'
-    let l:insert_at_cursor = 1
   elseif l:mode =~? '^d$'
     let l:insert_at_down_end = 1
   elseif l:mode =~? '^b$'
     let l:reverse_link = 1
+  else
+    let l:insert_at_cursor = 1
   endif
 
   if empty(l:title)
@@ -2044,6 +2066,7 @@ function! yurii_pkm#new_quick(args) abort
           \ '',
           \ '',
           \ '# Up',
+          \ l:parent_link_line,
           \ '# BackLink',
           \ '[Index](index.md)' ]
     let l:cursor_line = 8
@@ -2059,6 +2082,7 @@ function! yurii_pkm#new_quick(args) abort
           \ '',
           \ '',
           \ '# Up',
+          \ l:parent_link_line,
           \ '# BackLink',
           \ '[Index](index.md)' ]
     let l:cursor_line = 8
@@ -2258,9 +2282,9 @@ function! yurii_pkm#add_clipboard_to_branch() abort
     return
   endif
 
-  let l:ins = s:down_end_line()
+  let l:ins = s:up_end_line()
   if l:ins <= 0
-    echo 'Error: down section not found'
+    echo 'Error: up section not found'
     return
   endif
   for l:lk in l:links
