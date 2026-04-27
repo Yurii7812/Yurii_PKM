@@ -745,7 +745,9 @@ function! s:find_section_line(name) abort
   return l:found
 endfunction
 
-" Return line number just before 'back' section (for Down append), or 0
+" Return insertion end line for outgoing links.
+" Legacy: if # Down exists, keep using that range.
+" New default: place links just before # BackLink.
 function! s:down_end_line() abort
   let l:down = s:find_section_line('down')
   if l:down > 0
@@ -761,28 +763,29 @@ function! s:down_end_line() abort
 
   let l:back = s:find_section_line('back')
   if l:back > 0
-    call append(l:back - 1, ['', '# Down'])
-    return l:back + 1
+    return l:back - 1
   endif
-  call append(line('$'), ['', '# Down'])
   return line('$')
 endfunction
 
-" Return line number where appending inserts at top of Down section.
-" If Down is missing, create it (before Back if present, otherwise EOF).
+" Return line number where appending inserts at top of outgoing-links area.
+" Legacy: if # Down exists, insert at top of Down.
+" New default: insert just below # Up.
 function! s:down_top_insert_line() abort
   let l:down = s:find_section_line('down')
   if l:down > 0
     return l:down
   endif
 
-  let l:back = s:find_section_line('back')
-  if l:back > 0
-    call append(l:back - 1, ['', '# Down'])
-    return l:back + 1
+  let l:up = s:find_section_line('up')
+  if l:up > 0
+    return l:up
   endif
 
-  call append(line('$'), ['', '# Down'])
+  let l:back = s:find_section_line('back')
+  if l:back > 0
+    return l:back - 1
+  endif
   return line('$')
 endfunction
 
@@ -1126,8 +1129,6 @@ function! yurii_pkm#note_template(title, ...) abort
         \ '',
         \ '',
         \ '# Up',
-        \ '',
-        \ '# Down',
         \ '',
         \ '# BackLink',
 
@@ -1635,7 +1636,6 @@ function! s:new_note_no_title(prefix) abort
           \ '# ' . l:title,
           \ '',
           \ '# Up',
-          \ '# Down',
           \ l:parent_link_line,
           \ '# BackLink',
           \ '[Index](index.md)' ]
@@ -1654,7 +1654,6 @@ function! s:new_note_no_title(prefix) abort
           \ '',
           \ '',
           \ '# Up',
-          \ '# Down',
           \ '# BackLink',
           \ '[Index](index.md)' ]
     let l:cursor_line = 8
@@ -1671,7 +1670,6 @@ function! s:new_note_no_title(prefix) abort
           \ '',
           \ '',
           \ '# Up',
-          \ '# Down',
           \ '# BackLink',
           \ '[Index](index.md)' ]
     let l:cursor_line = 8
@@ -1779,7 +1777,6 @@ function! s:visual_new_note(prefix, mode) abort
             \ '# ' . l:title,
             \ '',
             \ '# Up',
-            \ '# Down',
             \ l:parent_link_line,
             \ '# BackLink',
             \ '[Index](index.md)' ]
@@ -1793,7 +1790,6 @@ function! s:visual_new_note(prefix, mode) abort
             \ '# ' . l:title,
             \ '',
             \ '# Up',
-            \ '# Down',
             \ l:parent_link_line,
             \ '# BackLink',
             \ '',
@@ -1817,7 +1813,6 @@ function! s:visual_new_note(prefix, mode) abort
     call extend(l:content, l:sel_lines)
     call add(l:content, '')
     call add(l:content, '# Up')
-    call add(l:content, '# Down')
     call add(l:content, '# BackLink')
     call add(l:content, '[Index](index.md)')
   endif
@@ -2033,7 +2028,6 @@ function! yurii_pkm#new_quick(args) abort
           \ '# ' . l:title,
           \ '',
           \ '# Up',
-          \ '# Down',
           \ l:parent_link_line,
           \ '# BackLink',
           \ '[Index](index.md)' ]
@@ -2050,7 +2044,6 @@ function! yurii_pkm#new_quick(args) abort
           \ '',
           \ '',
           \ '# Up',
-          \ '# Down',
           \ '# BackLink',
           \ '[Index](index.md)' ]
     let l:cursor_line = 8
@@ -2066,7 +2059,6 @@ function! yurii_pkm#new_quick(args) abort
           \ '',
           \ '',
           \ '# Up',
-          \ '# Down',
           \ '# BackLink',
           \ '[Index](index.md)' ]
     let l:cursor_line = 8
@@ -2417,6 +2409,7 @@ function! yurii_pkm#linkify_selection_new_note() abort range
   let l:new_file = expand('%:p:h') . s:sep() . l:target
   let l:parent_file = expand('%:t')
   let l:parent_title = yurii_pkm#current_title()
+  let l:parent_link = yurii_pkm#make_link(l:parent_file, l:parent_title)
 
   if !filereadable(l:new_file)
     let l:new_content = [
@@ -2429,7 +2422,7 @@ function! yurii_pkm#linkify_selection_new_note() abort range
           \ '',
           \ '# Up',
           \ '',
-          \ '# Down',
+          \ l:parent_link,
           \ '',
           \ '# BackLink',
 
@@ -2605,19 +2598,6 @@ function! yurii_pkm#at_add() abort
       continue
     endif
 
-    if l:down_idx < 0
-      if l:back_idx < len(l:lines)
-        call insert(l:lines, '', l:back_idx)
-        call insert(l:lines, '# Down', l:back_idx + 1)
-        let l:down_idx = l:back_idx + 1
-        let l:back_idx += 2
-      else
-        call add(l:lines, '')
-        call add(l:lines, '# Down')
-        let l:down_idx = len(l:lines) - 1
-      endif
-    endif
-
     if l:back_idx >= len(l:lines)
       call add(l:lines, '')
       call add(l:lines, '# BackLink')
@@ -2625,7 +2605,11 @@ function! yurii_pkm#at_add() abort
       let l:back_idx = len(l:lines) - 2
     endif
 
-    call insert(l:lines, l:new_link, l:down_idx + 1)
+    if l:down_idx >= 0
+      call insert(l:lines, l:new_link, l:down_idx + 1)
+    else
+      call insert(l:lines, l:new_link, l:back_idx)
+    endif
     call writefile(l:lines, l:target_fp)
     call s:run_update_one_for(l:target_fp)
     let l:added += 1
