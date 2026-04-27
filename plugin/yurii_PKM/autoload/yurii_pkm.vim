@@ -2464,10 +2464,10 @@ function! yurii_pkm#linkify_selection_new_note() abort range
           \ '',
           \ '# ' . l:text,
           \ '',
+          \ '',
+          \ '',
           \ '# Up',
-          \ '',
           \ l:parent_link,
-          \ '',
           \ '# BackLink',
           \ '[Index](index.md)'
           \ ]
