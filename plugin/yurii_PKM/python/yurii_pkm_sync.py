@@ -181,20 +181,8 @@ def remove_section(lines: list[str], name: str) -> list[str]:
 def ensure_sections(lines: list[str]) -> list[str]:
     if find_section(lines, "up")[0] < 0:
         lines = list(lines) + ["# Up"]
-    if find_section(lines, "down")[0] < 0:
-        lines = list(lines) + ["", "# Down"]
     if find_section(lines, "backlink")[0] < 0:
-        down_start, down_end = find_section(lines, "down")
-        down_is_last_empty_section = (
-            down_start >= 0
-            and down_end == len(lines)
-            and len(lines[down_start + 1:down_end]) == 0
-        )
-
-        if down_is_last_empty_section:
-            lines = list(lines) + ["# BackLink"]
-        else:
-            lines = list(lines) + ["", "# BackLink"]
+        lines = list(lines) + ["", "# BackLink"]
 
     return lines
 
@@ -504,14 +492,13 @@ def update_titles_in_file(path: Path) -> bool:
             result.append(line)
             continue
 
-        m = re.match(r'^(\[([^\]]+)\]\(([^)]+)\))(.*)', line)
+        m = re.match(r'^\s*(\[([^\]]+)\]\(([^)]+)\))\s*$', line)
         if not m:
             result.append(line)
             continue
 
         link_text = m.group(2)
         target_text = m.group(3)
-        suffix = m.group(4)
 
         if link_text != Path(target_text).stem:
             # 手動で付けた表示名は保持（stem一致のみ自動更新対象）
@@ -537,7 +524,9 @@ def update_titles_in_file(path: Path) -> bool:
 
         title = get_title(target)
         text = title if title else Path(target_text).stem
-        new_line = f"[{text}]({target_text}){suffix}"
+        prefix_ws = re.match(r'^\s*', line).group(0)
+        suffix_ws = re.search(r'\s*$', line).group(0)
+        new_line = f"{prefix_ws}[{text}]({target_text}){suffix_ws}"
         if new_line != line:
             modified = True
             line = new_line
@@ -558,26 +547,23 @@ def iter_notes(root: Path) -> Iterable[Path]:
             yield path
 
 
-def build_up(parent_paths: list[Path], note_path: Path) -> list[str]:
-    from_dir = note_path.parent
-    deduped_parents: list[Path] = []
-    seen: set[Path] = set()
-    for parent in parent_paths:
-        rp = parent.resolve()
-        if rp == note_path.resolve() or rp in seen:
+def up_targets(lines: list[str], note_path: Path) -> set[Path]:
+    targets: set[Path] = set()
+    for _, target in parse_links(section_content(lines, "up")):
+        if "\x00" in target:
             continue
-        seen.add(rp)
-        deduped_parents.append(rp)
-    return [make_link_line(p, get_title(p), from_dir) for p in deduped_parents]
+        resolved = (note_path.parent / target).resolve()
+        if is_markdown_file(resolved):
+            targets.add(resolved)
+    return targets
 
 
 def update_up_sections(root: Path) -> int:
-    """Scan all notes; write Up from Down links and BackLink from body links."""
+    """Scan all notes; rebuild BackLink from body links."""
 
     root = root.resolve()
     all_paths = list(iter_notes(root))
 
-    children_of: dict[Path, list[Path]] = {}
     backlinks_children_of: dict[Path, list[Path]] = {}
     lines_map: dict[Path, list[str]] = {}
 
@@ -586,43 +572,21 @@ def update_up_sections(root: Path) -> int:
         if p.name != 'index.md' and not is_expand_generated_t_note(p, lines):
             lines = ensure_sections(lines)
         lines_map[p] = lines
-        kids: list[Path] = []
         body_kids: list[Path] = []
-        seen: set[Path] = set()
         body_seen: set[Path] = set()
-
-        for _, target in outbound_links_from_down(lines):
-            if '\x00' in target:
-                continue
-            resolved = (p.parent / target).resolve()
-            if not is_markdown_file(resolved):
-                continue
-            if resolved in seen:
-                continue
-            seen.add(resolved)
-            kids.append(resolved)
         for _, target in outbound_links_for_backlink(lines):
             if '\x00' in target:
                 continue
             resolved = (p.parent / target).resolve()
             if not is_markdown_file(resolved):
                 continue
-            # If the same link already exists in Down, keep it only as a Down link.
-            if resolved in seen:
-                continue
             if resolved in body_seen:
                 continue
             body_seen.add(resolved)
             body_kids.append(resolved)
-        children_of[p] = kids
         backlinks_children_of[p] = body_kids
 
-    parents_of: dict[Path, list[Path]] = {p: [] for p in all_paths}
     backlinks_parents_of: dict[Path, list[Path]] = {p: [] for p in all_paths}
-    for parent, kids in children_of.items():
-        for child in kids:
-            if child in parents_of:
-                parents_of[child].append(parent)
     for parent, kids in backlinks_children_of.items():
         for child in kids:
             if child in backlinks_parents_of:
@@ -636,13 +600,11 @@ def update_up_sections(root: Path) -> int:
         elif is_expand_generated_t_note(p, lines):
             new_lines = lines
         else:
-            parents = sorted(set(parents_of.get(p, [])))
-            new_up = build_up(parents, p)
-            new_lines = replace_section(lines, "up", new_up)
-            down_children = set(children_of.get(p, []))
+            new_lines = lines
+            up_link_targets = up_targets(new_lines, p)
             backlinks_parents = sorted(
                 parent for parent in set(backlinks_parents_of.get(p, []))
-                if parent not in down_children
+                if parent not in up_link_targets
             )
             existing_back = section_content(new_lines, "backlink")
             new_back = build_back(backlinks_parents, p, existing_back)
@@ -784,19 +746,21 @@ def retitle_links(target_file: Path, root: Path, old_title: str, new_title: str)
         out: list[str] = []
 
         for line in lines:
-            def _repl(m: re.Match[str]) -> str:
-                nonlocal modified
-                text = m.group(1)
-                rel_target = m.group(2)
-                if text != old_title:
-                    return m.group(0)
-                resolved = (p.parent / rel_target).resolve()
-                if resolved != target_resolved:
-                    return m.group(0)
-                modified = True
-                return f"[{new_title}]({rel_target})"
-
-            out.append(LINK_RE.sub(_repl, line))
+            m = re.match(r'^(\s*)\[([^\]]+)\]\(([^)]+)\)(\s*)$', line)
+            if not m:
+                out.append(line)
+                continue
+            text = m.group(2)
+            rel_target = m.group(3)
+            if text != old_title:
+                out.append(line)
+                continue
+            resolved = (p.parent / rel_target).resolve()
+            if resolved != target_resolved:
+                out.append(line)
+                continue
+            modified = True
+            out.append(f"{m.group(1)}[{new_title}]({rel_target}){m.group(4)}")
 
         if modified:
             write_lines(p, out)
