@@ -4134,3 +4134,43 @@ function! yurii_pkm#stack_copy_delete_visual() abort range
   execute "'<,'>delete _"
   
 endfunction
+
+function! s:toggle_checkbox_in_line(lnum) abort
+  let l:line = getline(a:lnum)
+  let l:start = 0
+  let l:best = []
+  while 1
+    let l:m = matchstrpos(l:line, '\[[ xX]\]', l:start)
+    if empty(l:m) || l:m[1] < 0
+      break
+    endif
+    if a:lnum == line('.') && col('.') - 1 >= l:m[1] && col('.') - 1 <= l:m[2] - 1
+      let l:best = l:m
+      break
+    endif
+    if empty(l:best)
+      let l:best = l:m
+    endif
+    let l:start = l:m[2]
+  endwhile
+  if empty(l:best)
+    return 0
+  endif
+  let l:mark = strpart(l:best[0], 1, 1)
+  let l:new = (l:mark =~# '[xX]') ? '[ ]' : '[x]'
+  let l:newline = strpart(l:line, 0, l:best[1]) . l:new . strpart(l:line, l:best[2])
+  call setline(a:lnum, l:newline)
+  return 1
+endfunction
+
+function! yurii_pkm#toggle_checkbox(first, last, has_range) abort range
+  if a:has_range
+    for l:lnum in range(a:first, a:last)
+      call s:toggle_checkbox_in_line(l:lnum)
+    endfor
+    return
+  endif
+  if !s:toggle_checkbox_in_line(line('.'))
+    echo 'No checkbox ([ ] / [x]) on this line'
+  endif
+endfunction

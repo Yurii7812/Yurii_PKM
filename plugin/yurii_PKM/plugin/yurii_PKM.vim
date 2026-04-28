@@ -72,6 +72,7 @@ command!          Linkify    call yurii_pkm#linkify_filename_under_cursor()
 command!          LinkifySelection call yurii_pkm#linkify_selection_new_note()
 command!          LinkFixedToggle call yurii_pkm#toggle_fixed_link_text_under_cursor()
 command!          PasteLink  call yurii_pkm#paste_clipboard_link_here()
+command! -range=0 ToggleCheckbox call yurii_pkm#toggle_checkbox(<line1>, <line2>, <range>)
 command!          SortYomi   call yurii_pkm#sort_yomi()
 command! -range=0 -bang SortTime call yurii_pkm#sort_time(<bang>0, <line1>, <line2>, <range>)
 command!          YuriiIndex call yurii_pkm#open_index()
@@ -156,6 +157,8 @@ nnoremap <silent> p  "+p
 nnoremap <silent> gp <Cmd>call yurii_pkm#paste_charwise()<CR>
 nnoremap <silent> \l        <Cmd>call yurii_pkm#linkify_filename_under_cursor()<CR>
 xnoremap <silent> \l        :<C-u>call yurii_pkm#linkify_selection_new_note()<CR>
+nnoremap <nowait> <silent> mx  <Cmd>ToggleCheckbox<CR>
+xnoremap <nowait> <silent> mx  :<C-u>'<,'>ToggleCheckbox<CR>
 nnoremap <silent> \L        <Cmd>call yurii_pkm#toggle_fixed_link_text_under_cursor()<CR>
 nnoremap <silent> \p        <Cmd>call yurii_pkm#paste_clipboard_link_here()<CR>
 xnoremap <silent> \p        :<C-u>call yurii_pkm#linkify_selection_from_clipboard()<CR>
@@ -278,7 +281,7 @@ function! s:setup_conceal() abort
   silent! syntax clear yuriiConcealClose
 
   " リンク全体は region で保持し、見える本文だけを水色にする
-  syntax region yuriiLinkRegion start=/\[/ end=/\](\([^)\n]\+\))/ keepend oneline contains=yuriiLinkText,yuriiConcealOpen,yuriiConcealClose
+  syntax region yuriiLinkRegion start=/\[\ze[^\]\n]\+\](\([^)\n]\+\))/ end=/\](\([^)\n]\+\))/ keepend oneline contains=yuriiLinkText,yuriiConcealOpen,yuriiConcealClose
   syntax match yuriiLinkText /\%(\[\)\@<=[^\]\n]\+\ze\](\([^)\n]\+\))/ contained
   let l:link_color_gui = get(g:, 'yurii_pkm_link_color_gui', '#66CCFF')
   let l:link_color_cterm = get(g:, 'yurii_pkm_link_color_cterm', '81')
