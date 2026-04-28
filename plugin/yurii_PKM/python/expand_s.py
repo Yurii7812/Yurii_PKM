@@ -36,6 +36,11 @@ def is_section_header(text: str, name: str) -> bool:
     return bare_section_name(text) == name.lower()
 
 
+def is_any_section_header(text: str, names: tuple[str, ...]) -> bool:
+    section = bare_section_name(text)
+    return section in {name.lower() for name in names}
+
+
 def is_markdown_file(path: Path) -> bool:
     return path.suffix.lower() == '.md'
 
@@ -65,7 +70,7 @@ def split_note(path: Path) -> tuple[str, list[str]]:
     2. 先頭付近の H1
     3. 本文最初の非空行をタイトル扱い
 
-    Back セクション以降は本文に含めない。
+    Up / BackLink / Back セクション以降は本文に含めない。
     Branch 見出し単独行は無視する。
     """
     lines = read_lines(path)
@@ -116,7 +121,7 @@ def split_note(path: Path) -> tuple[str, list[str]]:
             in_fence = not in_fence
             body.append(line)
             continue
-        if not in_fence and is_section_header(stripped, 'back'):
+        if not in_fence and is_any_section_header(stripped, ('up', 'backlink', 'back')):
             break
         if not in_fence and is_section_header(stripped, 'branch'):
             continue
