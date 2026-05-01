@@ -281,8 +281,8 @@ function! s:setup_conceal() abort
   silent! syntax clear yuriiConcealClose
 
   " リンク全体は region で保持し、見える本文だけを水色にする
-  syntax region yuriiLinkRegion start=/\[\ze[^\]\n]\+\](\([^)\n]\+\))/ end=/\](\([^)\n]\+\))/ keepend oneline contains=yuriiLinkText,yuriiConcealOpen,yuriiConcealClose
-  syntax match yuriiLinkText /\%(\[\)\@<=[^\]\n]\+\ze\](\([^)\n]\+\))/ contained
+  syntax region yuriiLinkRegion start=/\[\ze[^\] \n][^\]\n]*\](\([^)\n]\+\))/ end=/\](\([^)\n]\+\))/ keepend oneline contains=yuriiLinkText,yuriiConcealOpen,yuriiConcealClose
+  syntax match yuriiLinkText /\%(\[\)\@<=[^\] \n][^\]\n]*\ze\](\([^)\n]\+\))/ contained
   let l:link_color_gui = get(g:, 'yurii_pkm_link_color_gui', '#66CCFF')
   let l:link_color_cterm = get(g:, 'yurii_pkm_link_color_cterm', '81')
   execute 'highlight yuriiLinkText term=underline cterm=underline gui=underline ctermfg=' . l:link_color_cterm . ' guifg=' . l:link_color_gui
@@ -291,9 +291,11 @@ function! s:setup_conceal() abort
   syntax match yuriiConcealOpen /\[/ contained conceal
   syntax match yuriiConcealClose /\](\([^)\n]\+\))/ contained conceal
 
-  " エラー強調を無効化（_ や -> が赤くなるのを防ぐ）
-  highlight clear markdownError
-  highlight clear htmlError
+  " エラー強調を無効化（[] の直後にリンクがある場合などの赤表示を防ぐ）
+  highlight default link markdownError Normal
+  highlight default link htmlError Normal
+  highlight! link markdownError Normal
+  highlight! link htmlError Normal
 endfunction
 
 " ---------------------------------------------------------------------------
