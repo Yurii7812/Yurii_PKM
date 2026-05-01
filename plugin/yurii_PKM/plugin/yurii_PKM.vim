@@ -279,6 +279,8 @@ function! s:setup_conceal() abort
   silent! syntax clear yuriiLinkText
   silent! syntax clear yuriiConcealOpen
   silent! syntax clear yuriiConcealClose
+  silent! syntax clear yuriiEmptyBracket
+  silent! syntax clear yuriiCheckboxBracket
 
   " リンク全体は region で保持し、見える本文だけを水色にする
   syntax region yuriiLinkRegion start=/\[\ze[^\] \n][^\]\n]*\](\([^)\n]\+\))/ end=/\](\([^)\n]\+\))/ keepend oneline contains=yuriiLinkText,yuriiConcealOpen,yuriiConcealClose
@@ -290,6 +292,10 @@ function! s:setup_conceal() abort
   " [ と ](xxx) を隠して、リンク本文だけ見せる
   syntax match yuriiConcealOpen /\[/ contained conceal
   syntax match yuriiConcealClose /\](\([^)\n]\+\))/ contained conceal
+  syntax match yuriiEmptyBracket /\[\]/ containedin=ALL
+  syntax match yuriiCheckboxBracket /\[ \]/ containedin=ALL
+  highlight default link yuriiEmptyBracket Normal
+  highlight default link yuriiCheckboxBracket Normal
 
   " エラー強調を無効化（[] の直後にリンクがある場合などの赤表示を防ぐ）
   highlight default link markdownError Normal
