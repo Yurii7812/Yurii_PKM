@@ -291,9 +291,11 @@ function! s:setup_conceal() abort
   syntax match yuriiConcealOpen /\[/ contained conceal
   syntax match yuriiConcealClose /\](\([^)\n]\+\))/ contained conceal
 
-  " エラー強調を無効化（_ や -> が赤くなるのを防ぐ）
-  highlight clear markdownError
-  highlight clear htmlError
+  " エラー強調を無効化（[] の直後にリンクがある場合などの赤表示を防ぐ）
+  highlight default link markdownError Normal
+  highlight default link htmlError Normal
+  highlight! link markdownError Normal
+  highlight! link htmlError Normal
 endfunction
 
 " ---------------------------------------------------------------------------
