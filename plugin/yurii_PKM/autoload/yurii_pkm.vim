@@ -1701,8 +1701,7 @@ function! s:new_note_no_title(prefix) abort
           \ '[Index](index.md)' ]
     let l:cursor_line = 8
   elseif l:is_k
-    " nk の h/Enter/o モード: 空行1つ、body なし
-    " # title / (空) / Back / [index]
+    " nk の h/Enter/o モード: 見出しのみ作成
     let l:content = [
           \ '---',
           \ 'time: ' . yurii_pkm#timestamp_yaml(),
@@ -1711,13 +1710,10 @@ function! s:new_note_no_title(prefix) abort
           \ '',
           \ '# ' . l:title,
           \ '',
-          \ '',
-          \ '',
           \ '# Up',
-          \ l:parent_link_line,
           \ '# BackLink',
           \ '[Index](index.md)' ]
-    let l:cursor_line = 8
+    let l:cursor_line = 7
   else
     " nn/nf の h/Enter/o モード: 従来どおり
     let l:content = [
@@ -1839,7 +1835,6 @@ function! s:visual_new_note(prefix, mode) abort
             \ '# ' . l:title,
             \ '',
             \ '# Up',
-            \ l:parent_link_line,
             \ '# BackLink',
             \ '[Index](index.md)' ]
     else
