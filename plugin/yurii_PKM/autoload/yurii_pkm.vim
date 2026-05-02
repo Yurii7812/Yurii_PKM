@@ -831,6 +831,15 @@ function! s:in_back_section(lnum) abort
   return a:lnum >= l:back + 1
 endfunction
 
+function! s:in_up_section(lnum) abort
+  let l:up = s:find_section_line('up')
+  if l:up <= 0
+    return 0
+  endif
+  let l:up_end = s:up_end_line()
+  return a:lnum >= l:up + 1 && a:lnum <= l:up_end
+endfunction
+
 function! s:find_reciprocal_link_pos(target_path, source_name) abort
   if !filereadable(a:target_path)
     return [0, 0]
@@ -1073,10 +1082,11 @@ function! yurii_pkm#open_link_under_cursor() abort
   endif
   let l:source_name = expand('%:t')
   let l:from_back = s:in_back_section(line('.'))
+  let l:from_up = s:in_up_section(line('.'))
   if &modified | silent write | endif
   call yurii_pkm#push_history()
   silent! execute 'edit ' . fnameescape(l:path)
-  if l:from_back
+  if l:from_back || l:from_up
     let l:pos = s:find_reciprocal_link_pos(l:path, l:source_name)
     if get(l:pos, 0, 0) > 0
       call cursor(l:pos[0], l:pos[1])
