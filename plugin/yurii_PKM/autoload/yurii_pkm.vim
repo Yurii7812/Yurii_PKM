@@ -1598,6 +1598,18 @@ endfunction
 
 " ---------------------------------------------------------------------------
 
+
+function! s:trim_blank_edges(lines) abort
+  let l:out = copy(a:lines)
+  while !empty(l:out) && trim(l:out[0]) ==# ''
+    call remove(l:out, 0)
+  endwhile
+  while !empty(l:out) && trim(l:out[-1]) ==# ''
+    call remove(l:out, -1)
+  endwhile
+  return l:out
+endfunction
+
 function! s:new_note_no_title(prefix) abort
   let l:parent_line  = line('.')
   let l:parent_file  = expand('%:t')
@@ -1844,20 +1856,45 @@ function! s:visual_new_note(prefix, mode) abort
     call extend(l:content, l:sel_lines, l:insert_pos)
   else
     " o / Enter モード: 本文に選択テキストを配置
-    let l:content = [
-          \ '---',
-          \ 'time: ' . yurii_pkm#timestamp_yaml(),
-          \ 'title: ' . l:title,
-          \ '---',
-          \ '',
-          \ '# ' . l:title,
-          \ '' ]
-    call extend(l:content, l:sel_lines)
-    call add(l:content, '')
-    call add(l:content, '# Up')
-    call add(l:content, l:parent_link_line)
-    call add(l:content, '# BackLink')
-    call add(l:content, '[Index](index.md)')
+    if l:is_k
+      let l:content = [
+            \ '---',
+            \ 'time: ' . yurii_pkm#timestamp_yaml(),
+            \ 'title: ' . l:title,
+            \ '---',
+            \ '',
+            \ '# ' . l:title,
+            \ '' ]
+      let l:k_lines = s:trim_blank_edges(l:sel_lines)
+      if empty(l:k_lines)
+        call add(l:content, '\\ ここにリンクを書く。')
+      else
+        let l:k_lines = filter(copy(l:k_lines), 'v:val !~# ''^\[Index\](index\.md)$''')
+        if empty(l:k_lines)
+          call add(l:content, '\\ ここにリンクを書く。')
+        else
+          call extend(l:content, l:k_lines)
+        endif
+      endif
+      call add(l:content, '# Up')
+      call add(l:content, '# BackLink')
+      call add(l:content, '[Index](index.md)')
+    else
+      let l:content = [
+            \ '---',
+            \ 'time: ' . yurii_pkm#timestamp_yaml(),
+            \ 'title: ' . l:title,
+            \ '---',
+            \ '',
+            \ '# ' . l:title,
+            \ '' ]
+      call extend(l:content, l:sel_lines)
+      call add(l:content, '')
+      call add(l:content, '# Up')
+      call add(l:content, l:parent_link_line)
+      call add(l:content, '# BackLink')
+      call add(l:content, '[Index](index.md)')
+    endif
   endif
 
   call writefile(l:content, l:file)
@@ -2308,6 +2345,50 @@ function! yurii_pkm#add_clipboard_to_branch() abort
     echo 'Error: up section not found'
     return
   endif
+  for l:lk in l:links
+    call append(l:ins, l:lk)
+    let l:ins += 1
+  endfor
+  silent write
+endfunction
+
+
+function! yurii_pkm#add_clipboard_before_up() abort
+  let l:clipboard = s:clipboard_text()
+  if empty(l:clipboard)
+    echo 'Error: clipboard is empty'
+    return
+  endif
+
+  let l:links = []
+  for l:raw in split(l:clipboard, "\n")
+    let l:target = s:extract_target(l:raw)
+    if empty(l:target)
+      continue
+    endif
+    let l:path = yurii_pkm#resolve_link(l:target)
+    if !filereadable(l:path)
+      echo 'Warning: not found: ' . l:target
+      continue
+    endif
+    let l:link = s:link_from_target(l:target)
+    if !empty(l:link)
+      call add(l:links, l:link)
+    endif
+  endfor
+
+  if empty(l:links)
+    echo 'Error: no valid links in clipboard'
+    return
+  endif
+
+  let l:up = s:find_section_line('up')
+  if l:up <= 0
+    echo 'Error: up section not found'
+    return
+  endif
+
+  let l:ins = l:up - 1
   for l:lk in l:links
     call append(l:ins, l:lk)
     let l:ins += 1
