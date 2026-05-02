@@ -1863,7 +1863,8 @@ function! s:visual_new_note(prefix, mode) abort
             \ 'title: ' . l:title,
             \ '---',
             \ '',
-            \ '# ' . l:title ]
+            \ '# ' . l:title,
+            \ '' ]
       let l:k_lines = s:trim_blank_edges(l:sel_lines)
       if empty(l:k_lines)
         call add(l:content, '\\ ここにリンクを書く。')
