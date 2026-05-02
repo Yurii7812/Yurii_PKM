@@ -558,6 +558,14 @@ def up_targets(lines: list[str], note_path: Path) -> set[Path]:
     return targets
 
 
+def build_single_up(parent_paths: list[Path], note_path: Path) -> list[str]:
+    """Build Up section content from parent paths (single Up only)."""
+    if not parent_paths:
+        return []
+    parent = sorted(set(p.resolve() for p in parent_paths))[0]
+    return [make_link_line(parent, get_title(parent), note_path.parent)]
+
+
 def update_up_sections(root: Path) -> int:
     """Scan all notes; rebuild BackLink from body links."""
 
@@ -601,6 +609,9 @@ def update_up_sections(root: Path) -> int:
             new_lines = lines
         else:
             new_lines = lines
+            parent_candidates = backlinks_parents_of.get(p, [])
+            new_up = build_single_up(parent_candidates, p)
+            new_lines = replace_section(new_lines, "up", new_up)
             up_link_targets = up_targets(new_lines, p)
             backlinks_parents = sorted(
                 parent for parent in set(backlinks_parents_of.get(p, []))
