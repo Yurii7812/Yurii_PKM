@@ -790,6 +790,14 @@ function! s:down_top_insert_line() abort
 endfunction
 
 " Return insertion end line for # Up section (just before next section header / EOF).
+function! s:before_up_line() abort
+  let l:up = s:find_section_line('up')
+  if l:up > 0
+    return l:up - 1
+  endif
+  return s:down_end_line()
+endfunction
+
 function! s:up_end_line() abort
   let l:up = s:find_section_line('up')
   if l:up <= 0
@@ -1657,7 +1665,7 @@ function! s:new_note_no_title(prefix) abort
     if l:insert_at_cursor
       call append(l:parent_line, l:link)
     elseif l:insert_at_down_end
-      let l:ins = s:down_end_line()
+      let l:ins = s:before_up_line()
       call append(l:ins, l:link)
     else
       if a:prefix ==? 'N'
