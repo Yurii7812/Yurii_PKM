@@ -1598,6 +1598,18 @@ endfunction
 
 " ---------------------------------------------------------------------------
 
+
+function! s:trim_blank_edges(lines) abort
+  let l:out = copy(a:lines)
+  while !empty(l:out) && trim(l:out[0]) ==# ''
+    call remove(l:out, 0)
+  endwhile
+  while !empty(l:out) && trim(l:out[-1]) ==# ''
+    call remove(l:out, -1)
+  endwhile
+  return l:out
+endfunction
+
 function! s:new_note_no_title(prefix) abort
   let l:parent_line  = line('.')
   let l:parent_file  = expand('%:t')
@@ -1854,10 +1866,11 @@ function! s:visual_new_note(prefix, mode) abort
             \ '# ' . l:title,
             \ '',
             \ '' ]
-      if empty(l:sel_lines)
+      let l:k_lines = s:trim_blank_edges(l:sel_lines)
+      if empty(l:k_lines)
         call add(l:content, '\\ ここにリンクを書く。')
       else
-        call extend(l:content, l:sel_lines)
+        call extend(l:content, l:k_lines)
       endif
       call add(l:content, '# Up')
       call add(l:content, '# BackLink')
