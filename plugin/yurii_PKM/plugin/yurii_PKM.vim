@@ -63,6 +63,7 @@ command!          CheckPrefix call yurii_pkm#check_missing_prefix_in_current_dir
 command! -nargs=* NF         call yurii_pkm#new_quick(<q-args>)
 command!          NA         call yurii_pkm#new_here_typed('A')
 command! -nargs=* CA         call yurii_pkm#add_clipboard_to_branch()
+command! -nargs=* CU         call yurii_pkm#add_clipboard_before_up()
 command! -nargs=* TT         call yurii_pkm#add_clipboard_to_top()
 command! -nargs=? NT         call yurii_pkm#rename_title(<q-args>)
 command! -nargs=* BC         call yurii_pkm#add_from_clipboard(<f-args>)
@@ -139,6 +140,8 @@ vnoremap <nowait> <silent> nk  <Esc><Cmd>call yurii_pkm#visual_new_prefix_note('
 nnoremap <nowait> <silent> na  <Cmd>call yurii_pkm#new_here_typed('A')<CR>
 " ca: クリップボードのリンクを # Up セクションへ追加
 nnoremap <nowait> <silent> ca  <Cmd>call yurii_pkm#add_clipboard_to_branch()<CR>
+" cu: クリップボードのリンクを # Up の直前に追加
+nnoremap <nowait> <silent> cu  <Cmd>call yurii_pkm#add_clipboard_before_up()<CR>
 nnoremap <nowait> <silent> tt  <Cmd>call yurii_pkm#add_clipboard_to_top()<CR>
 " nt: タイトル変更（空欄から開始）
 nnoremap <nowait> <silent> nt  <Cmd>call yurii_pkm#rename_title_with_default('')<CR>
