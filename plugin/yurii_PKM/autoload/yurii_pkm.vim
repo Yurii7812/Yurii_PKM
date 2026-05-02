@@ -1863,14 +1863,17 @@ function! s:visual_new_note(prefix, mode) abort
             \ 'title: ' . l:title,
             \ '---',
             \ '',
-            \ '# ' . l:title,
-            \ '',
-            \ '' ]
+            \ '# ' . l:title ]
       let l:k_lines = s:trim_blank_edges(l:sel_lines)
       if empty(l:k_lines)
         call add(l:content, '\\ ここにリンクを書く。')
       else
-        call extend(l:content, l:k_lines)
+        let l:k_lines = filter(copy(l:k_lines), 'v:val !~# ''^\[Index\](index\.md)$''')
+        if empty(l:k_lines)
+          call add(l:content, '\\ ここにリンクを書く。')
+        else
+          call extend(l:content, l:k_lines)
+        endif
       endif
       call add(l:content, '# Up')
       call add(l:content, '# BackLink')
