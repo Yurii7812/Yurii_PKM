@@ -27,16 +27,17 @@
 ```
 1. prefix (a-z):    → 1文字即時確定（大文字に変換される）
 2. title:           → タイトル文字列を入力（Enter で確定）
-3. mode:            → O=Orphan / B=Back / D=DownLast / Enter=Cursor直下
+3. mode:            → O=Orphan / B=Back / D=DownLast / H=Cursor直下 / Enter=DownLast
 
 ```
 
 | モード | 動作 |
 |--------|------|
-| `Enter`（Cursor直下） | 親ノートのカーソル行直下にリンクを挿入し、作成ノートの `# Up` に親リンクを入れる |
+| `H`（Cursor直下） | 親ノートのカーソル行直下にリンクを挿入し、作成ノートの `# Up` に親リンクを入れる |
 | `O` Orphan | 親ノートに一切リンクを追加しない独立ノートとして作成 |
 | `B` Back | 新ノートの Branch に親へのリンクを入れる（逆リンク方式） |
-| `D` DownLast | 親ノートの Branch 末尾にリンクを挿入（`Enter` はカーソル直下に挿入） |
+| `D` DownLast | 親ノートの `# Up` 見出し直前（Down 末尾）にリンクを挿入 |
+| `Enter` | `D` と同じ（`# Up` 見出し直前に挿入） |
 
 
 ### タイトル変更
