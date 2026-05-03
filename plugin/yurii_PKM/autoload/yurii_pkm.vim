@@ -1602,7 +1602,7 @@ function! yurii_pkm#new_here_typed(prefix) abort
 endfunction
 
 " ---------------------------------------------------------------------------
-" タイトル入力なし、o/b/d/h選択あり (nf / nn / nk 共通内部実装, Enter=DownLast)
+" タイトル入力なし、o/b/h選択あり (nf / nn / nk 共通内部実装, Enter=DownLast)
 
 " ---------------------------------------------------------------------------
 
@@ -1623,7 +1623,7 @@ function! s:new_note_no_title(prefix) abort
   let l:parent_file  = expand('%:t')
   let l:parent_title = yurii_pkm#current_title()
 
-  echon 'mode: (O)rphan (B)ack (D)ownLast (H)=cursor Enter=DownLast: '
+  echon 'mode: (O)rphan (B)ack (H)=cursor Enter=DownLast: '
 
   let l:char = getchar()
   redraw
@@ -1642,8 +1642,6 @@ function! s:new_note_no_title(prefix) abort
 
   if l:mode =~? '^o$'
     let l:no_parent_link = 1
-  elseif l:mode =~? '^d$'
-    let l:insert_at_down_end = 1
   elseif l:mode =~? '^b$'
     let l:reverse_link = 1
   elseif l:mode =~? '^h$'
@@ -1981,7 +1979,7 @@ function! yurii_pkm#visual_new_prefix_note(prefix) abort
 endfunction
 
 function! s:visual_select_mode(prefix) abort
-  echon 'mode: (O)rphan (B)ack (D)ownLast (H)=cursor Enter=DownLast: '
+  echon 'mode: (O)rphan (B)ack (H)=cursor Enter=DownLast: '
 
   let l:char = getchar()
   redraw
@@ -1993,7 +1991,7 @@ function! s:visual_select_mode(prefix) abort
   call s:visual_new_note(a:prefix, l:mode)
 endfunction
 
-" nf用: prefix入力 → o/b/d/h選択（Enter=DownLast）
+" nf用: prefix入力 → o/b/h選択（Enter=DownLast）
 
 function! yurii_pkm#new_quick_no_title() abort
   echo 'prefix (a-z): '
@@ -2011,7 +2009,7 @@ function! yurii_pkm#new_quick_no_title() abort
   call s:new_note_no_title(toupper(l:ch))
 endfunction
 
-" nn / nk用: prefix固定 → o/b/d/h選択（Enter=DownLast）
+" nn / nk用: prefix固定 → o/b/h選択（Enter=DownLast）
 
 function! yurii_pkm#new_prefix_note(prefix) abort
   call s:new_note_no_title(a:prefix)
@@ -2021,7 +2019,7 @@ endfunction
 " :NQ - Quick new child (旧 QuickNewChildWithMode に忠実)
 "   1. プレフィックス1文字入力（即時確定）
 "   2. タイトル入力
-"   3. モード選択: (O)rphan / (B)ack / (D)ownLast / (H)=cursor / Enter=DownLast
+"   3. モード選択: (O)rphan / (B)ack / (H)=cursor / Enter=DownLast
 
 " ---------------------------------------------------------------------------
 
@@ -2047,7 +2045,7 @@ function! yurii_pkm#new_quick(args) abort
 
   let l:title = input('title: ', a:args)
 
-  echon "\nmode: (O)rphan (B)ack (D)ownLast (H)=cursor Enter=DownLast: "
+  echon "\nmode: (O)rphan (B)ack (H)=cursor Enter=DownLast: "
 
   let l:raw2 = getchar()
   redraw
@@ -2064,8 +2062,6 @@ function! yurii_pkm#new_quick(args) abort
 
   if l:mode =~? '^o$'
     let l:no_parent_link = 1
-  elseif l:mode =~? '^d$'
-    let l:insert_at_down_end = 1
   elseif l:mode =~? '^b$'
     let l:reverse_link = 1
   elseif l:mode =~? '^h$'
