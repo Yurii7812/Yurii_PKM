@@ -606,7 +606,7 @@ def update_up_sections(root: Path) -> int:
     all_paths = list(iter_notes(root))
 
     backlinks_children_of: dict[Path, list[Path]] = {}
-    category_children_of: dict[Path, set[Path]] = {}
+    category_notes: set[Path] = set()
     lines_map: dict[Path, list[str]] = {}
 
     for p in all_paths:
@@ -616,8 +616,8 @@ def update_up_sections(root: Path) -> int:
         lines_map[p] = lines
         body_kids: list[Path] = []
         body_seen: set[Path] = set()
-        category_targets = links_just_before_up(lines)
-        cat_kids: set[Path] = set()
+        if links_just_before_up(lines):
+            category_notes.add(p.resolve())
         for _, target in outbound_links_for_backlink(lines):
             if '\x00' in target:
                 continue
@@ -628,21 +628,13 @@ def update_up_sections(root: Path) -> int:
                 continue
             body_seen.add(resolved)
             body_kids.append(resolved)
-            if target in category_targets:
-                cat_kids.add(resolved)
         backlinks_children_of[p] = body_kids
-        category_children_of[p] = cat_kids
 
     backlinks_parents_of: dict[Path, list[Path]] = {p: [] for p in all_paths}
-    category_parents_of: dict[Path, set[Path]] = {p: set() for p in all_paths}
     for parent, kids in backlinks_children_of.items():
         for child in kids:
             if child in backlinks_parents_of:
                 backlinks_parents_of[child].append(parent)
-    for parent, kids in category_children_of.items():
-        for child in kids:
-            if child in category_parents_of:
-                category_parents_of[child].add(parent)
 
     changed = 0
     for p in all_paths:
@@ -666,7 +658,7 @@ def update_up_sections(root: Path) -> int:
                 backlinks_parents,
                 p,
                 existing_back,
-                category_parents=category_parents_of.get(p, set()),
+                category_parents=category_notes,
             )
             new_lines = replace_section(new_lines, "backlink", new_back)
 
