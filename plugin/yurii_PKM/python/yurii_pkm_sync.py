@@ -260,11 +260,17 @@ def outbound_links_for_backlink(lines: list[str]) -> list[tuple[str, str]]:
     return result
 
 
-def sort_back_links(link_lines: list[str], from_dir: Path, include_index: bool = True) -> list[str]:
-    """Sort Back section links into category/note blocks based on target filetype."""
+def sort_back_links(
+    link_lines: list[str],
+    from_dir: Path,
+    include_index: bool = True,
+    category_targets: set[Path] | None = None,
+) -> list[str]:
+    """Sort BackLink links into Category/Note blocks."""
     note_links: list[tuple[datetime, str]] = []
     category_links: list[tuple[datetime, str]] = []
     index_line = "[Index](index.md)"
+    category_targets = category_targets or set()
 
     def sort_datetime(target_path: Path) -> datetime:
         stem = target_path.stem
@@ -309,9 +315,8 @@ def sort_back_links(link_lines: list[str], from_dir: Path, include_index: bool =
             continue
 
         target_path = (from_dir / target).resolve()
-        target_type = get_filetype(target_path)
         dt = sort_datetime(target_path)
-        if target_type == "K":
+        if target_path in category_targets:
             category_links.append((dt, line))
         else:
             note_links.append((dt, line))
@@ -321,11 +326,12 @@ def sort_back_links(link_lines: list[str], from_dir: Path, include_index: bool =
 
     result: list[str] = []
     if category_links:
-        result.append("category:")
+        result.append("Category:")
         result.extend(line for _, line in category_links)
     if note_links:
         if result:
             result.append("")
+            result.append("Note:")
         result.extend(line for _, line in note_links)
     if include_index:
         if result:
@@ -335,7 +341,12 @@ def sort_back_links(link_lines: list[str], from_dir: Path, include_index: bool =
     return result
 
 
-def build_back(parent_paths: list[Path], note_path: Path, existing_lines: list[str]) -> list[str]:
+def build_back(
+    parent_paths: list[Path],
+    note_path: Path,
+    existing_lines: list[str],
+    category_parents: set[Path] | None = None,
+) -> list[str]:
     """Build Back section content from parent paths."""
     from_dir = note_path.parent
     include_index = note_path.name != 'index.md'
@@ -357,7 +368,12 @@ def build_back(parent_paths: list[Path], note_path: Path, existing_lines: list[s
         deduped_parents.append(rp)
 
     raw = [make_link_line(p, get_title(p), from_dir) for p in deduped_parents]
-    result = sort_back_links(raw, from_dir, include_index=include_index)
+    result = sort_back_links(
+        raw,
+        from_dir,
+        include_index=include_index,
+        category_targets={p.resolve() for p in (category_parents or set())},
+    )
 
     if include_index and existing_index and result and result[-1].lower().startswith('[index]'):
         result[-1] = existing_index
@@ -558,6 +574,23 @@ def up_targets(lines: list[str], note_path: Path) -> set[Path]:
     return targets
 
 
+
+
+def links_just_before_up(lines: list[str]) -> set[str]:
+    """Return link targets present on the non-empty line immediately before # Up."""
+    up_start, _ = find_section(lines, "up")
+    if up_start <= 0:
+        return set()
+
+    i = up_start - 1
+    while i >= 0 and lines[i].strip() == "":
+        i -= 1
+    if i < 0:
+        return set()
+
+    return {target for _, target in LINK_RE.findall(lines[i])}
+
+
 def build_single_up(parent_paths: list[Path], note_path: Path) -> list[str]:
     """Build Up section content from parent paths (single Up only)."""
     if not parent_paths:
@@ -573,6 +606,7 @@ def update_up_sections(root: Path) -> int:
     all_paths = list(iter_notes(root))
 
     backlinks_children_of: dict[Path, list[Path]] = {}
+    category_notes: set[Path] = set()
     lines_map: dict[Path, list[str]] = {}
 
     for p in all_paths:
@@ -582,6 +616,8 @@ def update_up_sections(root: Path) -> int:
         lines_map[p] = lines
         body_kids: list[Path] = []
         body_seen: set[Path] = set()
+        if links_just_before_up(lines):
+            category_notes.add(p.resolve())
         for _, target in outbound_links_for_backlink(lines):
             if '\x00' in target:
                 continue
@@ -618,7 +654,12 @@ def update_up_sections(root: Path) -> int:
                 if parent not in up_link_targets
             )
             existing_back = section_content(new_lines, "backlink")
-            new_back = build_back(backlinks_parents, p, existing_back)
+            new_back = build_back(
+                backlinks_parents,
+                p,
+                existing_back,
+                category_parents=category_notes,
+            )
             new_lines = replace_section(new_lines, "backlink", new_back)
 
         if new_lines != lines:
