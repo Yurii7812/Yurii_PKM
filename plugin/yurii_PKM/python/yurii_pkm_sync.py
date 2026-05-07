@@ -577,18 +577,13 @@ def up_targets(lines: list[str], note_path: Path) -> set[Path]:
 
 
 def links_just_before_up(lines: list[str]) -> set[str]:
-    """Return link targets present on the non-empty line immediately before # Up."""
+    """Return link targets only from the line directly adjacent to # Up."""
     up_start, _ = find_section(lines, "up")
     if up_start <= 0:
         return set()
 
-    i = up_start - 1
-    while i >= 0 and lines[i].strip() == "":
-        i -= 1
-    if i < 0:
-        return set()
-
-    return {target for _, target in LINK_RE.findall(lines[i])}
+    previous_line = lines[up_start - 1]
+    return {target for _, target in LINK_RE.findall(previous_line)}
 
 
 def build_single_up(parent_paths: list[Path], note_path: Path) -> list[str]:
