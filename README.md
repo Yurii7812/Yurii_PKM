@@ -46,6 +46,11 @@ let g:yurii_pkm_root = expand('~/memo')
 ## 推奨設定
 
 ```vim
+" fcitx: Insert を抜けると英語入力、戻ると直前が日本語なら日本語入力へ復元（既定: 1）
+let g:yurii_fcitx_auto_switch = 1
+" 必要なら fcitx コマンドを明示
+let g:yurii_fcitx_remote_cmd = 'fcitx5-remote'
+
 " 保存時 AutoSync（既定: 1）
 let g:yurii_pkm_autosync = 1
 
@@ -60,6 +65,18 @@ let g:yurii_pkm_default_child_prefix = 'C'
 let g:yurii_pkm_default_quick_prefix = 'F'
 let g:yurii_pkm_default_atomic_prefix = 'C'
 ```
+
+---
+
+### fcitx の入力モード自動切り替え
+
+`vimrc_yurii_PKM` では、fcitx の日本語入力中に Insert モードから Normal モードへ戻ると自動で英語入力へ切り替えます。<br>
+そのとき日本語入力だった場合だけ、次に Insert モードへ入ると日本語入力へ戻します。
+
+- `fcitx5-remote` があれば優先して使います。
+- `fcitx5-remote` が無い場合は `fcitx-remote` を使います。
+- 無効化する場合は `let g:yurii_fcitx_auto_switch = 0` を設定してください。
+- コマンドを固定したい場合は `let g:yurii_fcitx_remote_cmd = 'fcitx5-remote'` のように設定してください。
 
 ---
 
