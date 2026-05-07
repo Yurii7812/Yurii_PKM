@@ -918,7 +918,22 @@ function! yurii_pkm#jump_last_link_before_up() abort
   endfor
 
   if l:last_lnum <= 0
-    echo 'No links before Up'
+    let l:up_end = s:up_end_line()
+    if l:up_end > l:up
+      for l:lnum in range(l:up + 1, l:up_end)
+        let l:line = getline(l:lnum)
+        let l:m = matchstrpos(l:line, s:link_pat, 0)
+        if len(l:m) >= 3 && l:m[1] >= 0
+          let l:last_lnum = l:lnum
+          let l:last_col = l:m[1] + 1
+          break
+        endif
+      endfor
+    endif
+  endif
+
+  if l:last_lnum <= 0
+    echo 'No links before Up or in Up'
     return
   endif
 
