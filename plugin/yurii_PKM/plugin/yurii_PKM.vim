@@ -79,6 +79,7 @@ command! -range=0 -bang SortTime call yurii_pkm#sort_time(<bang>0, <line1>, <lin
 command!          YuriiIndex call yurii_pkm#open_index()
 command!          YuriiChooseIndexDir call yurii_pkm#choose_index_root()
 command! -nargs=? ExpandLinks call yurii_pkm#expand_s_under_cursor(<q-args>)
+command!          JumpLastLinkBeforeUp call yurii_pkm#jump_last_link_before_up()
 
 command! -nargs=? ExpandToT  call yurii_pkm#expand_s_under_cursor(<q-args>)
 command! -nargs=? SE         call yurii_pkm#expand_s_under_cursor(<q-args>)
@@ -129,6 +130,7 @@ nnoremap <silent> <S-Tab>  <Cmd>call yurii_pkm#jump_link(0)<CR>
 silent! execute "nnoremap <silent> \<Esc>[Z <Cmd>call yurii_pkm#jump_link(0)<CR>"
 nnoremap <silent> <CR>     <Cmd>call yurii_pkm#open_link_under_cursor()<CR>
 nnoremap <silent> <BS>     <Cmd>call yurii_pkm#go_back()<CR>
+nnoremap <nowait> <silent> bu  <Cmd>call yurii_pkm#jump_last_link_before_up()<CR>
 
 " ノート操作
 nnoremap <nowait> <silent> nf  <Cmd>call yurii_pkm#new_quick_no_title()<CR>

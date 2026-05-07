@@ -894,6 +894,38 @@ function! yurii_pkm#jump_link(forward) abort
   " search() のマッチ先頭 ([) にそのまま止める
 endfunction
 
+function! yurii_pkm#jump_last_link_before_up() abort
+  let l:up = s:find_section_line('up')
+  if l:up <= 0
+    echo 'Up section not found'
+    return
+  endif
+
+  let l:last_lnum = 0
+  let l:last_col = 0
+  for l:lnum in range(1, l:up - 1)
+    let l:line = getline(l:lnum)
+    let l:start = 0
+    while 1
+      let l:m = matchstrpos(l:line, s:link_pat, l:start)
+      if len(l:m) < 3 || l:m[1] < 0
+        break
+      endif
+      let l:last_lnum = l:lnum
+      let l:last_col = l:m[1] + 1
+      let l:start = l:m[2]
+    endwhile
+  endfor
+
+  if l:last_lnum <= 0
+    echo 'No links before Up'
+    return
+  endif
+
+  call cursor(l:last_lnum, l:last_col)
+  normal! zv
+endfunction
+
 function! yurii_pkm#get_link_under_cursor() abort
   let l:line   = getline('.')
   let l:cursor = col('.') - 1
