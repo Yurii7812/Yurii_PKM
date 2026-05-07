@@ -31,3 +31,84 @@ call plug#end()
 
 set background=light
 colorscheme kalisi
+
+" =========================================================
+" fcitx IME auto switch
+" ---------------------------------------------------------
+" Insert モードを抜ける直前に fcitx の日本語入力状態を記録し、
+" Normal モードでは英語入力へ戻します。
+" 日本語入力だった場合だけ、次に Insert モードへ入ると fcitx を再度 ON にします。
+"
+" 無効化したい場合:
+"   let g:yurii_fcitx_auto_switch = 0
+" fcitx コマンドを明示したい場合:
+"   let g:yurii_fcitx_remote_cmd = 'fcitx5-remote'
+" =========================================================
+
+if !exists('g:yurii_fcitx_auto_switch')
+  let g:yurii_fcitx_auto_switch = 1
+endif
+
+function! s:YuriiFcitxRemoteCmd() abort
+  if exists('g:yurii_fcitx_remote_cmd') && !empty(g:yurii_fcitx_remote_cmd)
+    return g:yurii_fcitx_remote_cmd
+  endif
+  if executable('fcitx5-remote')
+    return 'fcitx5-remote'
+  endif
+  if executable('fcitx-remote')
+    return 'fcitx-remote'
+  endif
+  return ''
+endfunction
+
+function! s:YuriiFcitxState() abort
+  let l:cmd = s:YuriiFcitxRemoteCmd()
+  if empty(l:cmd)
+    return ''
+  endif
+  let l:state = trim(system(l:cmd))
+  if v:shell_error != 0
+    return ''
+  endif
+  return l:state
+endfunction
+
+function! s:YuriiFcitxRun(arg) abort
+  let l:cmd = s:YuriiFcitxRemoteCmd()
+  if empty(l:cmd)
+    return
+  endif
+  silent call system(l:cmd . ' ' . a:arg)
+endfunction
+
+function! s:YuriiFcitxInsertLeave() abort
+  if !get(g:, 'yurii_fcitx_auto_switch', 1)
+    return
+  endif
+  let l:state = s:YuriiFcitxState()
+  let b:yurii_fcitx_restore_on_insert = (l:state ==# '2')
+  if b:yurii_fcitx_restore_on_insert
+    call s:YuriiFcitxRun('-c')
+  endif
+endfunction
+
+function! s:YuriiFcitxInsertEnter() abort
+  if !get(g:, 'yurii_fcitx_auto_switch', 1)
+    return
+  endif
+  if get(b:, 'yurii_fcitx_restore_on_insert', 0)
+    call s:YuriiFcitxRun('-o')
+    let b:yurii_fcitx_restore_on_insert = 0
+  endif
+endfunction
+
+augroup yurii_fcitx_auto_switch
+  autocmd!
+  if exists('##InsertLeavePre')
+    autocmd InsertLeavePre * call s:YuriiFcitxInsertLeave()
+  else
+    autocmd InsertLeave * call s:YuriiFcitxInsertLeave()
+  endif
+  autocmd InsertEnter * call s:YuriiFcitxInsertEnter()
+augroup END
