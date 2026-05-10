@@ -176,12 +176,55 @@ def heading_for_depth(depth: int, title: str) -> str:
     return ('#' * level) + ' ' + title
 
 
+def expand_target(target_path: Path, heading_depth: int, expand_depth: int,
+                  active_stack: set[Path]) -> list[str]:
+    """リンク先ノートを、区切り付きの見出し＋本文として展開する。"""
+    out: list[str] = []
+    resolved = target_path.resolve()
+
+    if resolved in active_stack:
+        out.append(heading_for_depth(heading_depth, resolved.stem))
+        out.append('')
+        out.append('_(recursive cycle skipped)_')
+        out.append('')
+        out.append('##')
+        out.append('')
+        return out
+
+    title, nested_body = split_note(resolved)
+    out.append(heading_for_depth(heading_depth, title))
+    out.append('')
+
+    if expand_depth > 0 and nested_body:
+        if expand_depth == 1:
+            out.extend(nested_body)
+        else:
+            next_stack = set(active_stack)
+            next_stack.add(resolved)
+            expanded = expand_body_inline(
+                nested_body,
+                resolved,
+                min(heading_depth + 1, 6),
+                expand_depth - 1,
+                next_stack,
+            )
+            out.extend(expanded)
+
+    # 展開内容後、空行を確保して ## 区切り
+    if out and out[-1].strip() != '':
+        out.append('')
+    out.append('##')
+    out.append('')
+    return out
+
+
 def expand_body_inline(body: list[str], source_path: Path, heading_depth: int,
                        expand_depth: int, active_stack: set[Path]) -> list[str]:
-    """本文を行ごとに走査し、リンク行をその場でインライン展開して返す。
+    """本文を行ごとに走査し、リンクを読みやすく展開して返す。
 
-    - リンクを含む行: リンク先を見出し＋本文に置き換える（行内の他テキストは捨てる）
-    - リンクを含まない行: そのまま出力
+    - 文章中の展開できるリンク: Markdown リンクを表示テキストに戻して文脈を残す
+    - リンクだけの行: 元リンク行を重複表示せず、リンク先だけを展開する
+    - 展開対象外のリンクやリンクを含まない行: そのまま出力する
     - コードフェンス内はリンク展開しない
     """
     out: list[str] = []
@@ -201,63 +244,45 @@ def expand_body_inline(body: list[str], source_path: Path, heading_depth: int,
             out.append(line)
             continue
 
-        # 行内のリンクを探す（text と path のペアで収集）
-        links_in_line: list[tuple[str, Path]] = []
-        for text, target in LINK_RE.findall(line):
-            if '\x00' in target:
-                continue
-            target_path = (source_path.parent / target).resolve()
-            if not is_markdown_file(target_path):
-                continue
-            if not target_path.exists():
-                continue
-            if target_path in seen:
-                continue
-            links_in_line.append((text.strip(), target_path))
+        expanded_targets: list[Path] = []
+        total_links = 0
 
-        if not links_in_line:
-            # リンクなし行: そのまま出力
+        def replace_link(match: re.Match[str]) -> str:
+            nonlocal total_links
+            total_links += 1
+            target = match.group(2)
+            target_path = (source_path.parent / target).resolve()
+            can_expand = (
+                '\x00' not in target
+                and is_markdown_file(target_path)
+                and target_path.exists()
+                and target_path not in seen
+            )
+            if not can_expand:
+                return match.group(0)
+
+            seen.add(target_path)
+            expanded_targets.append(target_path)
+            return match.group(1)
+
+        readable_line = LINK_RE.sub(replace_link, line)
+
+        if not expanded_targets:
+            # 展開対象リンクなし行: そのまま出力
             out.append(line)
             continue
 
-        # リンクあり行: 行内の全リンクをその場で展開
-        for link_text, target_path in links_in_line:
-            seen.add(target_path)
-            resolved = target_path.resolve()
-
-            if resolved in active_stack:
-                out.append(heading_for_depth(heading_depth, resolved.stem))
-                out.append('')
-                out.append('_(recursive cycle skipped)_')
-                out.append('')
-                out.append('##')
-                out.append('')
-                continue
-
-            title, nested_body = split_note(resolved)
-            out.append(heading_for_depth(heading_depth, title))
+        # 展開できたリンクだけで構成された行では、元リンク行を表示すると
+        # 見出しと重複して読みにくい。文中リンクや未展開リンクが残る行だけ、
+        # リンクを表示テキストに戻した文脈行を先に残す。
+        non_link_text = LINK_RE.sub('', line).strip()
+        only_expanded_links = not non_link_text and total_links == len(expanded_targets)
+        if readable_line.strip() and not only_expanded_links:
+            out.append(readable_line)
             out.append('')
 
-            if expand_depth > 0 and nested_body:
-                if expand_depth == 1:
-                    out.extend(nested_body)
-                else:
-                    next_stack = set(active_stack)
-                    next_stack.add(resolved)
-                    expanded = expand_body_inline(
-                        nested_body,
-                        resolved,
-                        min(heading_depth + 1, 6),
-                        expand_depth - 1,
-                        next_stack,
-                    )
-                    out.extend(expanded)
-
-            # 展開内容後、空行を確保して ## 区切り
-            if out and out[-1].strip() != '':
-                out.append('')
-            out.append('##')
-            out.append('')
+        for target_path in expanded_targets:
+            out.extend(expand_target(target_path, heading_depth, expand_depth, active_stack))
 
     return out
 
