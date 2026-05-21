@@ -811,6 +811,31 @@ function! s:up_end_line() abort
   return line('$')
 endfunction
 
+function! s:replace_section(name, new_lines) abort
+  let l:sec = s:find_section_line(a:name)
+  if l:sec <= 0
+    return 0
+  endif
+
+  let l:end = l:sec
+  for l:i in range(l:sec + 1, line('$'))
+    if getline(l:i) =~# '^\s*#\+\s\+'
+      let l:end = l:i - 1
+      break
+    endif
+    let l:end = l:i
+  endfor
+
+  if l:end >= l:sec + 1
+    execute (l:sec + 1) . ',' . l:end . 'delete _'
+  endif
+
+  if !empty(a:new_lines)
+    call append(l:sec, a:new_lines)
+  endif
+  return 1
+endfunction
+
 " Backward compatible name
 function! s:branch_end_line() abort
   return s:down_end_line()
