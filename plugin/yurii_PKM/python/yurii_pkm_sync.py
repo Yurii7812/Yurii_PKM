@@ -589,15 +589,23 @@ def links_just_before_up(lines: list[str]) -> set[str]:
 def build_single_up(
     parent_paths: list[Path],
     note_path: Path,
+    current_up_targets: set[Path] | None = None,
 ) -> list[str]:
     """Build Up section content from parent paths (single Up only).
 
-    Pick the most recently modified parent from candidates.
+    Keep user-selected current Up when it is still a valid parent candidate.
+    Otherwise pick the most recently modified parent from candidates.
     """
     if not parent_paths:
         return []
 
     resolved_parents = sorted(set(p.resolve() for p in parent_paths))
+    current_up_targets = {p.resolve() for p in (current_up_targets or set())}
+
+    keep_current = [p for p in resolved_parents if p in current_up_targets]
+    if keep_current:
+        parent = sorted(keep_current)[0]
+        return [make_link_line(parent, get_title(parent), note_path.parent)]
 
     def mtime_or_min(path: Path) -> float:
         try:
@@ -653,7 +661,12 @@ def update_up_sections(root: Path) -> int:
         else:
             new_lines = lines
             parent_candidates = backlinks_parents_of.get(p, [])
-            new_up = build_single_up(parent_candidates, p)
+            current_up_targets = up_targets(new_lines, p)
+            new_up = build_single_up(
+                parent_candidates,
+                p,
+                current_up_targets=current_up_targets,
+            )
             new_lines = replace_section(new_lines, "up", new_up)
             up_link_targets = up_targets(new_lines, p)
             backlinks_parents = sorted(
