@@ -2390,15 +2390,15 @@ function! yurii_pkm#add_clipboard_to_branch() abort
     return
   endif
 
-  let l:ins = s:up_end_line()
-  if l:ins <= 0
+  let l:up = s:find_section_line('up')
+  if l:up <= 0
     echo 'Error: up section not found'
     return
   endif
-  for l:lk in l:links
-    call append(l:ins, l:lk)
-    let l:ins += 1
-  endfor
+
+  " Up は単一親文脈: クリップボード先頭リンクで Up セクションを置き換える
+  let l:new_up = [l:links[0]]
+  call s:replace_section('up', l:new_up)
   silent write
 endfunction
 
