@@ -811,6 +811,31 @@ function! s:up_end_line() abort
   return line('$')
 endfunction
 
+function! s:replace_section(name, new_lines) abort
+  let l:sec = s:find_section_line(a:name)
+  if l:sec <= 0
+    return 0
+  endif
+
+  let l:end = l:sec
+  for l:i in range(l:sec + 1, line('$'))
+    if getline(l:i) =~# '^\s*#\+\s\+'
+      let l:end = l:i - 1
+      break
+    endif
+    let l:end = l:i
+  endfor
+
+  if l:end >= l:sec + 1
+    execute (l:sec + 1) . ',' . l:end . 'delete _'
+  endif
+
+  if !empty(a:new_lines)
+    call append(l:sec, a:new_lines)
+  endif
+  return 1
+endfunction
+
 " Backward compatible name
 function! s:branch_end_line() abort
   return s:down_end_line()
@@ -2390,15 +2415,15 @@ function! yurii_pkm#add_clipboard_to_branch() abort
     return
   endif
 
-  let l:ins = s:up_end_line()
-  if l:ins <= 0
+  let l:up = s:find_section_line('up')
+  if l:up <= 0
     echo 'Error: up section not found'
     return
   endif
-  for l:lk in l:links
-    call append(l:ins, l:lk)
-    let l:ins += 1
-  endfor
+
+  " Up は単一親文脈: クリップボード先頭リンクで Up セクションを置き換える
+  let l:new_up = [l:links[0]]
+  call s:replace_section('up', l:new_up)
   silent write
 endfunction
 

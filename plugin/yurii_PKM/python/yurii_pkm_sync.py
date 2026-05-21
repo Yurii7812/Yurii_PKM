@@ -586,11 +586,34 @@ def links_just_before_up(lines: list[str]) -> set[str]:
     return {target for _, target in LINK_RE.findall(previous_line)}
 
 
-def build_single_up(parent_paths: list[Path], note_path: Path) -> list[str]:
-    """Build Up section content from parent paths (single Up only)."""
+def build_single_up(
+    parent_paths: list[Path],
+    note_path: Path,
+    current_up_targets: set[Path] | None = None,
+) -> list[str]:
+    """Build Up section content from parent paths (single Up only).
+
+    Keep user-selected current Up when it is still a valid parent candidate.
+    Otherwise pick the most recently modified parent from candidates.
+    """
     if not parent_paths:
         return []
-    parent = sorted(set(p.resolve() for p in parent_paths))[0]
+
+    resolved_parents = sorted(set(p.resolve() for p in parent_paths))
+    current_up_targets = {p.resolve() for p in (current_up_targets or set())}
+
+    keep_current = [p for p in resolved_parents if p in current_up_targets]
+    if keep_current:
+        parent = sorted(keep_current)[0]
+        return [make_link_line(parent, get_title(parent), note_path.parent)]
+
+    def mtime_or_min(path: Path) -> float:
+        try:
+            return path.stat().st_mtime
+        except OSError:
+            return float("-inf")
+
+    parent = max(resolved_parents, key=lambda p: (mtime_or_min(p), str(p)))
     return [make_link_line(parent, get_title(parent), note_path.parent)]
 
 
@@ -601,7 +624,6 @@ def update_up_sections(root: Path) -> int:
     all_paths = list(iter_notes(root))
 
     backlinks_children_of: dict[Path, list[Path]] = {}
-    category_notes: set[Path] = set()
     lines_map: dict[Path, list[str]] = {}
 
     for p in all_paths:
@@ -611,8 +633,6 @@ def update_up_sections(root: Path) -> int:
         lines_map[p] = lines
         body_kids: list[Path] = []
         body_seen: set[Path] = set()
-        if links_just_before_up(lines):
-            category_notes.add(p.resolve())
         for _, target in outbound_links_for_backlink(lines):
             if '\x00' in target:
                 continue
@@ -641,7 +661,12 @@ def update_up_sections(root: Path) -> int:
         else:
             new_lines = lines
             parent_candidates = backlinks_parents_of.get(p, [])
-            new_up = build_single_up(parent_candidates, p)
+            current_up_targets = up_targets(new_lines, p)
+            new_up = build_single_up(
+                parent_candidates,
+                p,
+                current_up_targets=current_up_targets,
+            )
             new_lines = replace_section(new_lines, "up", new_up)
             up_link_targets = up_targets(new_lines, p)
             backlinks_parents = sorted(
@@ -653,7 +678,6 @@ def update_up_sections(root: Path) -> int:
                 backlinks_parents,
                 p,
                 existing_back,
-                category_parents=category_notes,
             )
             new_lines = replace_section(new_lines, "backlink", new_back)
 
