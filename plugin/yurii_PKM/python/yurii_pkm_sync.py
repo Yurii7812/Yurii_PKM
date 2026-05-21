@@ -665,7 +665,6 @@ def update_up_sections(root: Path) -> int:
                 backlinks_parents,
                 p,
                 existing_back,
-                category_parents=category_notes,
             )
             new_lines = replace_section(new_lines, "backlink", new_back)
 
