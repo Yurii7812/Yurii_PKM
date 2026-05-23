@@ -358,7 +358,9 @@ function! s:setup_persistent_undo_for_root(root) abort
         call mkdir(l:fallback, 'p')
       endif
       let l:undo_dir = l:fallback
-      call yurii_pkm#notify('Persistent undo dir could not be created under root; fallback to ~/.vim/undo', 'warn')
+      echohl WarningMsg
+      echom 'yurii_PKM: persistent undo dir could not be created under root; fallback to ~/.vim/undo'
+      echohl None
     endtry
   endif
   execute 'set undodir=' . fnameescape(l:undo_dir)
