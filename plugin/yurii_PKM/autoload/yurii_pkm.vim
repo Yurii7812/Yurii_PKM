@@ -346,9 +346,22 @@ function! s:setup_persistent_undo_for_root(root) abort
   if empty(a:root)
     return
   endif
-  let l:undo_dir = fnamemodify(a:root, ':p') . s:sep() . '.undo'
+  let l:root_abs = fnamemodify(a:root, ':p')
+  let l:root_abs = substitute(l:root_abs, s:sep() . '\+$', '', '')
+  let l:undo_dir = l:root_abs . s:sep() . '.undo'
   if !isdirectory(l:undo_dir)
-    call mkdir(l:undo_dir, 'p')
+    try
+      call mkdir(l:undo_dir, 'p')
+    catch /^Vim\%((\a\+)\)\=:E739/
+      let l:fallback = expand('~/.vim/undo')
+      if !isdirectory(l:fallback)
+        call mkdir(l:fallback, 'p')
+      endif
+      let l:undo_dir = l:fallback
+      echohl WarningMsg
+      echom 'yurii_PKM: persistent undo dir could not be created under root; fallback to ~/.vim/undo'
+      echohl None
+    endtry
   endif
   execute 'set undodir=' . fnameescape(l:undo_dir)
   set undofile
