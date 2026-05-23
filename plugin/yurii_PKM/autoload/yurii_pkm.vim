@@ -2064,6 +2064,11 @@ function! yurii_pkm#visual_new_prefix_note(prefix) abort
 endfunction
 
 function! s:visual_select_mode(prefix) abort
+  if a:prefix ==? 'K'
+    call s:visual_new_note(a:prefix, '')
+    return
+  endif
+
   echon 'mode: (O)rphan (B)ack (H)=cursor Enter=DownLast: '
 
   let l:char = getchar()
@@ -2077,6 +2082,46 @@ function! s:visual_select_mode(prefix) abort
 endfunction
 
 " nf用: prefix入力 → o/b/h選択（Enter=DownLast）
+
+function! s:new_k_note_with_title() abort
+  let l:title = input('title: ')
+  if empty(l:title)
+    echo 'Cancelled'
+    return
+  endif
+
+  let l:fname = yurii_pkm#timestamp_filename() . '.md'
+  let l:dir   = expand('%:p:h')
+  let l:file  = l:dir . s:sep() . l:fname
+  let l:link  = yurii_pkm#make_link(l:fname, l:title)
+
+  let l:ins = s:down_end_line()
+  let l:save_ai = &autoindent
+  let l:save_si = &smartindent
+  setlocal noautoindent nosmartindent
+  call append(l:ins, l:link)
+  let &autoindent = l:save_ai
+  let &smartindent = l:save_si
+
+  let l:content = [
+        \ '---',
+        \ 'time: ' . yurii_pkm#timestamp_yaml(),
+        \ 'title: ' . l:title,
+        \ '---',
+        \ '',
+        \ '# ' . l:title,
+        \ '',
+        \ '# Up',
+        \ '# BackLink',
+        \ '[Index](index.md)' ]
+  call writefile(l:content, l:file)
+
+  silent noautocmd write
+  call s:run_update_one_for(expand('%:p'))
+
+  call cursor(l:ins + 1, 1)
+  redraw | echon 'Created: ' . l:fname
+endfunction
 
 function! yurii_pkm#new_quick_no_title() abort
   echo 'prefix (a-z): '
@@ -2097,6 +2142,10 @@ endfunction
 " nn / nk用: prefix固定 → o/b/h選択（Enter=DownLast）
 
 function! yurii_pkm#new_prefix_note(prefix) abort
+  if a:prefix ==? 'K'
+    call s:new_k_note_with_title()
+    return
+  endif
   call s:new_note_no_title(a:prefix)
 endfunction
 
