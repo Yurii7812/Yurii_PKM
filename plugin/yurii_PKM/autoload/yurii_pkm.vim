@@ -2064,6 +2064,11 @@ function! yurii_pkm#visual_new_prefix_note(prefix) abort
 endfunction
 
 function! s:visual_select_mode(prefix) abort
+  if a:prefix ==? 'K'
+    call s:visual_new_note(a:prefix, '')
+    return
+  endif
+
   echon 'mode: (O)rphan (B)ack (H)=cursor Enter=DownLast: '
 
   let l:char = getchar()
