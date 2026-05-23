@@ -1881,7 +1881,7 @@ endfunction
 "   - 画面（カーソル位置・スクロール）は元のまま動かさない
 " ---------------------------------------------------------------------------
 
-function! s:visual_new_note(prefix, mode) abort
+function! s:visual_new_note(prefix, mode, ...) abort
   " ビジュアル選択の範囲を取得（'< と '> マーク）
   let l:vstart = line("'<")
   let l:vend   = line("'>")
@@ -1896,7 +1896,7 @@ function! s:visual_new_note(prefix, mode) abort
   let l:parent_title = yurii_pkm#current_title()
   let l:dir          = expand('%:p:h')
 
-  let l:title = yurii_pkm#timestamp_filename()
+  let l:title = (a:0 >= 1 && !empty(a:1)) ? a:1 : yurii_pkm#timestamp_filename()
   let l:filetype = toupper(a:prefix)
   let l:no_prefix_name = (l:filetype ==# 'N' || l:filetype ==# 'K')
   let l:fname = l:no_prefix_name ? (l:title . '.md') : (a:prefix . '_' . l:title . '.md')
@@ -2065,7 +2065,12 @@ endfunction
 
 function! s:visual_select_mode(prefix) abort
   if a:prefix ==? 'K'
-    call s:visual_new_note(a:prefix, '')
+    let l:title = input('title: ')
+    if empty(l:title)
+      echo 'Cancelled'
+      return
+    endif
+    call s:visual_new_note(a:prefix, '', l:title)
     return
   endif
 
