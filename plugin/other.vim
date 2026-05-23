@@ -42,13 +42,32 @@ set shiftwidth=2
 " クリップボード
 " =========================================================
 if has('clipboard')
-  set clipboard=unnamedplus
+  if !has('wsl') || get(g:, 'yurii_wsl_use_system_clipboard', 0)
+    set clipboard=unnamedplus
+  endif
 endif
 
 inoremap <C-v> <C-r>+
 vnoremap <C-v> "_d"+P
 nnoremap <C-v> "+p
 vnoremap <C-c> "+y
+
+
+" =========================================================
+" WSL パフォーマンス調整
+" =========================================================
+if has('wsl')
+  " Windows クリップボード同期は Insert 中の体感遅延を起こしやすいので既定OFF
+  let g:yurii_wsl_use_system_clipboard = get(g:, 'yurii_wsl_use_system_clipboard', 0)
+  if !g:yurii_wsl_use_system_clipboard
+    set clipboard=
+  endif
+
+  " 入力中イベントの発火頻度を下げる
+  set updatetime=500
+  set timeoutlen=500
+  set ttimeoutlen=10
+endif
 
 " =========================================================
 " 移動
