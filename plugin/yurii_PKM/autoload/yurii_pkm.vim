@@ -2151,10 +2151,6 @@ endfunction
 " nn / nk用: prefix固定 → o/b/h選択（Enter=DownLast）
 
 function! yurii_pkm#new_prefix_note(prefix) abort
-  if a:prefix ==? 'K'
-    call s:new_k_note_with_title()
-    return
-  endif
   call s:new_note_no_title(a:prefix)
 endfunction
 
