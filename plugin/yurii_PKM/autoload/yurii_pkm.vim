@@ -1737,8 +1737,10 @@ function! s:new_note_no_title(prefix) abort
 
   let l:title = yurii_pkm#timestamp_filename()
   let l:filetype = toupper(a:prefix)
-  let l:no_prefix_name = (l:filetype ==# 'N' || l:filetype ==# 'K')
-  let l:fname = l:no_prefix_name ? (l:title . '.md') : (a:prefix . '_' . l:title . '.md')
+  let l:no_prefix_name = (l:filetype ==# 'N')
+  let l:fname = (l:filetype ==# 'K')
+        \ ? (yurii_pkm#timestamp_filename() . '.md')
+        \ : (l:no_prefix_name ? (l:title . '.md') : (a:prefix . '_' . l:title . '.md'))
   let l:dir   = expand('%:p:h')
   let l:file  = l:dir . s:sep() . l:fname
   let l:link  = yurii_pkm#make_link(l:fname, l:title)
@@ -1898,8 +1900,10 @@ function! s:visual_new_note(prefix, mode, ...) abort
 
   let l:title = (a:0 >= 1 && !empty(a:1)) ? a:1 : yurii_pkm#timestamp_filename()
   let l:filetype = toupper(a:prefix)
-  let l:no_prefix_name = (l:filetype ==# 'N' || l:filetype ==# 'K')
-  let l:fname = l:no_prefix_name ? (l:title . '.md') : (a:prefix . '_' . l:title . '.md')
+  let l:no_prefix_name = (l:filetype ==# 'N')
+  let l:fname = (l:filetype ==# 'K')
+        \ ? (yurii_pkm#timestamp_filename() . '.md')
+        \ : (l:no_prefix_name ? (l:title . '.md') : (a:prefix . '_' . l:title . '.md'))
   let l:file  = l:dir . s:sep() . l:fname
   let l:parent_link_line = yurii_pkm#make_link(l:parent_file, l:parent_title)
   let l:link_to_new      = yurii_pkm#make_link(l:fname, l:title)
@@ -2147,10 +2151,6 @@ endfunction
 " nn / nk用: prefix固定 → o/b/h選択（Enter=DownLast）
 
 function! yurii_pkm#new_prefix_note(prefix) abort
-  if a:prefix ==? 'K'
-    call s:new_k_note_with_title()
-    return
-  endif
   call s:new_note_no_title(a:prefix)
 endfunction
 
