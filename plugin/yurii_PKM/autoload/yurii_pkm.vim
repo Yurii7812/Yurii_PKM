@@ -1258,7 +1258,6 @@ function! yurii_pkm#note_template(title, ...) abort
         \ '',
         \ '# ' . a:title,
         \ '',
-        \ 'Context:',
         \ '',
         \ '',
         \ '# Up',
@@ -1785,7 +1784,6 @@ function! s:new_note_no_title(prefix) abort
           \ '',
           \ '# ' . l:title,
           \ '',
-          \ 'Context:',
           \ '',
           \ '',
           \ '# Up',
@@ -1803,7 +1801,6 @@ function! s:new_note_no_title(prefix) abort
           \ '',
           \ '# ' . l:title,
           \ '',
-          \ 'Context:',
           \ '',
           \ '',
           \ '# Up',
@@ -1820,7 +1817,6 @@ function! s:new_note_no_title(prefix) abort
           \ '',
           \ '# ' . l:title,
           \ '',
-          \ 'Context:',
           \ '',
           \ '',
           \ '# Up',
@@ -1933,7 +1929,6 @@ function! s:visual_new_note(prefix, mode, ...) abort
             \ '',
             \ '# ' . l:title,
             \ '',
-            \ 'Context:',
             \ '',
             \ '',
             \ '# Up',
@@ -1948,7 +1943,6 @@ function! s:visual_new_note(prefix, mode, ...) abort
             \ '',
             \ '# ' . l:title,
             \ '',
-            \ 'Context:',
             \ '',
             \ '',
             \ '# Up',
@@ -1983,7 +1977,6 @@ function! s:visual_new_note(prefix, mode, ...) abort
           call extend(l:content, l:k_lines)
         endif
       endif
-      call add(l:content, 'Context:')
       call add(l:content, '')
       call add(l:content, '')
       call add(l:content, '# Up')
@@ -2000,7 +1993,6 @@ function! s:visual_new_note(prefix, mode, ...) abort
             \ '' ]
       call extend(l:content, l:sel_lines)
       call add(l:content, '')
-      call add(l:content, 'Context:')
       call add(l:content, '')
       call add(l:content, '')
       call add(l:content, '# Up')
@@ -2141,7 +2133,6 @@ function! s:new_k_note_with_title() abort
         \ '',
         \ '# ' . l:title,
         \ '',
-        \ 'Context:',
         \ '',
         \ '',
         \ '# Up',
@@ -2273,7 +2264,6 @@ function! yurii_pkm#new_quick(args) abort
           \ '',
           \ '# ' . l:title,
           \ '',
-          \ 'Context:',
           \ '',
           \ '',
           \ '# Up',
@@ -2290,7 +2280,6 @@ function! yurii_pkm#new_quick(args) abort
           \ '',
           \ '# ' . l:title,
           \ '',
-          \ 'Context:',
           \ '',
           \ '',
           \ '# Up',
@@ -2307,7 +2296,6 @@ function! yurii_pkm#new_quick(args) abort
           \ '',
           \ '# ' . l:title,
           \ '',
-          \ 'Context:',
           \ '',
           \ '',
           \ '# Up',
@@ -2726,7 +2714,6 @@ function! yurii_pkm#linkify_selection_new_note() abort range
           \ '',
           \ '# ' . l:text,
           \ '',
-          \ 'Context:',
           \ '',
           \ '',
           \ '# Up',
