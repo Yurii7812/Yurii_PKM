@@ -1517,7 +1517,7 @@ function! yurii_pkm#open_link_under_cursor() abort
   let l:source_name = expand('%:t')
   let l:from_back = s:in_back_section(line('.'))
   let l:from_up = s:in_up_section(line('.'))
-  if &modified | silent write | endif
+  call s:write_current_and_sync_now()
   call yurii_pkm#push_history()
   silent! execute 'edit ' . fnameescape(l:path)
   if l:from_back || l:from_up
@@ -1535,7 +1535,7 @@ function! yurii_pkm#go_back() abort
     return
   endif
   let l:item = remove(g:yurii_pkm_history, -1)
-  if &modified | silent write | endif
+  call s:write_current_and_sync_now()
   silent! execute 'edit ' . fnameescape(l:item.file)
   call setpos('.', l:item.pos)
 endfunction
@@ -1802,17 +1802,22 @@ function! s:autosync_done(job, status) abort
 endfunction
 
 " 任意のファイルパスに対して update_one を起動するヘルパー
-function! s:run_update_one_for(target_fp) abort
-  if !g:yurii_pkm_autosync | return | endif
-  if !filereadable(g:yurii_pkm_python) | return | endif
+function! s:update_one_command(target_fp) abort
+  if !g:yurii_pkm_autosync | return '' | endif
+  if !filereadable(g:yurii_pkm_python) | return '' | endif
   let l:root = s:get_pkm_root()
   if empty(l:root) || !filereadable(s:index_path(l:root))
-    return
+    return ''
   endif
-  let l:py   = s:python_cmd()
-  let l:cmd  = l:py . ' ' . shellescape(g:yurii_pkm_python)
-        \     . ' update_one ' . shellescape(a:target_fp)
-        \     . ' ' . shellescape(l:root)
+  let l:py = s:python_cmd()
+  return l:py . ' ' . shellescape(g:yurii_pkm_python)
+        \ . ' update_one ' . shellescape(a:target_fp)
+        \ . ' ' . shellescape(l:root)
+endfunction
+
+function! s:run_update_one_for(target_fp) abort
+  let l:cmd = s:update_one_command(a:target_fp)
+  if empty(l:cmd) | return | endif
   if has('job') && has('channel')
     call job_start(['/bin/sh', '-c', l:cmd], {
           \ 'exit_cb': function('s:update_one_done', [a:target_fp]),
@@ -1823,6 +1828,28 @@ function! s:run_update_one_for(target_fp) abort
     call system(l:cmd)
     checktime
   endif
+endfunction
+
+function! s:run_update_one_for_sync(target_fp) abort
+  let l:cmd = s:update_one_command(a:target_fp)
+  if empty(l:cmd) | return | endif
+  let l:out = system(l:cmd)
+  if v:shell_error
+    echoerr substitute(l:out, '\n\+$', '', '')
+    return
+  endif
+  checktime
+endfunction
+
+function! s:write_current_and_sync_now() abort
+  if !&modified | return | endif
+  let l:file = expand('%:p')
+  if empty(l:file)
+    silent write
+    return
+  endif
+  silent write
+  call s:run_update_one_for_sync(l:file)
 endfunction
 
 function! s:update_one_done(target_fp, job, status) abort
