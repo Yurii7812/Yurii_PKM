@@ -142,7 +142,7 @@ vnoremap <nowait> <silent> nk  <Esc><Cmd>call yurii_pkm#visual_new_prefix_note('
 nnoremap <nowait> <silent> na  <Cmd>call yurii_pkm#new_here_typed('A')<CR>
 " cu: クリップボードのリンクを # Up セクションへ追加
 nnoremap <nowait> <silent> cu  <Cmd>call yurii_pkm#add_clipboard_to_branch()<CR>
-" ca: クリップボードのリンクを # Up の直前に追加
+" ca: クリップボードのリンクを # Down に追加し、リンク先の # Up に現在ノートを追加
 nnoremap <nowait> <silent> ca  <Cmd>call yurii_pkm#add_clipboard_before_up()<CR>
 nnoremap <nowait> <silent> tt  <Cmd>call yurii_pkm#add_clipboard_to_top()<CR>
 " nt: タイトル変更（空欄から開始）
