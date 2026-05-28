@@ -62,6 +62,87 @@ def is_expand_generated_t_note(path: Path, lines: list[str] | None = None) -> bo
         lines = read_lines(path)
     return not has_yaml_front_matter(lines)
 
+
+def is_external_link_target(target: str) -> bool:
+    return bool(re.match(r'^\w+://', target.strip()))
+
+
+def link_target_has_directory(target: str) -> bool:
+    return "/" in target or "\\" in target
+
+
+def resolve_existing_note_link(
+    target: str,
+    base_dir: Path,
+    root: Path,
+    notes_by_name: dict[str, list[Path]] | None = None,
+) -> Path | None:
+    """Resolve an existing note link like Vim's link opener.
+
+    Markdown links are normally relative to the current note's folder, but Yurii
+    PKM also allows a bare filename to point to a unique note elsewhere under
+    the PKM root.  This is important for notes moved into dated subfolders while
+    keeping older bare links such as ``260529001336.md``.
+    """
+    target = target.strip()
+    if not target or "\x00" in target or is_external_link_target(target):
+        return None
+
+    candidate = Path(target)
+    if candidate.is_absolute():
+        resolved = candidate.resolve()
+        if resolved.exists() and is_markdown_file(resolved):
+            return resolved
+        return None
+
+    base_dir = base_dir.resolve()
+    root = root.resolve()
+
+    direct = (base_dir / target).resolve()
+    if direct.exists() and is_markdown_file(direct):
+        return direct
+
+    if link_target_has_directory(target):
+        return None
+
+    matches: list[Path] = []
+    seen: set[Path] = set()
+
+    current = base_dir
+    while True:
+        resolved = (current / target).resolve()
+        if resolved.exists() and is_markdown_file(resolved) and resolved not in seen:
+            seen.add(resolved)
+            matches.append(resolved)
+        if current == root or current.parent == current:
+            break
+        try:
+            current.relative_to(root)
+        except ValueError:
+            break
+        current = current.parent
+
+    if len(matches) == 1:
+        return matches[0]
+    if len(matches) > 1:
+        return None
+
+    global_candidates = (
+        notes_by_name.get(target, [])
+        if notes_by_name is not None
+        else [
+            path.resolve()
+            for path in sorted(root.rglob("*.md"))
+            if path.name == target and path.is_file() and ".undo" not in path.parts
+        ]
+    )
+    for resolved in global_candidates:
+        if resolved not in seen:
+            seen.add(resolved)
+            matches.append(resolved)
+
+    return matches[0] if len(matches) == 1 else None
+
 # ---------------------------------------------------------------------------
 # Low-level helpers
 # ---------------------------------------------------------------------------
@@ -580,17 +661,18 @@ def iter_notes(root: Path) -> Iterable[Path]:
             yield path
 
 
-def up_targets(lines: list[str], note_path: Path) -> set[Path]:
+def up_targets(
+    lines: list[str],
+    note_path: Path,
+    root: Path,
+    notes_by_name: dict[str, list[Path]],
+) -> set[Path]:
     targets: set[Path] = set()
     for _, target in parse_links(section_content(lines, "up")):
-        if "\x00" in target:
-            continue
-        resolved = (note_path.parent / target).resolve()
-        if is_markdown_file(resolved):
+        resolved = resolve_existing_note_link(target, note_path.parent, root, notes_by_name)
+        if resolved is not None:
             targets.add(resolved)
     return targets
-
-
 
 
 def links_just_before_up(lines: list[str]) -> set[str]:
@@ -633,6 +715,9 @@ def update_up_sections(
     root = root.resolve()
     prune_up_targets = {prune_up_target.resolve()} if prune_up_target else set()
     all_paths = list(iter_notes(root))
+    notes_by_name: dict[str, list[Path]] = {}
+    for path in all_paths:
+        notes_by_name.setdefault(path.name, []).append(path.resolve())
 
     backlinks_children_of: dict[Path, list[Path]] = {}
     down_children_of: dict[Path, list[Path]] = {}
@@ -646,12 +731,8 @@ def update_up_sections(
         body_kids: list[Path] = []
         body_seen: set[Path] = set()
         for _, target in outbound_links_for_backlink(lines):
-            if '\x00' in target:
-                continue
-            resolved = (p.parent / target).resolve()
-            if not is_markdown_file(resolved):
-                continue
-            if resolved in body_seen:
+            resolved = resolve_existing_note_link(target, p.parent, root, notes_by_name)
+            if resolved is None or resolved in body_seen:
                 continue
             body_seen.add(resolved)
             body_kids.append(resolved)
@@ -660,12 +741,8 @@ def update_up_sections(
         down_kids: list[Path] = []
         down_seen: set[Path] = set()
         for _, target in outbound_links_from_down(lines):
-            if '\x00' in target:
-                continue
-            resolved = (p.parent / target).resolve()
-            if not is_markdown_file(resolved):
-                continue
-            if resolved in down_seen:
+            resolved = resolve_existing_note_link(target, p.parent, root, notes_by_name)
+            if resolved is None or resolved in down_seen:
                 continue
             down_seen.add(resolved)
             down_kids.append(resolved)
@@ -693,7 +770,7 @@ def update_up_sections(
         else:
             new_lines = lines
             parent_candidates = down_parents_of.get(p, [])
-            current_up_targets = up_targets(new_lines, p)
+            current_up_targets = up_targets(new_lines, p, root, notes_by_name)
             new_up = build_multi_up(
                 parent_candidates,
                 p,
@@ -702,7 +779,7 @@ def update_up_sections(
                 exact=exact_up,
             )
             new_lines = replace_section(new_lines, "up", new_up)
-            up_link_targets = up_targets(new_lines, p)
+            up_link_targets = up_targets(new_lines, p, root, notes_by_name)
             backlinks_parents = sorted(
                 parent for parent in set(backlinks_parents_of.get(p, []))
                 if parent not in up_link_targets
