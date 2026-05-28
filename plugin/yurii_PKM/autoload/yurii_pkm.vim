@@ -1260,6 +1260,7 @@ function! yurii_pkm#note_template(title, ...) abort
         \ '',
         \ 'Context:',
         \ '',
+        \ '',
         \ '# Up',
         \ '# BackLink',
         \ '[Index](index.md)',
@@ -1786,6 +1787,7 @@ function! s:new_note_no_title(prefix) abort
           \ '',
           \ 'Context:',
           \ '',
+          \ '',
           \ '# Up',
           \ l:parent_link_line,
           \ '# BackLink',
@@ -1803,6 +1805,7 @@ function! s:new_note_no_title(prefix) abort
           \ '',
           \ 'Context:',
           \ '',
+          \ '',
           \ '# Up',
           \ '# BackLink',
           \ '[Index](index.md)' ]
@@ -1818,6 +1821,7 @@ function! s:new_note_no_title(prefix) abort
           \ '# ' . l:title,
           \ '',
           \ 'Context:',
+          \ '',
           \ '',
           \ '# Up',
           \ l:parent_link_line,
@@ -1931,6 +1935,7 @@ function! s:visual_new_note(prefix, mode, ...) abort
             \ '',
             \ 'Context:',
             \ '',
+            \ '',
             \ '# Up',
             \ '# BackLink',
             \ '[Index](index.md)' ]
@@ -1944,6 +1949,7 @@ function! s:visual_new_note(prefix, mode, ...) abort
             \ '# ' . l:title,
             \ '',
             \ 'Context:',
+            \ '',
             \ '',
             \ '# Up',
             \ l:parent_link_line,
@@ -1979,6 +1985,7 @@ function! s:visual_new_note(prefix, mode, ...) abort
       endif
       call add(l:content, 'Context:')
       call add(l:content, '')
+      call add(l:content, '')
       call add(l:content, '# Up')
       call add(l:content, '# BackLink')
       call add(l:content, '[Index](index.md)')
@@ -1994,6 +2001,7 @@ function! s:visual_new_note(prefix, mode, ...) abort
       call extend(l:content, l:sel_lines)
       call add(l:content, '')
       call add(l:content, 'Context:')
+      call add(l:content, '')
       call add(l:content, '')
       call add(l:content, '# Up')
       call add(l:content, l:parent_link_line)
@@ -2135,6 +2143,7 @@ function! s:new_k_note_with_title() abort
         \ '',
         \ 'Context:',
         \ '',
+        \ '',
         \ '# Up',
         \ '# BackLink',
         \ '[Index](index.md)' ]
@@ -2266,6 +2275,7 @@ function! yurii_pkm#new_quick(args) abort
           \ '',
           \ 'Context:',
           \ '',
+          \ '',
           \ '# Up',
           \ l:parent_link_line,
           \ '# BackLink',
@@ -2282,6 +2292,7 @@ function! yurii_pkm#new_quick(args) abort
           \ '',
           \ 'Context:',
           \ '',
+          \ '',
           \ '# Up',
           \ l:parent_link_line,
           \ '# BackLink',
@@ -2297,6 +2308,7 @@ function! yurii_pkm#new_quick(args) abort
           \ '# ' . l:title,
           \ '',
           \ 'Context:',
+          \ '',
           \ '',
           \ '# Up',
           \ l:parent_link_line,
@@ -2715,6 +2727,7 @@ function! yurii_pkm#linkify_selection_new_note() abort range
           \ '# ' . l:text,
           \ '',
           \ 'Context:',
+          \ '',
           \ '',
           \ '# Up',
           \ l:parent_link,
