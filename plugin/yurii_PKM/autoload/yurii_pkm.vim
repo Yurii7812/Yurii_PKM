@@ -1070,6 +1070,44 @@ function! yurii_pkm#jump_link(forward) abort
   " search() のマッチ先頭 ([) にそのまま止める
 endfunction
 
+
+function! s:jump_to_line(lnum) abort
+  call cursor(a:lnum, 1)
+  normal! zv
+endfunction
+
+function! yurii_pkm#jump_section_header(name) abort
+  let l:sec = s:find_section_line(a:name)
+  if l:sec <= 0
+    echo '# ' . a:name . ' section not found'
+    return
+  endif
+
+  call s:jump_to_line(l:sec)
+endfunction
+
+function! yurii_pkm#jump_down_top() abort
+  let l:down = s:find_section_line('down')
+  if l:down <= 0
+    echo '# Down section not found'
+    return
+  endif
+
+  let l:end = s:section_end_line('down')
+  call s:jump_to_line(l:end > l:down ? l:down + 1 : l:down)
+endfunction
+
+function! yurii_pkm#jump_down_bottom() abort
+  let l:down = s:find_section_line('down')
+  if l:down <= 0
+    echo '# Down section not found'
+    return
+  endif
+
+  let l:end = s:section_end_line('down')
+  call s:jump_to_line(l:end > l:down ? l:end : l:down)
+endfunction
+
 function! yurii_pkm#jump_last_link_before_up() abort
   let l:up = s:find_section_line('up')
   if l:up <= 0
