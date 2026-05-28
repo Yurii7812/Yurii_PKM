@@ -1261,9 +1261,7 @@ function! yurii_pkm#note_template(title, ...) abort
         \ 'Context:',
         \ '',
         \ '# Up',
-        \ '',
         \ '# BackLink',
-
         \ '[Index](index.md)',
         \ ]
 endfunction
@@ -1931,6 +1929,8 @@ function! s:visual_new_note(prefix, mode, ...) abort
             \ '',
             \ '# ' . l:title,
             \ '',
+            \ 'Context:',
+            \ '',
             \ '# Up',
             \ '# BackLink',
             \ '[Index](index.md)' ]
@@ -1943,10 +1943,11 @@ function! s:visual_new_note(prefix, mode, ...) abort
             \ '',
             \ '# ' . l:title,
             \ '',
+            \ 'Context:',
+            \ '',
             \ '# Up',
             \ l:parent_link_line,
             \ '# BackLink',
-            \ '',
             \ '[Index](index.md)' ]
     endif
     " 選択テキストを本文（Back の直前）に挿入
@@ -1976,6 +1977,8 @@ function! s:visual_new_note(prefix, mode, ...) abort
           call extend(l:content, l:k_lines)
         endif
       endif
+      call add(l:content, 'Context:')
+      call add(l:content, '')
       call add(l:content, '# Up')
       call add(l:content, '# BackLink')
       call add(l:content, '[Index](index.md)')
@@ -1989,6 +1992,8 @@ function! s:visual_new_note(prefix, mode, ...) abort
             \ '# ' . l:title,
             \ '' ]
       call extend(l:content, l:sel_lines)
+      call add(l:content, '')
+      call add(l:content, 'Context:')
       call add(l:content, '')
       call add(l:content, '# Up')
       call add(l:content, l:parent_link_line)
@@ -2127,6 +2132,8 @@ function! s:new_k_note_with_title() abort
         \ '---',
         \ '',
         \ '# ' . l:title,
+        \ '',
+        \ 'Context:',
         \ '',
         \ '# Up',
         \ '# BackLink',
@@ -2707,7 +2714,7 @@ function! yurii_pkm#linkify_selection_new_note() abort range
           \ '',
           \ '# ' . l:text,
           \ '',
-          \ '',
+          \ 'Context:',
           \ '',
           \ '# Up',
           \ l:parent_link,
