@@ -179,10 +179,19 @@ def remove_section(lines: list[str], name: str) -> list[str]:
 
 
 def ensure_sections(lines: list[str]) -> list[str]:
+    lines = list(lines)
     if find_section(lines, "up")[0] < 0:
-        lines = list(lines) + ["# Up"]
+        lines = lines + ["# Up"]
+
+    if find_section(lines, "down")[0] < 0:
+        back_start, _ = find_section(lines, "backlink")
+        if back_start >= 0:
+            lines = lines[:back_start] + ["# Down"] + lines[back_start:]
+        else:
+            lines = lines + ["# Down"]
+
     if find_section(lines, "backlink")[0] < 0:
-        lines = list(lines) + ["", "# BackLink"]
+        lines = lines + ["", "# BackLink"]
 
     return lines
 
@@ -413,6 +422,8 @@ def create_f_and_link(current_file: Path, root: Path) -> Path:
         "",
         "",
         "",
+        "# Up",
+        "# Down",
         "# BackLink",
         "[index](index.md)",
     ]
@@ -715,7 +726,7 @@ def update_one(file_path: Path, root: Path) -> str:
 # ---------------------------------------------------------------------------
 
 def rename_prefix(old_path: Path, new_prefix: str, root: Path) -> str:
-    """Rename old_path's prefix to new_prefix, update all Branch/Back links in root.
+    """Rename old_path's prefix to new_prefix, update all Down/Back links in root.
 
     Returns a human-readable summary string.
     """
@@ -752,7 +763,7 @@ def rename_prefix(old_path: Path, new_prefix: str, root: Path) -> str:
     self_lines = _rewrite_link_target(self_lines, old_name, new_name)
     write_lines(new_path, self_lines)
 
-    # 3. PKMルート配下の全.mdファイルのBranch/Backリンクを更新
+    # 3. PKMルート配下の全.mdファイルのDown/Backリンクを更新
     changed: list[str] = []
     for p in iter_notes(root):
         if p.resolve() == new_path.resolve():

@@ -758,10 +758,30 @@ function! s:find_section_line(name) abort
   return l:found
 endfunction
 
-" Return insertion end line for outgoing links.
-" Legacy: if # Down exists, keep using that range.
-" New default: place links just before # BackLink.
+" Ensure the buffer has a # Down section, placed after # Up and before # BackLink.
+function! s:ensure_down_section() abort
+  if s:find_section_line('down') > 0
+    return
+  endif
+
+  let l:back = s:find_section_line('back')
+  if l:back > 0
+    call append(l:back - 1, '# Down')
+    return
+  endif
+
+  let l:up_end = s:up_end_line()
+  if l:up_end > 0
+    call append(l:up_end, '# Down')
+    return
+  endif
+
+  call append(line('$'), '# Down')
+endfunction
+
+" Return insertion end line for outgoing links in # Down.
 function! s:down_end_line() abort
+  call s:ensure_down_section()
   let l:down = s:find_section_line('down')
   if l:down > 0
     let l:back_after_down = 0
@@ -781,10 +801,9 @@ function! s:down_end_line() abort
   return line('$')
 endfunction
 
-" Return line number where appending inserts at top of outgoing-links area.
-" Legacy: if # Down exists, insert at top of Down.
-" New default: insert just below # Up.
+" Return line number where appending inserts at top of # Down.
 function! s:down_top_insert_line() abort
+  call s:ensure_down_section()
   let l:down = s:find_section_line('down')
   if l:down > 0
     return l:down
@@ -1261,6 +1280,7 @@ function! yurii_pkm#note_template(title, ...) abort
         \ '',
         \ '',
         \ '# Up',
+        \ '# Down',
         \ '# BackLink',
         \ '[Index](index.md)',
         \ ]
@@ -1754,7 +1774,7 @@ function! s:new_note_no_title(prefix) abort
     if l:insert_at_cursor
       call append(l:parent_line, l:link)
     elseif l:insert_at_down_end
-      let l:ins = s:before_up_line()
+      let l:ins = s:down_end_line()
       call append(l:ins, l:link)
     else
       if a:prefix ==? 'N'
@@ -1788,6 +1808,7 @@ function! s:new_note_no_title(prefix) abort
           \ '',
           \ '# Up',
           \ l:parent_link_line,
+          \ '# Down',
           \ '# BackLink',
           \ '[Index](index.md)' ]
     let l:cursor_line = 8
@@ -1804,6 +1825,7 @@ function! s:new_note_no_title(prefix) abort
           \ '',
           \ '',
           \ '# Up',
+          \ '# Down',
           \ '# BackLink',
           \ '[Index](index.md)' ]
     let l:cursor_line = 8
@@ -1821,6 +1843,7 @@ function! s:new_note_no_title(prefix) abort
           \ '',
           \ '# Up',
           \ l:parent_link_line,
+          \ '# Down',
           \ '# BackLink',
           \ '[Index](index.md)' ]
     let l:cursor_line = 8
@@ -1932,6 +1955,7 @@ function! s:visual_new_note(prefix, mode, ...) abort
             \ '',
             \ '',
             \ '# Up',
+            \ '# Down',
             \ '# BackLink',
             \ '[Index](index.md)' ]
     else
@@ -1947,6 +1971,7 @@ function! s:visual_new_note(prefix, mode, ...) abort
             \ '',
             \ '# Up',
             \ l:parent_link_line,
+            \ '# Down',
             \ '# BackLink',
             \ '[Index](index.md)' ]
     endif
@@ -1980,6 +2005,7 @@ function! s:visual_new_note(prefix, mode, ...) abort
       call add(l:content, '')
       call add(l:content, '')
       call add(l:content, '# Up')
+      call add(l:content, '# Down')
       call add(l:content, '# BackLink')
       call add(l:content, '[Index](index.md)')
     else
@@ -1997,6 +2023,7 @@ function! s:visual_new_note(prefix, mode, ...) abort
       call add(l:content, '')
       call add(l:content, '# Up')
       call add(l:content, l:parent_link_line)
+      call add(l:content, '# Down')
       call add(l:content, '# BackLink')
       call add(l:content, '[Index](index.md)')
     endif
@@ -2136,6 +2163,7 @@ function! s:new_k_note_with_title() abort
         \ '',
         \ '',
         \ '# Up',
+        \ '# Down',
         \ '# BackLink',
         \ '[Index](index.md)' ]
   call writefile(l:content, l:file)
@@ -2268,6 +2296,7 @@ function! yurii_pkm#new_quick(args) abort
           \ '',
           \ '# Up',
           \ l:parent_link_line,
+          \ '# Down',
           \ '# BackLink',
           \ '[Index](index.md)' ]
     let l:cursor_line = 8
@@ -2284,6 +2313,7 @@ function! yurii_pkm#new_quick(args) abort
           \ '',
           \ '# Up',
           \ l:parent_link_line,
+          \ '# Down',
           \ '# BackLink',
           \ '[Index](index.md)' ]
     let l:cursor_line = 8
@@ -2300,6 +2330,7 @@ function! yurii_pkm#new_quick(args) abort
           \ '',
           \ '# Up',
           \ l:parent_link_line,
+          \ '# Down',
           \ '# BackLink',
           \ '[Index](index.md)' ]
     let l:cursor_line = 8
@@ -2718,6 +2749,7 @@ function! yurii_pkm#linkify_selection_new_note() abort range
           \ '',
           \ '# Up',
           \ l:parent_link,
+          \ '# Down',
           \ '# BackLink',
           \ '[Index](index.md)'
           \ ]
