@@ -1212,6 +1212,10 @@ function! yurii_pkm#timestamp_yaml() abort
 endfunction
 
 function! s:new_note_insert_line() abort
+  let l:ctx = search('^Context:', 'nw')
+  if l:ctx > 0
+    return min([l:ctx + 1, line('$')])
+  endif
   let l:max = min([40, line('$')])
   for lnum in range(1, l:max)
     if getline(lnum) =~# '^#\s\+'
@@ -1254,12 +1258,11 @@ function! yurii_pkm#note_template(title, ...) abort
         \ '',
         \ '# ' . a:title,
         \ '',
+        \ 'Context:',
         \ '',
         \ '',
         \ '# Up',
-        \ '',
         \ '# BackLink',
-
         \ '[Index](index.md)',
         \ ]
 endfunction
@@ -1782,11 +1785,14 @@ function! s:new_note_no_title(prefix) abort
           \ '',
           \ '# ' . l:title,
           \ '',
+          \ 'Context:',
+          \ '',
+          \ '',
           \ '# Up',
           \ l:parent_link_line,
           \ '# BackLink',
           \ '[Index](index.md)' ]
-    let l:cursor_line = 8
+    let l:cursor_line = 9
   elseif l:is_k
     " nk の h/Enter/o モード: 見出しのみ作成
     let l:content = [
@@ -1797,10 +1803,13 @@ function! s:new_note_no_title(prefix) abort
           \ '',
           \ '# ' . l:title,
           \ '',
+          \ 'Context:',
+          \ '',
+          \ '',
           \ '# Up',
           \ '# BackLink',
           \ '[Index](index.md)' ]
-    let l:cursor_line = 7
+    let l:cursor_line = 9
   else
     " nn/nf の h/Enter/o モード: 従来どおり
     let l:content = [
@@ -1811,13 +1820,14 @@ function! s:new_note_no_title(prefix) abort
           \ '',
           \ '# ' . l:title,
           \ '',
+          \ 'Context:',
           \ '',
           \ '',
           \ '# Up',
           \ l:parent_link_line,
           \ '# BackLink',
           \ '[Index](index.md)' ]
-    let l:cursor_line = 8
+    let l:cursor_line = 9
   endif
 
   call writefile(l:content, l:file)
@@ -1923,6 +1933,9 @@ function! s:visual_new_note(prefix, mode, ...) abort
             \ '',
             \ '# ' . l:title,
             \ '',
+            \ 'Context:',
+            \ '',
+            \ '',
             \ '# Up',
             \ '# BackLink',
             \ '[Index](index.md)' ]
@@ -1935,10 +1948,12 @@ function! s:visual_new_note(prefix, mode, ...) abort
             \ '',
             \ '# ' . l:title,
             \ '',
+            \ 'Context:',
+            \ '',
+            \ '',
             \ '# Up',
             \ l:parent_link_line,
             \ '# BackLink',
-            \ '',
             \ '[Index](index.md)' ]
     endif
     " 選択テキストを本文（Back の直前）に挿入
@@ -1968,6 +1983,9 @@ function! s:visual_new_note(prefix, mode, ...) abort
           call extend(l:content, l:k_lines)
         endif
       endif
+      call add(l:content, 'Context:')
+      call add(l:content, '')
+      call add(l:content, '')
       call add(l:content, '# Up')
       call add(l:content, '# BackLink')
       call add(l:content, '[Index](index.md)')
@@ -1981,6 +1999,9 @@ function! s:visual_new_note(prefix, mode, ...) abort
             \ '# ' . l:title,
             \ '' ]
       call extend(l:content, l:sel_lines)
+      call add(l:content, '')
+      call add(l:content, 'Context:')
+      call add(l:content, '')
       call add(l:content, '')
       call add(l:content, '# Up')
       call add(l:content, l:parent_link_line)
@@ -2120,6 +2141,9 @@ function! s:new_k_note_with_title() abort
         \ '',
         \ '# ' . l:title,
         \ '',
+        \ 'Context:',
+        \ '',
+        \ '',
         \ '# Up',
         \ '# BackLink',
         \ '[Index](index.md)' ]
@@ -2249,11 +2273,14 @@ function! yurii_pkm#new_quick(args) abort
           \ '',
           \ '# ' . l:title,
           \ '',
+          \ 'Context:',
+          \ '',
+          \ '',
           \ '# Up',
           \ l:parent_link_line,
           \ '# BackLink',
           \ '[Index](index.md)' ]
-    let l:cursor_line = 8
+    let l:cursor_line = 9
   elseif l:is_k
     let l:content = [
           \ '---',
@@ -2263,13 +2290,14 @@ function! yurii_pkm#new_quick(args) abort
           \ '',
           \ '# ' . l:title,
           \ '',
+          \ 'Context:',
           \ '',
           \ '',
           \ '# Up',
           \ l:parent_link_line,
           \ '# BackLink',
           \ '[Index](index.md)' ]
-    let l:cursor_line = 8
+    let l:cursor_line = 9
   else
     let l:content = [
           \ '---',
@@ -2279,13 +2307,14 @@ function! yurii_pkm#new_quick(args) abort
           \ '',
           \ '# ' . l:title,
           \ '',
+          \ 'Context:',
           \ '',
           \ '',
           \ '# Up',
           \ l:parent_link_line,
           \ '# BackLink',
           \ '[Index](index.md)' ]
-    let l:cursor_line = 8
+    let l:cursor_line = 9
   endif
 
   call writefile(l:content, l:file)
@@ -2697,6 +2726,7 @@ function! yurii_pkm#linkify_selection_new_note() abort range
           \ '',
           \ '# ' . l:text,
           \ '',
+          \ 'Context:',
           \ '',
           \ '',
           \ '# Up',
