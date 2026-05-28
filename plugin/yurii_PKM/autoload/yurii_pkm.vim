@@ -2857,9 +2857,8 @@ endfunction
 
 
 function! yurii_pkm#add_clipboard_before_up() abort
-  let l:current_file = expand('%:t')
+  let l:current_file = expand('%:p')
   let l:current_title = yurii_pkm#current_title()
-  let l:current_link = yurii_pkm#make_link(l:current_file, l:current_title)
 
   let l:clipboard = s:clipboard_text()
   if empty(l:clipboard)
@@ -2902,6 +2901,8 @@ function! yurii_pkm#add_clipboard_before_up() abort
     endif
 
     let l:target_lines = readfile(l:target_path)
+    let l:current_link = s:make_link_from_dir(
+          \ l:current_file, l:current_title, fnamemodify(l:target_path, ':h'))
     let l:up_result = s:add_link_to_lines_section(l:target_lines, 'up', l:current_link)
     if l:up_result.added
       call writefile(l:up_result.lines, l:target_path)
@@ -3206,7 +3207,7 @@ endfunction
 " ---------------------------------------------------------------------------
 
 function! yurii_pkm#at_add() abort
-  let l:current_file  = expand('%:t')
+  let l:current_file  = expand('%:p')
   let l:current_title = yurii_pkm#current_title()
 
   let l:cb = s:clipboard_text()
@@ -3220,8 +3221,6 @@ function! yurii_pkm#at_add() abort
     echo 'Error: no valid link target in clipboard'
     return
   endif
-
-  let l:new_link = yurii_pkm#make_link(l:current_file, l:current_title)
 
   let l:down_added = 0
   let l:up_added = 0
@@ -3245,6 +3244,8 @@ function! yurii_pkm#at_add() abort
     endif
 
     let l:lines = readfile(l:target_fp)
+    let l:new_link = s:make_link_from_dir(
+          \ l:current_file, l:current_title, fnamemodify(l:target_fp, ':h'))
     let l:down_result = s:add_link_to_lines_section(l:lines, 'down', l:new_link)
     if l:down_result.added
       call writefile(l:down_result.lines, l:target_fp)
