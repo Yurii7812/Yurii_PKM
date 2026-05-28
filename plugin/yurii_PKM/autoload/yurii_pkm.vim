@@ -868,6 +868,125 @@ function! s:replace_section(name, new_lines) abort
   return 1
 endfunction
 
+function! s:section_end_line(name) abort
+  let l:sec = s:find_section_line(a:name)
+  if l:sec <= 0
+    return 0
+  endif
+  let l:end = l:sec
+  for l:i in range(l:sec + 1, line('$'))
+    if getline(l:i) =~# '^\s*#\+\s\+'
+      return l:i - 1
+    endif
+    let l:end = l:i
+  endfor
+  return l:end
+endfunction
+
+function! s:append_link_to_buffer_section(name, link) abort
+  if a:name ==? 'down'
+    call s:ensure_down_section()
+  elseif s:find_section_line(a:name) <= 0
+    if a:name ==? 'up'
+      let l:down = s:find_section_line('down')
+      if l:down > 0
+        call append(l:down - 1, '# Up')
+      else
+        let l:back = s:find_section_line('back')
+        if l:back > 0
+          call append(l:back - 1, '# Up')
+        else
+          call append(line('$'), '# Up')
+        endif
+      endif
+    else
+      call append(line('$'), '# ' . a:name)
+    endif
+  endif
+
+  let l:sec = s:find_section_line(a:name)
+  if l:sec <= 0
+    return 0
+  endif
+
+  let l:end = s:section_end_line(a:name)
+  if l:end > l:sec && index(getline(l:sec + 1, l:end), a:link) >= 0
+    return 0
+  endif
+
+  call append(l:end, a:link)
+  return 1
+endfunction
+
+function! s:section_end_index_in_lines(lines, start_idx) abort
+  let l:end = len(a:lines)
+  if a:start_idx + 1 >= len(a:lines)
+    return l:end
+  endif
+  for l:i in range(a:start_idx + 1, len(a:lines) - 1)
+    if get(a:lines, l:i, '') =~# '^\s*#\+\s\+'
+      let l:end = l:i
+      break
+    endif
+  endfor
+  return l:end
+endfunction
+
+function! s:ensure_section_in_lines(lines, name) abort
+  let l:lines = copy(a:lines)
+  let l:idx = s:find_section_index_in_lines(l:lines, a:name)
+  if l:idx >= 0
+    return {'lines': l:lines, 'idx': l:idx}
+  endif
+
+  if a:name ==? 'up'
+    let l:heading = '# Up'
+  elseif a:name ==? 'down'
+    let l:heading = '# Down'
+  else
+    let l:heading = '# ' . a:name
+  endif
+  if a:name ==? 'up'
+    let l:down_idx = s:find_section_index_in_lines(l:lines, 'down')
+    if l:down_idx >= 0
+      call insert(l:lines, l:heading, l:down_idx)
+      return {'lines': l:lines, 'idx': l:down_idx}
+    endif
+    let l:back_idx = s:find_section_index_in_lines(l:lines, 'back')
+    if l:back_idx >= 0
+      call insert(l:lines, l:heading, l:back_idx)
+      return {'lines': l:lines, 'idx': l:back_idx}
+    endif
+  elseif a:name ==? 'down'
+    let l:back_idx = s:find_section_index_in_lines(l:lines, 'back')
+    if l:back_idx >= 0
+      call insert(l:lines, l:heading, l:back_idx)
+      return {'lines': l:lines, 'idx': l:back_idx}
+    endif
+    let l:up_idx = s:find_section_index_in_lines(l:lines, 'up')
+    if l:up_idx >= 0
+      let l:insert_at = s:section_end_index_in_lines(l:lines, l:up_idx)
+      call insert(l:lines, l:heading, l:insert_at)
+      return {'lines': l:lines, 'idx': l:insert_at}
+    endif
+  endif
+
+  call add(l:lines, l:heading)
+  return {'lines': l:lines, 'idx': len(l:lines) - 1}
+endfunction
+
+function! s:add_link_to_lines_section(lines, name, link) abort
+  let l:ensured = s:ensure_section_in_lines(a:lines, a:name)
+  let l:lines = l:ensured.lines
+  let l:idx = l:ensured.idx
+  let l:end = s:section_end_index_in_lines(l:lines, l:idx)
+  if index(l:lines[l:idx + 1 : l:end - 1], a:link) >= 0
+    return {'lines': l:lines, 'added': 0}
+  endif
+  call insert(l:lines, a:link, l:end)
+  return {'lines': l:lines, 'added': 1}
+endfunction
+
 " Backward compatible name
 function! s:branch_end_line() abort
   return s:down_end_line()
@@ -2530,20 +2649,22 @@ function! yurii_pkm#add_clipboard_to_branch() abort
     return
   endif
 
-  let l:up = s:find_section_line('up')
-  if l:up <= 0
-    echo 'Error: up section not found'
-    return
-  endif
-
-  " Up は単一親文脈: クリップボード先頭リンクで Up セクションを置き換える
-  let l:new_up = [l:links[0]]
-  call s:replace_section('up', l:new_up)
+  let l:added = 0
+  for l:lk in l:links
+    if s:append_link_to_buffer_section('up', l:lk)
+      let l:added += 1
+    endif
+  endfor
   silent write
+  echo 'Up added ' . l:added . ' link(s)'
 endfunction
 
 
 function! yurii_pkm#add_clipboard_before_up() abort
+  let l:current_file = expand('%:t')
+  let l:current_title = yurii_pkm#current_title()
+  let l:current_link = yurii_pkm#make_link(l:current_file, l:current_title)
+
   let l:clipboard = s:clipboard_text()
   if empty(l:clipboard)
     echo 'Error: clipboard is empty'
@@ -2551,6 +2672,7 @@ function! yurii_pkm#add_clipboard_before_up() abort
   endif
 
   let l:links = []
+  let l:targets = []
   for l:raw in split(l:clipboard, "\n")
     let l:target = s:extract_target(l:raw)
     if empty(l:target)
@@ -2564,6 +2686,7 @@ function! yurii_pkm#add_clipboard_before_up() abort
     let l:link = s:link_from_target(l:target)
     if !empty(l:link)
       call add(l:links, l:link)
+      call add(l:targets, l:target)
     endif
   endfor
 
@@ -2572,18 +2695,25 @@ function! yurii_pkm#add_clipboard_before_up() abort
     return
   endif
 
-  let l:up = s:find_section_line('up')
-  if l:up <= 0
-    echo 'Error: up section not found'
-    return
-  endif
+  let l:down_added = 0
+  let l:up_added = 0
+  for l:i in range(0, len(l:links) - 1)
+    let l:link = l:links[l:i]
+    let l:target_path = yurii_pkm#resolve_link(l:targets[l:i])
 
-  let l:ins = l:up - 1
-  for l:lk in l:links
-    call append(l:ins, l:lk)
-    let l:ins += 1
+    if s:append_link_to_buffer_section('down', l:link)
+      let l:down_added += 1
+    endif
+
+    let l:target_lines = readfile(l:target_path)
+    let l:up_result = s:add_link_to_lines_section(l:target_lines, 'up', l:current_link)
+    if l:up_result.added
+      call writefile(l:up_result.lines, l:target_path)
+      let l:up_added += 1
+    endif
   endfor
   silent write
+  echo 'ca: Down added ' . l:down_added . ', reciprocal Up added ' . l:up_added
 endfunction
 
 function! yurii_pkm#add_clipboard_to_top() abort
@@ -2897,7 +3027,8 @@ function! yurii_pkm#at_add() abort
 
   let l:new_link = yurii_pkm#make_link(l:current_file, l:current_title)
 
-  let l:added = 0
+  let l:down_added = 0
+  let l:up_added = 0
   let l:already = 0
   let l:missing = 0
 
@@ -2912,47 +3043,28 @@ function! yurii_pkm#at_add() abort
       continue
     endif
 
+    let l:target_link = s:link_from_target(l:target)
+    if !empty(l:target_link) && s:append_link_to_buffer_section('up', l:target_link)
+      let l:up_added += 1
+    endif
+
     let l:lines = readfile(l:target_fp)
-    let l:down_idx = -1
-    let l:back_idx = len(l:lines)
-    for l:i in range(0, len(l:lines) - 1)
-      if l:down_idx < 0 && s:is_section_header_text(l:lines[l:i], 'down')
-        let l:down_idx = l:i
-      endif
-      if s:is_section_header_text(l:lines[l:i], 'back')
-        let l:back_idx = l:i
-        break
-      endif
-    endfor
-
-    if index(l:lines, l:new_link) >= 0
-      let l:already += 1
-      continue
-    endif
-
-    if l:back_idx >= len(l:lines)
-      call add(l:lines, '')
-      call add(l:lines, '# BackLink')
-      call add(l:lines, '[Index](index.md)')
-      let l:back_idx = len(l:lines) - 2
-    endif
-
-    if l:down_idx >= 0
-      call insert(l:lines, l:new_link, l:down_idx + 1)
+    let l:down_result = s:add_link_to_lines_section(l:lines, 'down', l:new_link)
+    if l:down_result.added
+      call writefile(l:down_result.lines, l:target_fp)
+      let l:down_added += 1
     else
-      call insert(l:lines, l:new_link, l:back_idx)
+      let l:already += 1
     endif
-    call writefile(l:lines, l:target_fp)
-    call s:run_update_one_for(l:target_fp)
-    let l:added += 1
   endfor
 
-  echo 'AT: added ' . l:added . ', already ' . l:already . ', missing ' . l:missing
+  silent write
+  echo 'AT: Down added ' . l:down_added . ', Up added ' . l:up_added . ', already ' . l:already . ', missing ' . l:missing
 endfunction
 
 
 " ---------------------------------------------------------------------------
-" SortYomi (branch セクション yomi ソート) - Python 経由
+" SortYomi (Down セクション yomi ソート) - Python 経由
 " ---------------------------------------------------------------------------
 
 function! yurii_pkm#open_index() abort

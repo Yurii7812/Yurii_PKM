@@ -597,35 +597,18 @@ def links_just_before_up(lines: list[str]) -> set[str]:
     return {target for _, target in LINK_RE.findall(previous_line)}
 
 
-def build_single_up(
+def build_multi_up(
     parent_paths: list[Path],
     note_path: Path,
     current_up_targets: set[Path] | None = None,
 ) -> list[str]:
-    """Build Up section content from parent paths (single Up only).
+    """Build Up section content from all parent paths and existing Up links."""
 
-    Keep user-selected current Up when it is still a valid parent candidate.
-    Otherwise pick the most recently modified parent from candidates.
-    """
-    if not parent_paths:
-        return []
-
-    resolved_parents = sorted(set(p.resolve() for p in parent_paths))
+    resolved_parents = {p.resolve() for p in parent_paths}
     current_up_targets = {p.resolve() for p in (current_up_targets or set())}
+    parents = sorted(resolved_parents | current_up_targets)
 
-    keep_current = [p for p in resolved_parents if p in current_up_targets]
-    if keep_current:
-        parent = sorted(keep_current)[0]
-        return [make_link_line(parent, get_title(parent), note_path.parent)]
-
-    def mtime_or_min(path: Path) -> float:
-        try:
-            return path.stat().st_mtime
-        except OSError:
-            return float("-inf")
-
-    parent = max(resolved_parents, key=lambda p: (mtime_or_min(p), str(p)))
-    return [make_link_line(parent, get_title(parent), note_path.parent)]
+    return [make_link_line(parent, get_title(parent), note_path.parent) for parent in parents]
 
 
 def update_up_sections(root: Path) -> int:
@@ -635,6 +618,7 @@ def update_up_sections(root: Path) -> int:
     all_paths = list(iter_notes(root))
 
     backlinks_children_of: dict[Path, list[Path]] = {}
+    down_children_of: dict[Path, list[Path]] = {}
     lines_map: dict[Path, list[str]] = {}
 
     for p in all_paths:
@@ -656,11 +640,31 @@ def update_up_sections(root: Path) -> int:
             body_kids.append(resolved)
         backlinks_children_of[p] = body_kids
 
+        down_kids: list[Path] = []
+        down_seen: set[Path] = set()
+        for _, target in outbound_links_from_down(lines):
+            if '\x00' in target:
+                continue
+            resolved = (p.parent / target).resolve()
+            if not is_markdown_file(resolved):
+                continue
+            if resolved in down_seen:
+                continue
+            down_seen.add(resolved)
+            down_kids.append(resolved)
+        down_children_of[p] = down_kids
+
     backlinks_parents_of: dict[Path, list[Path]] = {p: [] for p in all_paths}
     for parent, kids in backlinks_children_of.items():
         for child in kids:
             if child in backlinks_parents_of:
                 backlinks_parents_of[child].append(parent)
+
+    down_parents_of: dict[Path, list[Path]] = {p: [] for p in all_paths}
+    for parent, kids in down_children_of.items():
+        for child in kids:
+            if child in down_parents_of:
+                down_parents_of[child].append(parent)
 
     changed = 0
     for p in all_paths:
@@ -671,9 +675,9 @@ def update_up_sections(root: Path) -> int:
             new_lines = lines
         else:
             new_lines = lines
-            parent_candidates = backlinks_parents_of.get(p, [])
+            parent_candidates = down_parents_of.get(p, [])
             current_up_targets = up_targets(new_lines, p)
-            new_up = build_single_up(
+            new_up = build_multi_up(
                 parent_candidates,
                 p,
                 current_up_targets=current_up_targets,
