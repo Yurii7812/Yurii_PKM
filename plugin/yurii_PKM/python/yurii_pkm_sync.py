@@ -6,6 +6,7 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from datetime import datetime
+from os import path as ospath
 from typing import Iterable
 
 # ---------------------------------------------------------------------------
@@ -391,11 +392,9 @@ def build_back(
 
 
 def make_link_line(target_path: Path, title: str, from_dir: Path) -> str:
-    try:
-        rel = target_path.relative_to(from_dir)
-        rel_str = rel.as_posix()
-    except ValueError:
-        rel_str = target_path.name
+    target_path = target_path.resolve()
+    from_dir = from_dir.resolve()
+    rel_str = ospath.relpath(target_path, from_dir).replace(ospath.sep, "/")
     text = title if title else target_path.stem
     return f"[{text}]({rel_str})"
 
@@ -569,15 +568,14 @@ def update_titles_in_file(path: Path) -> bool:
 # ---------------------------------------------------------------------------
 
 def iter_notes(root: Path) -> Iterable[Path]:
-    """Yield only markdown notes directly under the active index directory.
+    """Yield markdown notes anywhere under the active PKM root.
 
-    UpdateAll/AutoSync should manage the same directory as index.md only.
-    Markdown files in child folders are intentionally isolated so a nested
-    folder can keep its own independent PKM/index without the parent scan
-    rewriting its sections.
+    BackLink/Up synchronization must see notes in subdirectories too, otherwise
+    cross-folder links are ignored and generated backlinks can point only to a
+    bare filename.  The scan still skips persistent undo files.
     """
     root = root.resolve()
-    for path in sorted(root.glob("*.md")):
+    for path in sorted(root.rglob("*.md")):
         if path.is_file() and ".undo" not in path.parts:
             yield path
 
