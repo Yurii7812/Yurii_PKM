@@ -1161,9 +1161,79 @@ function! yurii_pkm#get_link_under_cursor() abort
   endwhile
 endfunction
 
+function! s:is_absolute_path(path) abort
+  return a:path =~# '^/' || a:path =~# '^\\' || a:path =~# '^\a\+:'
+endfunction
+
+function! s:path_has_directory(target) abort
+  return a:target =~# '[\\/]'
+endfunction
+
+function! s:find_unique_descendant_file(base, name) abort
+  let l:base = fnamemodify(a:base, ':p')
+  let l:matches = globpath(l:base, '**/' . a:name, 0, 1)
+  let l:files = []
+  let l:seen = {}
+  for l:m in l:matches
+    let l:path = fnamemodify(l:m, ':p')
+    if has_key(l:seen, l:path)
+      continue
+    endif
+    let l:seen[l:path] = 1
+    if filereadable(l:path) && index(split(l:path, '[\\/]'), '.undo') < 0 && fnamemodify(l:path, ':t') ==# a:name
+      call add(l:files, l:path)
+    endif
+  endfor
+  return len(l:files) == 1 ? l:files[0] : ''
+endfunction
+
+function! s:relpath_from_dir(path, base) abort
+  let l:path = fnamemodify(a:path, ':p')
+  let l:base = fnamemodify(a:base, ':p')
+  if l:path[:len(l:base) - 1] ==# l:base
+    return substitute(strpart(l:path, len(l:base)), '\\', '/', 'g')
+  endif
+  return substitute(fnamemodify(l:path, ':t'), '\\', '/', 'g')
+endfunction
+
+function! s:resolve_existing_link_target(target, ...) abort
+  let l:base = a:0 ? a:1 : expand('%:p:h')
+  let l:target = trim(a:target)
+  if empty(l:target) || l:target =~# '\v^\w+://'
+    return ''
+  endif
+  if s:is_absolute_path(l:target)
+    let l:absolute = fnamemodify(l:target, ':p')
+    return filereadable(l:absolute) ? l:absolute : ''
+  endif
+
+  let l:direct = fnamemodify(l:base . '/' . l:target, ':p')
+  if filereadable(l:direct)
+    return l:direct
+  endif
+
+  if !s:path_has_directory(l:target)
+    return s:find_unique_descendant_file(l:base, l:target)
+  endif
+  return ''
+endfunction
+
+function! s:display_target_from_current_dir(target) abort
+  let l:base = expand('%:p:h')
+  let l:path = s:resolve_existing_link_target(a:target, l:base)
+  if !empty(l:path)
+    return s:relpath_from_dir(l:path, l:base)
+  endif
+  return substitute(trim(a:target), '\\', '/', 'g')
+endfunction
+
 function! yurii_pkm#resolve_link(target, ...) abort
   let l:base = a:0 ? a:1 : expand('%:p:h')
-  if a:target =~# '^/'
+  let l:existing = s:resolve_existing_link_target(a:target, l:base)
+  if !empty(l:existing)
+    return l:existing
+  endif
+  if s:is_absolute_path(a:target)
     return fnamemodify(a:target, ':p')
   endif
   return fnamemodify(l:base . '/' . a:target, ':p')
@@ -1251,15 +1321,16 @@ function! s:link_from_target(target) abort
   if empty(l:target)
     return ''
   endif
-  let l:name = fnamemodify(l:target, ':t')
+  let l:display_target = s:display_target_from_current_dir(l:target)
+  let l:name = fnamemodify(l:display_target, ':t')
   " md は YAML/H1 タイトルをリンク文字列にする。非mdは拡張子ごとのファイル名
-  let l:title = s:existing_title_for_target(l:target)
-  if s:is_markdown_target(l:target)
+  let l:title = s:existing_title_for_target(l:display_target)
+  if s:is_markdown_target(l:display_target)
     let l:text = empty(l:title) ? fnamemodify(l:name, ':r') : l:title
   else
     let l:text = l:name
   endif
-  return '[' . l:text . '](' . l:target . ')'
+  return '[' . l:text . '](' . l:display_target . ')'
 endfunction
 
 function! s:insert_link_below_cursor(link) abort
