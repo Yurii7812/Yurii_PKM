@@ -1212,7 +1212,7 @@ function! yurii_pkm#timestamp_yaml() abort
 endfunction
 
 function! s:new_note_insert_line() abort
-  let l:ctx = search('^Context: ', 'nw')
+  let l:ctx = search('^Context:', 'nw')
   if l:ctx > 0
     return l:ctx
   endif
@@ -1258,7 +1258,7 @@ function! yurii_pkm#note_template(title, ...) abort
         \ '',
         \ '# ' . a:title,
         \ '',
-        \ 'Context: ',
+        \ 'Context:',
         \ '',
         \ '# Up',
         \ '',
@@ -1648,7 +1648,7 @@ function! yurii_pkm#create_note(prefix, title, open_after, insert_mode) abort
     let &smartindent = l:save_si
 
     startinsert
-    call cursor(s:new_note_insert_line(), 10)
+    call cursor(s:new_note_insert_line(), 9)
   endif
 
   return {'path': l:file, 'link': l:link}
@@ -1786,7 +1786,7 @@ function! s:new_note_no_title(prefix) abort
           \ '',
           \ '# ' . l:title,
           \ '',
-          \ 'Context: ',
+          \ 'Context:',
           \ '',
           \ '# Up',
           \ l:parent_link_line,
@@ -1803,7 +1803,7 @@ function! s:new_note_no_title(prefix) abort
           \ '',
           \ '# ' . l:title,
           \ '',
-          \ 'Context: ',
+          \ 'Context:',
           \ '',
           \ '# Up',
           \ '# BackLink',
@@ -1819,7 +1819,7 @@ function! s:new_note_no_title(prefix) abort
           \ '',
           \ '# ' . l:title,
           \ '',
-          \ 'Context: ',
+          \ 'Context:',
           \ '',
           \ '# Up',
           \ l:parent_link_line,
@@ -1878,7 +1878,7 @@ function! s:new_note_no_title(prefix) abort
   execute 'edit ' . fnameescape(l:file)
 
   startinsert
-  call cursor(l:cursor_line, 10)
+  call cursor(l:cursor_line, 9)
 endfunction
 
 " ---------------------------------------------------------------------------
@@ -2257,7 +2257,7 @@ function! yurii_pkm#new_quick(args) abort
           \ '',
           \ '# ' . l:title,
           \ '',
-          \ 'Context: ',
+          \ 'Context:',
           \ '',
           \ '# Up',
           \ l:parent_link_line,
@@ -2273,7 +2273,7 @@ function! yurii_pkm#new_quick(args) abort
           \ '',
           \ '# ' . l:title,
           \ '',
-          \ 'Context: ',
+          \ 'Context:',
           \ '',
           \ '# Up',
           \ l:parent_link_line,
@@ -2289,7 +2289,7 @@ function! yurii_pkm#new_quick(args) abort
           \ '',
           \ '# ' . l:title,
           \ '',
-          \ 'Context: ',
+          \ 'Context:',
           \ '',
           \ '# Up',
           \ l:parent_link_line,
@@ -2346,7 +2346,7 @@ function! yurii_pkm#new_quick(args) abort
   execute 'edit ' . fnameescape(l:file)
 
   startinsert
-  call cursor(l:cursor_line, 10)
+  call cursor(l:cursor_line, 9)
 endfunction
 
 
