@@ -1790,7 +1790,7 @@ function! s:new_note_no_title(prefix) abort
           \ l:parent_link_line,
           \ '# BackLink',
           \ '[Index](index.md)' ]
-    let l:cursor_line = 9
+    let l:cursor_line = 8
   elseif l:is_k
     " nk の h/Enter/o モード: 見出しのみ作成
     let l:content = [
@@ -1806,7 +1806,7 @@ function! s:new_note_no_title(prefix) abort
           \ '# Up',
           \ '# BackLink',
           \ '[Index](index.md)' ]
-    let l:cursor_line = 9
+    let l:cursor_line = 8
   else
     " nn/nf の h/Enter/o モード: 従来どおり
     let l:content = [
@@ -1823,7 +1823,7 @@ function! s:new_note_no_title(prefix) abort
           \ l:parent_link_line,
           \ '# BackLink',
           \ '[Index](index.md)' ]
-    let l:cursor_line = 9
+    let l:cursor_line = 8
   endif
 
   call writefile(l:content, l:file)
@@ -2270,7 +2270,7 @@ function! yurii_pkm#new_quick(args) abort
           \ l:parent_link_line,
           \ '# BackLink',
           \ '[Index](index.md)' ]
-    let l:cursor_line = 9
+    let l:cursor_line = 8
   elseif l:is_k
     let l:content = [
           \ '---',
@@ -2286,7 +2286,7 @@ function! yurii_pkm#new_quick(args) abort
           \ l:parent_link_line,
           \ '# BackLink',
           \ '[Index](index.md)' ]
-    let l:cursor_line = 9
+    let l:cursor_line = 8
   else
     let l:content = [
           \ '---',
@@ -2302,7 +2302,7 @@ function! yurii_pkm#new_quick(args) abort
           \ l:parent_link_line,
           \ '# BackLink',
           \ '[Index](index.md)' ]
-    let l:cursor_line = 9
+    let l:cursor_line = 8
   endif
 
   call writefile(l:content, l:file)
