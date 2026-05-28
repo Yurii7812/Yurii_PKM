@@ -1070,6 +1070,89 @@ function! yurii_pkm#jump_link(forward) abort
   " search() のマッチ先頭 ([) にそのまま止める
 endfunction
 
+
+function! s:jump_to_line(lnum) abort
+  call cursor(a:lnum, 1)
+  normal! zv
+endfunction
+
+function! yurii_pkm#jump_section_header(name) abort
+  let l:sec = s:find_section_line(a:name)
+  if l:sec <= 0
+    echo '# ' . a:name . ' section not found'
+    return
+  endif
+
+  call s:jump_to_line(l:sec)
+endfunction
+
+function! s:section_link_positions(name) abort
+  let l:sec = s:find_section_line(a:name)
+  if l:sec <= 0
+    return []
+  endif
+
+  let l:end = s:section_end_line(a:name)
+  if l:end <= l:sec
+    return []
+  endif
+
+  let l:positions = []
+  for l:lnum in range(l:sec + 1, l:end)
+    let l:line = getline(l:lnum)
+    let l:start = 0
+    while 1
+      let l:m = matchstrpos(l:line, s:link_pat, l:start)
+      if len(l:m) < 3 || l:m[1] < 0
+        break
+      endif
+      call add(l:positions, {'lnum': l:lnum, 'col': l:m[1] + 1})
+      let l:start = l:m[2]
+    endwhile
+  endfor
+  return l:positions
+endfunction
+
+function! yurii_pkm#jump_up() abort
+  let l:up = s:find_section_line('up')
+  if l:up <= 0
+    echo '# Up section not found'
+    return
+  endif
+
+  let l:links = s:section_link_positions('up')
+  if len(l:links) == 1
+    call cursor(l:links[0].lnum, l:links[0].col)
+    normal! zv
+    call yurii_pkm#open_link_under_cursor()
+    return
+  endif
+
+  call s:jump_to_line(l:up)
+endfunction
+
+function! yurii_pkm#jump_down_top() abort
+  let l:down = s:find_section_line('down')
+  if l:down <= 0
+    echo '# Down section not found'
+    return
+  endif
+
+  let l:end = s:section_end_line('down')
+  call s:jump_to_line(l:end > l:down ? l:down + 1 : l:down)
+endfunction
+
+function! yurii_pkm#jump_down_bottom() abort
+  let l:down = s:find_section_line('down')
+  if l:down <= 0
+    echo '# Down section not found'
+    return
+  endif
+
+  let l:end = s:section_end_line('down')
+  call s:jump_to_line(l:end > l:down ? l:end : l:down)
+endfunction
+
 function! yurii_pkm#jump_last_link_before_up() abort
   let l:up = s:find_section_line('up')
   if l:up <= 0
@@ -2043,8 +2126,8 @@ function! s:new_note_no_title(prefix) abort
   let l:is_k = (a:prefix ==? 'K')
 
   if l:reverse_link
-    " b モード: 本文先頭に親リンク、Back は Index のみ
-    " # title / (空) / [親リンク] / (空) / Back / [index]
+    " b モード: 新ノートの Down に現在ノートへのリンクを入れる
+    " # title / (空) / Up / Down / [親リンク] / Back / [index]
     let l:content = [
           \ '---',
           \ 'time: ' . yurii_pkm#timestamp_yaml(),
@@ -2056,8 +2139,8 @@ function! s:new_note_no_title(prefix) abort
           \ '',
           \ '',
           \ '# Up',
-          \ l:parent_link_line,
           \ '# Down',
+          \ l:parent_link_line,
           \ '# BackLink',
           \ '[Index](index.md)' ]
     let l:cursor_line = 8
@@ -2100,37 +2183,9 @@ function! s:new_note_no_title(prefix) abort
 
   call writefile(l:content, l:file)
 
-  " bモード: 親ファイルの Back セクション直後に新ノートへのリンクを追記してsync
+  " bモード: 新ノートの Down を元に Up/BackLink を同期
   if l:reverse_link
-    " ディスクとバッファの不一致を防ぐため先に保存
-    if &modified
-      silent noautocmd write
-    endif
-    let l:new_link = yurii_pkm#make_link(l:fname, l:title)
-    let l:parent_fp = l:dir . s:sep() . l:parent_file
-    if filereadable(l:parent_fp)
-      let l:plines = readfile(l:parent_fp)
-      let l:back_idx = -1
-      for l:i in range(0, len(l:plines) - 1)
-        if s:is_section_header_text(l:plines[l:i], 'back')
-          let l:back_idx = l:i
-          break
-        endif
-      endfor
-      if index(l:plines, l:new_link) < 0
-        if l:back_idx < 0
-          " Back セクションがなければ末尾に追加
-          call add(l:plines, '')
-          call add(l:plines, '# BackLink')
-          call add(l:plines, '[Index](index.md)')
-          let l:back_idx = len(l:plines) - 2
-        endif
-        " Back 行の直後（back_idx + 1）に挿入
-        call insert(l:plines, l:new_link, l:back_idx + 1)
-        call writefile(l:plines, l:parent_fp)
-        call s:run_update_one_for(l:parent_fp)
-      endif
-    endif
+    call s:run_update_one_for(l:file)
   endif
 
   if &modified

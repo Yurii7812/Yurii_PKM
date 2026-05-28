@@ -609,20 +609,31 @@ def build_multi_up(
     parent_paths: list[Path],
     note_path: Path,
     current_up_targets: set[Path] | None = None,
+    prune_targets: set[Path] | None = None,
+    exact: bool = False,
 ) -> list[str]:
-    """Build Up section content from all parent paths and existing Up links."""
+    """Build Up from Down-derived parents, pruning stale links when requested."""
 
     resolved_parents = {p.resolve() for p in parent_paths}
-    current_up_targets = {p.resolve() for p in (current_up_targets or set())}
-    parents = sorted(resolved_parents | current_up_targets)
+    if exact:
+        parents = resolved_parents
+    else:
+        current_up_targets = {p.resolve() for p in (current_up_targets or set())}
+        prune_targets = {p.resolve() for p in (prune_targets or set())}
+        parents = resolved_parents | (current_up_targets - prune_targets)
 
-    return [make_link_line(parent, get_title(parent), note_path.parent) for parent in parents]
+    return [make_link_line(parent, get_title(parent), note_path.parent) for parent in sorted(parents)]
 
 
-def update_up_sections(root: Path) -> int:
-    """Scan all notes; rebuild BackLink from body links."""
+def update_up_sections(
+    root: Path,
+    prune_up_target: Path | None = None,
+    exact_up: bool = False,
+) -> int:
+    """Scan all notes; rebuild Up from Down and BackLink from body links."""
 
     root = root.resolve()
+    prune_up_targets = {prune_up_target.resolve()} if prune_up_target else set()
     all_paths = list(iter_notes(root))
 
     backlinks_children_of: dict[Path, list[Path]] = {}
@@ -689,6 +700,8 @@ def update_up_sections(root: Path) -> int:
                 parent_candidates,
                 p,
                 current_up_targets=current_up_targets,
+                prune_targets=prune_up_targets,
+                exact=exact_up,
             )
             new_lines = replace_section(new_lines, "up", new_up)
             up_link_targets = up_targets(new_lines, p)
@@ -724,7 +737,7 @@ def update_one(file_path: Path, root: Path) -> str:
     if update_titles_in_file(file_path):
         changed_files.append(file_path.name)
 
-    changed_count = update_up_sections(root)
+    changed_count = update_up_sections(root, prune_up_target=file_path)
     if changed_count:
         changed_files.append(f"uplinks:{changed_count}")
 
@@ -884,7 +897,7 @@ def main(argv: list[str]) -> int:
         root = Path(argv[2])
         if not root.exists():
             root.mkdir(parents=True, exist_ok=True)
-        changed = update_up_sections(root)
+        changed = update_up_sections(root, exact_up=True)
         # Also update title annotations in all files
         title_changed = 0
         for p in iter_notes(root):
