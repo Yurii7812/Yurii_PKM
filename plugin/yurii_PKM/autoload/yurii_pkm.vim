@@ -1552,6 +1552,32 @@ function! yurii_pkm#timestamp_yaml() abort
   return strftime('%Y-%m-%d %H:%M:%S')
 endfunction
 
+function! s:k_note_template(title) abort
+  return [
+        \ '---',
+        \ 'time: ' . yurii_pkm#timestamp_yaml(),
+        \ 'title: ' . a:title,
+        \ '---',
+        \ '',
+        \ '# ' . a:title,
+        \ '',
+        \ '# Up',
+        \ '# Down',
+        \ '# BackLink',
+        \ '[Index](index.md)' ]
+endfunction
+
+function! s:k_note_template_with_down(title, down_lines) abort
+  let l:content = s:k_note_template(a:title)
+  let l:down_lines = s:trim_blank_edges(a:down_lines)
+  let l:down_lines = filter(copy(l:down_lines), 'v:val !~# ''^\[Index\](index\.md)$''')
+  if !empty(l:down_lines)
+    let l:down_idx = s:find_section_index_in_lines(l:content, 'down')
+    call extend(l:content, l:down_lines, l:down_idx + 1)
+  endif
+  return l:content
+endfunction
+
 function! s:new_note_insert_line() abort
   let l:ctx = search('^Context:', 'nw')
   if l:ctx > 0
@@ -2171,41 +2197,35 @@ function! s:new_note_no_title(prefix) abort
   let l:is_k = (a:prefix ==? 'K')
 
   if l:reverse_link
-    " b モード: 新ノートの Down に現在ノートへのリンクを入れる
-    " # title / (空) / Up / Down / [親リンク] / Back / [index]
-    let l:content = [
-          \ '---',
-          \ 'time: ' . yurii_pkm#timestamp_yaml(),
-          \ 'title: ' . l:title,
-          \ '---',
-          \ '',
-          \ '# ' . l:title,
-          \ '',
-          \ '',
-          \ '',
-          \ '# Up',
-          \ '# Down',
-          \ l:parent_link_line,
-          \ '# BackLink',
-          \ '[Index](index.md)' ]
-    let l:cursor_line = 8
+    if l:is_k
+      let l:content = s:k_note_template(l:title)
+      let l:cursor_line = 7
+    else
+      " b モード: 新ノートの Down に現在ノートへのリンクを入れる
+      " # title / (空) / Up / Down / [親リンク] / Back / [index]
+      let l:content = [
+            \ '---',
+            \ 'time: ' . yurii_pkm#timestamp_yaml(),
+            \ 'title: ' . l:title,
+            \ '---',
+            \ '',
+            \ '# ' . l:title,
+            \ '',
+            \ '',
+            \ '',
+            \ '# Up',
+            \ '# Down',
+            \ l:parent_link_line,
+            \ '# BackLink',
+            \ '[Index](index.md)' ]
+    endif
+    if !l:is_k
+      let l:cursor_line = 8
+    endif
   elseif l:is_k
     " nk の h/Enter/o モード: 見出しのみ作成
-    let l:content = [
-          \ '---',
-          \ 'time: ' . yurii_pkm#timestamp_yaml(),
-          \ 'title: ' . l:title,
-          \ '---',
-          \ '',
-          \ '# ' . l:title,
-          \ '',
-          \ '',
-          \ '',
-          \ '# Up',
-          \ '# Down',
-          \ '# BackLink',
-          \ '[Index](index.md)' ]
-    let l:cursor_line = 8
+    let l:content = s:k_note_template(l:title)
+    let l:cursor_line = 7
   else
     " nn/nf の h/Enter/o モード: 従来どおり
     let l:content = [
@@ -2294,20 +2314,7 @@ function! s:visual_new_note(prefix, mode, ...) abort
   if l:is_b
     " bモード: 選択テキストは新ファイルに移す、Back セクションに親リンク
     if l:is_k
-      let l:content = [
-            \ '---',
-            \ 'time: ' . yurii_pkm#timestamp_yaml(),
-            \ 'title: ' . l:title,
-            \ '---',
-            \ '',
-            \ '# ' . l:title,
-            \ '',
-            \ '',
-            \ '',
-            \ '# Up',
-            \ '# Down',
-            \ '# BackLink',
-            \ '[Index](index.md)' ]
+      let l:content = s:k_note_template_with_down(l:title, l:sel_lines)
     else
       let l:content = [
             \ '---',
@@ -2325,39 +2332,17 @@ function! s:visual_new_note(prefix, mode, ...) abort
             \ '# BackLink',
             \ '[Index](index.md)' ]
     endif
-    " 選択テキストを本文（Back の直前）に挿入
-    let l:back_idx = s:find_section_index_in_lines(l:content, 'back')
-    " Back の前に空行 + 選択テキストを差し込む
-    let l:insert_pos = l:back_idx
-    call extend(l:content, l:sel_lines, l:insert_pos)
+    if !l:is_k
+      " 選択テキストを本文（Back の直前）に挿入
+      let l:back_idx = s:find_section_index_in_lines(l:content, 'back')
+      " Back の前に空行 + 選択テキストを差し込む
+      let l:insert_pos = l:back_idx
+      call extend(l:content, l:sel_lines, l:insert_pos)
+    endif
   else
     " o / Enter モード: 本文に選択テキストを配置
     if l:is_k
-      let l:content = [
-            \ '---',
-            \ 'time: ' . yurii_pkm#timestamp_yaml(),
-            \ 'title: ' . l:title,
-            \ '---',
-            \ '',
-            \ '# ' . l:title,
-            \ '' ]
-      let l:k_lines = s:trim_blank_edges(l:sel_lines)
-      if empty(l:k_lines)
-        call add(l:content, '\\ ここにリンクを書く。')
-      else
-        let l:k_lines = filter(copy(l:k_lines), 'v:val !~# ''^\[Index\](index\.md)$''')
-        if empty(l:k_lines)
-          call add(l:content, '\\ ここにリンクを書く。')
-        else
-          call extend(l:content, l:k_lines)
-        endif
-      endif
-      call add(l:content, '')
-      call add(l:content, '')
-      call add(l:content, '# Up')
-      call add(l:content, '# Down')
-      call add(l:content, '# BackLink')
-      call add(l:content, '[Index](index.md)')
+      let l:content = s:k_note_template_with_down(l:title, l:sel_lines)
     else
       let l:content = [
             \ '---',
@@ -2502,20 +2487,7 @@ function! s:new_k_note_with_title() abort
   let &autoindent = l:save_ai
   let &smartindent = l:save_si
 
-  let l:content = [
-        \ '---',
-        \ 'time: ' . yurii_pkm#timestamp_yaml(),
-        \ 'title: ' . l:title,
-        \ '---',
-        \ '',
-        \ '# ' . l:title,
-        \ '',
-        \ '',
-        \ '',
-        \ '# Up',
-        \ '# Down',
-        \ '# BackLink',
-        \ '[Index](index.md)' ]
+  let l:content = s:k_note_template(l:title)
   call writefile(l:content, l:file)
 
   silent noautocmd write
@@ -2634,39 +2606,32 @@ function! yurii_pkm#new_quick(args) abort
   let l:is_k = (l:prefix ==? 'K')
 
   if l:reverse_link
-    let l:content = [
-          \ '---',
-          \ 'time: ' . yurii_pkm#timestamp_yaml(),
-          \ 'title: ' . l:title,
-          \ '---',
-          \ '',
-          \ '# ' . l:title,
-          \ '',
-          \ '',
-          \ '',
-          \ '# Up',
-          \ l:parent_link_line,
-          \ '# Down',
-          \ '# BackLink',
-          \ '[Index](index.md)' ]
-    let l:cursor_line = 8
+    if l:is_k
+      let l:content = s:k_note_template(l:title)
+      let l:cursor_line = 7
+    else
+      let l:content = [
+            \ '---',
+            \ 'time: ' . yurii_pkm#timestamp_yaml(),
+            \ 'title: ' . l:title,
+            \ '---',
+            \ '',
+            \ '# ' . l:title,
+            \ '',
+            \ '',
+            \ '',
+            \ '# Up',
+            \ l:parent_link_line,
+            \ '# Down',
+            \ '# BackLink',
+            \ '[Index](index.md)' ]
+    endif
+    if !l:is_k
+      let l:cursor_line = 8
+    endif
   elseif l:is_k
-    let l:content = [
-          \ '---',
-          \ 'time: ' . yurii_pkm#timestamp_yaml(),
-          \ 'title: ' . l:title,
-          \ '---',
-          \ '',
-          \ '# ' . l:title,
-          \ '',
-          \ '',
-          \ '',
-          \ '# Up',
-          \ l:parent_link_line,
-          \ '# Down',
-          \ '# BackLink',
-          \ '[Index](index.md)' ]
-    let l:cursor_line = 8
+    let l:content = s:k_note_template(l:title)
+    let l:cursor_line = 7
   else
     let l:content = [
           \ '---',
