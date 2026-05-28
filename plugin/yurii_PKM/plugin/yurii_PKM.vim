@@ -80,7 +80,7 @@ command!          YuriiIndex call yurii_pkm#open_index()
 command!          YuriiChooseIndexDir call yurii_pkm#choose_index_root()
 command! -nargs=? ExpandLinks call yurii_pkm#expand_s_under_cursor(<q-args>)
 command!          JumpLastLinkBeforeUp call yurii_pkm#jump_last_link_before_up()
-command!          JumpUp     call yurii_pkm#jump_section_header('up')
+command!          JumpUp     call yurii_pkm#jump_up()
 command!          JumpDownTop call yurii_pkm#jump_down_top()
 command!          JumpDownBottom call yurii_pkm#jump_down_bottom()
 
@@ -134,7 +134,7 @@ silent! execute "nnoremap <silent> \<Esc>[Z <Cmd>call yurii_pkm#jump_link(0)<CR>
 nnoremap <silent> <CR>     <Cmd>call yurii_pkm#open_link_under_cursor()<CR>
 nnoremap <silent> <BS>     <Cmd>call yurii_pkm#go_back()<CR>
 nnoremap <nowait> <silent> bu  <Cmd>call yurii_pkm#jump_last_link_before_up()<CR>
-nnoremap <nowait> <silent> mu  <Cmd>call yurii_pkm#jump_section_header('up')<CR>
+nnoremap <nowait> <silent> mu  <Cmd>call yurii_pkm#jump_up()<CR>
 nnoremap <nowait> <silent> mt  <Cmd>call yurii_pkm#jump_down_top()<CR>
 nnoremap <nowait> <silent> mb  <Cmd>call yurii_pkm#jump_down_bottom()<CR>
 

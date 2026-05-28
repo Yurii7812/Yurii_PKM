@@ -1086,6 +1086,51 @@ function! yurii_pkm#jump_section_header(name) abort
   call s:jump_to_line(l:sec)
 endfunction
 
+function! s:section_link_positions(name) abort
+  let l:sec = s:find_section_line(a:name)
+  if l:sec <= 0
+    return []
+  endif
+
+  let l:end = s:section_end_line(a:name)
+  if l:end <= l:sec
+    return []
+  endif
+
+  let l:positions = []
+  for l:lnum in range(l:sec + 1, l:end)
+    let l:line = getline(l:lnum)
+    let l:start = 0
+    while 1
+      let l:m = matchstrpos(l:line, s:link_pat, l:start)
+      if len(l:m) < 3 || l:m[1] < 0
+        break
+      endif
+      call add(l:positions, {'lnum': l:lnum, 'col': l:m[1] + 1})
+      let l:start = l:m[2]
+    endwhile
+  endfor
+  return l:positions
+endfunction
+
+function! yurii_pkm#jump_up() abort
+  let l:up = s:find_section_line('up')
+  if l:up <= 0
+    echo '# Up section not found'
+    return
+  endif
+
+  let l:links = s:section_link_positions('up')
+  if len(l:links) == 1
+    call cursor(l:links[0].lnum, l:links[0].col)
+    normal! zv
+    call yurii_pkm#open_link_under_cursor()
+    return
+  endif
+
+  call s:jump_to_line(l:up)
+endfunction
+
 function! yurii_pkm#jump_down_top() abort
   let l:down = s:find_section_line('down')
   if l:down <= 0
