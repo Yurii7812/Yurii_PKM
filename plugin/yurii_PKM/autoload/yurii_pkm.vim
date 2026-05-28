@@ -2126,8 +2126,8 @@ function! s:new_note_no_title(prefix) abort
   let l:is_k = (a:prefix ==? 'K')
 
   if l:reverse_link
-    " b モード: 本文先頭に親リンク、Back は Index のみ
-    " # title / (空) / [親リンク] / (空) / Back / [index]
+    " b モード: 新ノートの Down に現在ノートへのリンクを入れる
+    " # title / (空) / Up / Down / [親リンク] / Back / [index]
     let l:content = [
           \ '---',
           \ 'time: ' . yurii_pkm#timestamp_yaml(),
@@ -2139,8 +2139,8 @@ function! s:new_note_no_title(prefix) abort
           \ '',
           \ '',
           \ '# Up',
-          \ l:parent_link_line,
           \ '# Down',
+          \ l:parent_link_line,
           \ '# BackLink',
           \ '[Index](index.md)' ]
     let l:cursor_line = 8
@@ -2183,37 +2183,9 @@ function! s:new_note_no_title(prefix) abort
 
   call writefile(l:content, l:file)
 
-  " bモード: 親ファイルの Back セクション直後に新ノートへのリンクを追記してsync
+  " bモード: 新ノートの Down を元に Up/BackLink を同期
   if l:reverse_link
-    " ディスクとバッファの不一致を防ぐため先に保存
-    if &modified
-      silent noautocmd write
-    endif
-    let l:new_link = yurii_pkm#make_link(l:fname, l:title)
-    let l:parent_fp = l:dir . s:sep() . l:parent_file
-    if filereadable(l:parent_fp)
-      let l:plines = readfile(l:parent_fp)
-      let l:back_idx = -1
-      for l:i in range(0, len(l:plines) - 1)
-        if s:is_section_header_text(l:plines[l:i], 'back')
-          let l:back_idx = l:i
-          break
-        endif
-      endfor
-      if index(l:plines, l:new_link) < 0
-        if l:back_idx < 0
-          " Back セクションがなければ末尾に追加
-          call add(l:plines, '')
-          call add(l:plines, '# BackLink')
-          call add(l:plines, '[Index](index.md)')
-          let l:back_idx = len(l:plines) - 2
-        endif
-        " Back 行の直後（back_idx + 1）に挿入
-        call insert(l:plines, l:new_link, l:back_idx + 1)
-        call writefile(l:plines, l:parent_fp)
-        call s:run_update_one_for(l:parent_fp)
-      endif
-    endif
+    call s:run_update_one_for(l:file)
   endif
 
   if &modified
