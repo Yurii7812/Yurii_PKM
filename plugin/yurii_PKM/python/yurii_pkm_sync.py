@@ -569,7 +569,15 @@ def update_titles_in_file(path: Path) -> bool:
 # ---------------------------------------------------------------------------
 
 def iter_notes(root: Path) -> Iterable[Path]:
-    for path in sorted(root.rglob("*.md")):
+    """Yield only markdown notes directly under the active index directory.
+
+    UpdateAll/AutoSync should manage the same directory as index.md only.
+    Markdown files in child folders are intentionally isolated so a nested
+    folder can keep its own independent PKM/index without the parent scan
+    rewriting its sections.
+    """
+    root = root.resolve()
+    for path in sorted(root.glob("*.md")):
         if path.is_file() and ".undo" not in path.parts:
             yield path
 
