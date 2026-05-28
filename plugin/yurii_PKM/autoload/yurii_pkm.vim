@@ -1609,16 +1609,33 @@ function! yurii_pkm#note_template(title, ...) abort
 endfunction
 
 
-function! yurii_pkm#make_link(path, title) abort
+function! s:make_link_from_dir(path, title, base_dir) abort
   let l:path = trim(a:path)
   if s:is_absolute_path(l:path)
-    let l:file = s:relpath_from_dir(l:path, expand('%:p:h'))
+    let l:file = s:relpath_from_dir(l:path, a:base_dir)
   else
     let l:file = substitute(l:path, '\\', '/', 'g')
   endif
   let l:name = fnamemodify(l:file, ':t')
   let l:text = empty(a:title) ? fnamemodify(l:name, ':r') : a:title
   return '[' . l:text . '](' . l:file . ')'
+endfunction
+
+function! yurii_pkm#make_link(path, title) abort
+  return s:make_link_from_dir(a:path, a:title, expand('%:p:h'))
+endfunction
+
+function! s:cwd_note_dir() abort
+  let l:dir = fnamemodify(getcwd(), ':p')
+  let l:trimmed = substitute(l:dir, '[\\/]\+$', '', '')
+  return empty(l:trimmed) ? l:dir : l:trimmed
+endfunction
+
+function! s:join_path(dir, name) abort
+  if a:dir =~# '[\\/]$'
+    return a:dir . a:name
+  endif
+  return a:dir . s:sep() . a:name
 endfunction
 
 " ---------------------------------------------------------------------------
@@ -2086,7 +2103,8 @@ endfunction
 
 function! s:new_note_no_title(prefix) abort
   let l:parent_line  = line('.')
-  let l:parent_file  = expand('%:t')
+  let l:parent_path  = expand('%:p')
+  let l:parent_dir   = expand('%:p:h')
   let l:parent_title = yurii_pkm#current_title()
 
   echon 'mode: (O)rphan (B)ack (H)=cursor Enter=DownLast: '
@@ -2122,9 +2140,9 @@ function! s:new_note_no_title(prefix) abort
   let l:fname = (l:filetype ==# 'K')
         \ ? (yurii_pkm#timestamp_filename() . '.md')
         \ : (l:no_prefix_name ? (l:title . '.md') : (a:prefix . '_' . l:title . '.md'))
-  let l:dir   = expand('%:p:h')
-  let l:file  = l:dir . s:sep() . l:fname
-  let l:link  = yurii_pkm#make_link(l:fname, l:title)
+  let l:dir   = s:cwd_note_dir()
+  let l:file  = s:join_path(l:dir, l:fname)
+  let l:link  = s:make_link_from_dir(l:file, l:title, l:parent_dir)
 
   if !l:no_parent_link && !l:reverse_link
     let l:save_ai = &autoindent
@@ -2149,7 +2167,7 @@ function! s:new_note_no_title(prefix) abort
     call s:run_update_one_for(expand('%:p'))
   endif
 
-  let l:parent_link_line = yurii_pkm#make_link(l:parent_file, l:parent_title)
+  let l:parent_link_line = s:make_link_from_dir(l:parent_path, l:parent_title, l:dir)
   let l:is_k = (a:prefix ==? 'K')
 
   if l:reverse_link
@@ -2254,9 +2272,10 @@ function! s:visual_new_note(prefix, mode, ...) abort
 
   let l:sel_lines = getline(l:vstart, l:vend)
 
-  let l:parent_file  = expand('%:t')
+  let l:parent_path  = expand('%:p')
+  let l:parent_dir   = expand('%:p:h')
   let l:parent_title = yurii_pkm#current_title()
-  let l:dir          = expand('%:p:h')
+  let l:dir          = s:cwd_note_dir()
 
   let l:title = (a:0 >= 1 && !empty(a:1)) ? a:1 : yurii_pkm#timestamp_filename()
   let l:filetype = toupper(a:prefix)
@@ -2264,9 +2283,9 @@ function! s:visual_new_note(prefix, mode, ...) abort
   let l:fname = (l:filetype ==# 'K')
         \ ? (yurii_pkm#timestamp_filename() . '.md')
         \ : (l:no_prefix_name ? (l:title . '.md') : (a:prefix . '_' . l:title . '.md'))
-  let l:file  = l:dir . s:sep() . l:fname
-  let l:parent_link_line = yurii_pkm#make_link(l:parent_file, l:parent_title)
-  let l:link_to_new      = yurii_pkm#make_link(l:fname, l:title)
+  let l:file  = s:join_path(l:dir, l:fname)
+  let l:parent_link_line = s:make_link_from_dir(l:parent_path, l:parent_title, l:dir)
+  let l:link_to_new      = s:make_link_from_dir(l:file, l:title, l:parent_dir)
 
   let l:is_b = (a:mode ==? 'b')
   let l:is_k = (a:prefix ==? 'K')
@@ -2379,7 +2398,7 @@ function! s:visual_new_note(prefix, mode, ...) abort
 
   if l:is_b
     " bモード: 親の Back セクション直後にも逆リンクを追記
-    let l:parent_fp = l:dir . s:sep() . l:parent_file
+    let l:parent_fp = l:parent_path
     if filereadable(l:parent_fp)
       let l:plines = readfile(l:parent_fp)
       let l:back_idx2 = -1
