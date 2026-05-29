@@ -139,9 +139,9 @@ silent! execute "nnoremap <silent> \<Esc>[Z <Cmd>call yurii_pkm#jump_link(0)<CR>
 nnoremap <silent> <CR>     <Cmd>call yurii_pkm#open_link_under_cursor()<CR>
 nnoremap <silent> <BS>     <Cmd>call yurii_pkm#go_back()<CR>
 nnoremap <nowait> <silent> bu  <Cmd>call yurii_pkm#jump_last_link_before_up()<CR>
-nnoremap <nowait> <silent> mj  <Cmd>call yurii_pkm#jump_up()<CR>
-nnoremap <nowait> <silent> mk  <Cmd>call yurii_pkm#jump_down_top()<CR>
-nnoremap <nowait> <silent> ml  <Cmd>call yurii_pkm#jump_down_bottom()<CR>
+nnoremap <nowait> <silent> ml  <Cmd>call yurii_pkm#jump_up()<CR>
+nnoremap <nowait> <silent> m;  <Cmd>call yurii_pkm#jump_down_top()<CR>
+nnoremap <nowait> <silent> m'  <Cmd>call yurii_pkm#jump_down_bottom()<CR>
 
 " ノート操作
 nnoremap <nowait> <silent> nf  <Cmd>call yurii_pkm#new_quick_no_title()<CR>
