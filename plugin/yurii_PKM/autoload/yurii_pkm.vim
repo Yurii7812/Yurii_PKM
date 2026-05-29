@@ -1455,8 +1455,20 @@ endfunction
 function! s:relpath_from_dir(path, base) abort
   let l:path = fnamemodify(a:path, ':p')
   let l:base = fnamemodify(a:base, ':p')
-  let l:path_parts = split(substitute(l:path, '\\', '/', 'g'), '/')
-  let l:base_parts = split(substitute(l:base, '\\', '/', 'g'), '/')
+  let l:path_dir = fnamemodify(l:path, ':h:p')
+  let l:path_dir_cmp = substitute(l:path_dir, '[\\/]\+$', '', '')
+  let l:base_cmp = substitute(l:base, '[\\/]\+$', '', '')
+
+  " Same-directory links must stay as plain filenames.  In particular, notes
+  " created from index.md should get [Index](index.md), never [Index](/index.md).
+  if l:path_dir_cmp ==# l:base_cmp
+    return fnamemodify(l:path, ':t')
+  endif
+
+  let l:path_norm = substitute(l:path, '\\', '/', 'g')
+  let l:base_norm = substitute(l:base, '\\', '/', 'g')
+  let l:path_parts = split(l:path_norm, '/')
+  let l:base_parts = split(l:base_norm, '/')
 
   while !empty(l:path_parts) && !empty(l:base_parts) && l:path_parts[0] ==# l:base_parts[0]
     call remove(l:path_parts, 0)
@@ -1467,7 +1479,8 @@ function! s:relpath_from_dir(path, base) abort
   if empty(l:rel_parts)
     return fnamemodify(l:path, ':t')
   endif
-  return join(l:rel_parts, '/')
+  let l:rel = join(l:rel_parts, '/')
+  return empty(l:rel) ? fnamemodify(l:path, ':t') : l:rel
 endfunction
 
 function! s:ancestor_dirs_until_root(base) abort
