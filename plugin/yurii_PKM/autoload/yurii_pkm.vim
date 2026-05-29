@@ -1245,7 +1245,16 @@ function! yurii_pkm#get_link_under_cursor() abort
 endfunction
 
 function! s:is_absolute_path(path) abort
-  return a:path =~# '^/' || a:path =~# '^\\' || a:path =~# '^\a\+:'
+  let l:path = trim(a:path)
+  return l:path =~# '^/' || l:path =~# '^\\' || l:path =~# '^\a\+:' || l:path =~# '^\~[\\/]'
+endfunction
+
+function! s:expand_user_path(path) abort
+  let l:path = trim(a:path)
+  if l:path =~# '^\~[\\/]'
+    return fnamemodify(expand(l:path), ':p')
+  endif
+  return l:path
 endfunction
 
 function! s:path_has_directory(target) abort
@@ -1330,7 +1339,7 @@ endfunction
 
 function! s:resolve_existing_link_target(target, ...) abort
   let l:base = a:0 ? a:1 : expand('%:p:h')
-  let l:target = trim(a:target)
+  let l:target = s:expand_user_path(a:target)
   if empty(l:target) || l:target =~# '\v^\w+://'
     return ''
   endif
@@ -1356,7 +1365,7 @@ function! s:display_target_from_current_dir(target) abort
   if !empty(l:path)
     return s:relpath_from_dir(l:path, l:base)
   endif
-  return substitute(trim(a:target), '\\', '/', 'g')
+  return substitute(s:expand_user_path(a:target), '\\', '/', 'g')
 endfunction
 
 function! yurii_pkm#resolve_link(target, ...) abort
@@ -1365,10 +1374,11 @@ function! yurii_pkm#resolve_link(target, ...) abort
   if !empty(l:existing)
     return l:existing
   endif
-  if s:is_absolute_path(a:target)
-    return fnamemodify(a:target, ':p')
+  let l:target = s:expand_user_path(a:target)
+  if s:is_absolute_path(l:target)
+    return fnamemodify(l:target, ':p')
   endif
-  return fnamemodify(l:base . '/' . a:target, ':p')
+  return fnamemodify(l:base . '/' . l:target, ':p')
 endfunction
 
 function! s:clipboard_text() abort
@@ -1937,6 +1947,41 @@ endfunction
 
 function! s:title_change_update_done(job, status) abort
   call s:reload_current()
+endfunction
+
+" ---------------------------------------------------------------------------
+" rename_link_text
+" ---------------------------------------------------------------------------
+
+function! yurii_pkm#rename_link_text_with_default(default) abort
+  let l:link = yurii_pkm#get_link_under_cursor()
+  if empty(l:link) || empty(get(l:link, 'target', ''))
+    echo 'No link under cursor'
+    return
+  endif
+
+  let l:new_text = input('new link text: ', a:default)
+  if empty(l:new_text)
+    echo 'Cancelled'
+    return
+  endif
+
+  let l:line = getline('.')
+  let l:start = l:link.startcol - 1
+  let l:raw_end = l:start + strlen(l:link.raw)
+  let l:new_raw = '[' . l:new_text . '](' . l:link.target . ')'
+  call setline('.', strpart(l:line, 0, l:start) . l:new_raw . strpart(l:line, l:raw_end))
+  call cursor(line('.'), l:start + 2)
+endfunction
+
+function! yurii_pkm#rename_link_text(args) abort
+  let l:link = yurii_pkm#get_link_under_cursor()
+  if empty(l:link) || empty(get(l:link, 'target', ''))
+    echo 'No link under cursor'
+    return
+  endif
+  let l:default = a:args ==# '' ? l:link.text : a:args
+  call yurii_pkm#rename_link_text_with_default(l:default)
 endfunction
 
 " ---------------------------------------------------------------------------
