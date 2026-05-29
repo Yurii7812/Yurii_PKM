@@ -648,16 +648,29 @@ def update_titles_in_file(path: Path) -> bool:
 # update_up_sections (full scan: Down -> Up propagation)
 # ---------------------------------------------------------------------------
 
-def iter_notes(root: Path) -> Iterable[Path]:
-    """Yield markdown notes anywhere under the active PKM root.
 
-    BackLink/Up synchronization must see notes in subdirectories too, otherwise
-    cross-folder links are ignored and generated backlinks can point only to a
-    bare filename.  The scan still skips persistent undo files.
+def is_root_note(path: Path, root: Path) -> bool:
+    """Return True when *path* is a managed note directly under *root*."""
+    path = path.resolve()
+    root = root.resolve()
+    return (
+        is_markdown_file(path)
+        and path.is_file()
+        and path.parent == root
+        and ".undo" not in path.parts
+    )
+
+
+def iter_notes(root: Path) -> Iterable[Path]:
+    """Yield markdown notes directly under the active PKM root.
+
+    Bulk update operations are intentionally scoped to the directory that
+    contains the initial index.md. Notes in subdirectories may still be linked
+    to or resolved, but they are not rewritten by UpdateAll/autosync scans.
     """
     root = root.resolve()
-    for path in sorted(root.rglob("*.md")):
-        if path.is_file() and ".undo" not in path.parts:
+    for path in sorted(root.glob("*.md")):
+        if is_root_note(path, root):
             yield path
 
 
@@ -702,7 +715,10 @@ def build_multi_up(
         prune_targets = {p.resolve() for p in (prune_targets or set())}
         parents = resolved_parents | (current_up_targets - prune_targets)
 
-    return [make_link_line(parent, get_title(parent), note_path.parent) for parent in sorted(parents)]
+    return [
+        make_link_line(parent, get_title(parent), note_path.parent)
+        for parent in sorted(parents)
+    ]
 
 
 def remove_down_links_to_target(
@@ -904,8 +920,6 @@ def update_up_sections(
 
     for p in all_paths:
         lines = read_lines(p)
-        if p.name != 'index.md' and not is_expand_generated_t_note(p, lines):
-            lines = ensure_sections(lines)
         lines_map[p] = lines
         body_kids: list[Path] = []
         body_seen: set[Path] = set()
@@ -950,28 +964,31 @@ def update_up_sections(
             new_lines = lines
         else:
             new_lines = lines
-            parent_candidates = down_parents_of.get(p, [])
-            current_up_targets = up_targets(new_lines, p, root, notes_by_name)
-            new_up = build_multi_up(
-                parent_candidates,
-                p,
-                current_up_targets=current_up_targets,
-                prune_targets=prune_up_targets,
-                exact=exact_up,
-            )
-            new_lines = replace_section(new_lines, "up", new_up)
-            up_link_targets = up_targets(new_lines, p, root, notes_by_name)
-            backlinks_parents = sorted(
-                parent for parent in set(backlinks_parents_of.get(p, []))
-                if parent not in up_link_targets
-            )
-            existing_back = section_content(new_lines, "backlink")
-            new_back = build_back(
-                backlinks_parents,
-                p,
-                existing_back,
-            )
-            new_lines = replace_section(new_lines, "backlink", new_back)
+            if find_section(new_lines, "up")[0] >= 0:
+                parent_candidates = down_parents_of.get(p, [])
+                current_up_targets = up_targets(new_lines, p, root, notes_by_name)
+                new_up = build_multi_up(
+                    parent_candidates,
+                    p,
+                    current_up_targets=current_up_targets,
+                    prune_targets=prune_up_targets,
+                    exact=exact_up,
+                )
+                new_lines = replace_section(new_lines, "up", new_up)
+
+            if find_section(new_lines, "backlink")[0] >= 0:
+                up_link_targets = up_targets(new_lines, p, root, notes_by_name)
+                backlinks_parents = sorted(
+                    parent for parent in set(backlinks_parents_of.get(p, []))
+                    if parent not in up_link_targets
+                )
+                existing_back = section_content(new_lines, "backlink")
+                new_back = build_back(
+                    backlinks_parents,
+                    p,
+                    existing_back,
+                )
+                new_lines = replace_section(new_lines, "backlink", new_back)
 
         if new_lines != lines:
             write_lines(p, new_lines)
@@ -990,7 +1007,7 @@ def update_one(file_path: Path, root: Path) -> str:
 
     changed_files: list[str] = []
 
-    if update_titles_in_file(file_path):
+    if is_root_note(file_path, root) and update_titles_in_file(file_path):
         changed_files.append(file_path.name)
 
     reciprocal_changed = sync_reciprocal_links_for_file(file_path, root)
