@@ -1246,12 +1246,12 @@ endfunction
 
 function! s:is_absolute_path(path) abort
   let l:path = trim(a:path)
-  return l:path =~# '^/' || l:path =~# '^\\' || l:path =~# '^\a\+:' || l:path =~# '^~[\\/]'
+  return l:path =~# '^/' || l:path =~# '^\\' || l:path =~# '^\a\+:' || l:path =~# '^\~[\\/]'
 endfunction
 
 function! s:expand_user_path(path) abort
   let l:path = trim(a:path)
-  if l:path =~# '^~[\\/]'
+  if l:path =~# '^\~[\\/]'
     return fnamemodify(expand(l:path), ':p')
   endif
   return l:path
