@@ -103,6 +103,13 @@ def resolve_existing_note_link(
         return direct
 
     if link_target_has_directory(target):
+        # Links copied from another note can be relative to the PKM root
+        # instead of the destination note's directory (for example
+        # ``./N_root.md`` or ``folder/N_child.md``).  Re-resolve those from
+        # the root so generated reciprocal links are rebased correctly.
+        root_relative = (root / target).resolve()
+        if root_relative.exists() and is_markdown_file(root_relative):
+            return root_relative
         return None
 
     matches: list[Path] = []
