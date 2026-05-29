@@ -132,6 +132,9 @@ nnoremap \w :w<CR>
 " UpdateAllのショート
 nnoremap \ua :UpdateAll<CR>
 
+" 未保存の変更がある状態で別ファイルへ移動するときは、自動保存してから続行する
+set autowriteall
+
 " バックアップファイル無効化
 set nobackup
 set nowritebackup
