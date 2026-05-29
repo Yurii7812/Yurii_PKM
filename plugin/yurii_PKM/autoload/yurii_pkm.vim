@@ -1091,7 +1091,7 @@ function! s:remove_link_to_path_from_lines_section(lines, name, target_path, bas
 endfunction
 
 function! s:add_reciprocal_link(target_path, section_name, current_file, current_title) abort
-  if !s:is_root_note_path(a:target_path)
+  if !filereadable(a:target_path)
     return 0
   endif
   let l:lines = s:note_lines_for_path(a:target_path)
@@ -1105,7 +1105,7 @@ function! s:add_reciprocal_link(target_path, section_name, current_file, current
 endfunction
 
 function! s:remove_reciprocal_link(target_path, section_name, current_file) abort
-  if !s:is_root_note_path(a:target_path)
+  if !filereadable(a:target_path)
     return 0
   endif
   let l:lines = s:note_lines_for_path(a:target_path)
@@ -1127,7 +1127,7 @@ function! s:realtime_sync_apply() abort
   endif
   let l:file = expand('%:p')
   let l:root = s:get_pkm_root()
-  if empty(l:root) || empty(l:file) || !s:is_root_note_path(l:file)
+  if empty(l:root) || empty(l:file) || l:file !~# '^' . escape(l:root, '/\')
     return
   endif
 
@@ -1138,14 +1138,12 @@ function! s:realtime_sync_apply() abort
 
   let s:realtime_sync_busy = 1
   try
-    if !s:is_index_file_path(l:file)
-      for l:target in s:list_diff(l:new.down, get(l:old, 'down', []))
-        let l:changed += s:add_reciprocal_link(l:target, 'up', l:file, l:title)
-      endfor
-      for l:target in s:list_diff(get(l:old, 'down', []), l:new.down)
-        let l:changed += s:remove_reciprocal_link(l:target, 'up', l:file)
-      endfor
-    endif
+    for l:target in s:list_diff(l:new.down, get(l:old, 'down', []))
+      let l:changed += s:add_reciprocal_link(l:target, 'up', l:file, l:title)
+    endfor
+    for l:target in s:list_diff(get(l:old, 'down', []), l:new.down)
+      let l:changed += s:remove_reciprocal_link(l:target, 'up', l:file)
+    endfor
     for l:target in s:list_diff(l:new.up, get(l:old, 'up', []))
       let l:changed += s:add_reciprocal_link(l:target, 'down', l:file, l:title)
     endfor
@@ -1854,12 +1852,8 @@ function! yurii_pkm#make_link(path, title) abort
   return s:make_link_from_dir(a:path, a:title, expand('%:p:h'))
 endfunction
 
-function! s:is_index_file_path(path) abort
-  return fnamemodify(a:path, ':t') ==# 'index.md'
-endfunction
-
 function! s:parent_link_lines(parent_path, parent_title, base_dir) abort
-  if empty(a:parent_path) || s:is_index_file_path(a:parent_path)
+  if empty(a:parent_path)
     return []
   endif
   return [s:make_link_from_dir(a:parent_path, a:parent_title, a:base_dir)]
@@ -2292,7 +2286,7 @@ function! yurii_pkm#create_note(prefix, title, open_after, insert_mode) abort
   endif
 
   let l:tmpl = yurii_pkm#note_template(a:title, a:prefix)
-  if filereadable(l:parent_file) && !s:is_index_file_path(l:parent_file)
+  if filereadable(l:parent_file)
     let l:parent_link = s:make_link_from_dir(l:parent_file, l:parent_title, l:dir)
     let l:up_idx = index(l:tmpl, '# Up')
     if l:up_idx >= 0
