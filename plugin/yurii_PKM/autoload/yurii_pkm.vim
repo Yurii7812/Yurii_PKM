@@ -327,6 +327,18 @@ function! s:index_path(root) abort
   return fnamemodify(a:root, ':p') . s:sep() . 'index.md'
 endfunction
 
+function! s:is_root_note_path(path) abort
+  let l:root = s:get_pkm_root()
+  if empty(l:root) || empty(a:path)
+    return 0
+  endif
+  let l:path = fnamemodify(a:path, ':p')
+  let l:root = fnamemodify(l:root, ':p')
+  return s:is_markdown_file(l:path)
+        \ && filereadable(l:path)
+        \ && fnamemodify(l:path, ':h:p') ==# l:root
+endfunction
+
 function! s:index_template() abort
   return [
         \ '---',
@@ -781,7 +793,6 @@ endfunction
 
 " Return insertion end line for outgoing links in # Down.
 function! s:down_end_line() abort
-  call s:ensure_down_section()
   let l:down = s:find_section_line('down')
   if l:down > 0
     let l:back_after_down = 0
@@ -794,31 +805,17 @@ function! s:down_end_line() abort
     return l:back_after_down > 0 ? l:back_after_down - 1 : line('$')
   endif
 
-  let l:back = s:find_section_line('back')
-  if l:back > 0
-    return l:back - 1
-  endif
-  return line('$')
+  return 0
 endfunction
 
 " Return line number where appending inserts at top of # Down.
 function! s:down_top_insert_line() abort
-  call s:ensure_down_section()
   let l:down = s:find_section_line('down')
   if l:down > 0
     return l:down
   endif
 
-  let l:up = s:find_section_line('up')
-  if l:up > 0
-    return l:up
-  endif
-
-  let l:back = s:find_section_line('back')
-  if l:back > 0
-    return l:back - 1
-  endif
-  return line('$')
+  return 0
 endfunction
 
 " Return insertion end line for # Up section (just before next section header / EOF).
@@ -884,26 +881,6 @@ function! s:section_end_line(name) abort
 endfunction
 
 function! s:append_link_to_buffer_section(name, link) abort
-  if a:name ==? 'down'
-    call s:ensure_down_section()
-  elseif s:find_section_line(a:name) <= 0
-    if a:name ==? 'up'
-      let l:down = s:find_section_line('down')
-      if l:down > 0
-        call append(l:down - 1, '# Up')
-      else
-        let l:back = s:find_section_line('back')
-        if l:back > 0
-          call append(l:back - 1, '# Up')
-        else
-          call append(line('$'), '# Up')
-        endif
-      endif
-    else
-      call append(line('$'), '# ' . a:name)
-    endif
-  endif
-
   let l:sec = s:find_section_line(a:name)
   if l:sec <= 0
     return 0
@@ -935,50 +912,16 @@ endfunction
 function! s:ensure_section_in_lines(lines, name) abort
   let l:lines = copy(a:lines)
   let l:idx = s:find_section_index_in_lines(l:lines, a:name)
-  if l:idx >= 0
-    return {'lines': l:lines, 'idx': l:idx}
-  endif
-
-  if a:name ==? 'up'
-    let l:heading = '# Up'
-  elseif a:name ==? 'down'
-    let l:heading = '# Down'
-  else
-    let l:heading = '# ' . a:name
-  endif
-  if a:name ==? 'up'
-    let l:down_idx = s:find_section_index_in_lines(l:lines, 'down')
-    if l:down_idx >= 0
-      call insert(l:lines, l:heading, l:down_idx)
-      return {'lines': l:lines, 'idx': l:down_idx}
-    endif
-    let l:back_idx = s:find_section_index_in_lines(l:lines, 'back')
-    if l:back_idx >= 0
-      call insert(l:lines, l:heading, l:back_idx)
-      return {'lines': l:lines, 'idx': l:back_idx}
-    endif
-  elseif a:name ==? 'down'
-    let l:back_idx = s:find_section_index_in_lines(l:lines, 'back')
-    if l:back_idx >= 0
-      call insert(l:lines, l:heading, l:back_idx)
-      return {'lines': l:lines, 'idx': l:back_idx}
-    endif
-    let l:up_idx = s:find_section_index_in_lines(l:lines, 'up')
-    if l:up_idx >= 0
-      let l:insert_at = s:section_end_index_in_lines(l:lines, l:up_idx)
-      call insert(l:lines, l:heading, l:insert_at)
-      return {'lines': l:lines, 'idx': l:insert_at}
-    endif
-  endif
-
-  call add(l:lines, l:heading)
-  return {'lines': l:lines, 'idx': len(l:lines) - 1}
+  return {'lines': l:lines, 'idx': l:idx}
 endfunction
 
 function! s:add_link_to_lines_section(lines, name, link) abort
   let l:ensured = s:ensure_section_in_lines(a:lines, a:name)
   let l:lines = l:ensured.lines
   let l:idx = l:ensured.idx
+  if l:idx < 0
+    return {'lines': l:lines, 'added': 0}
+  endif
   let l:end = s:section_end_index_in_lines(l:lines, l:idx)
   if index(l:lines[l:idx + 1 : l:end - 1], a:link) >= 0
     return {'lines': l:lines, 'added': 0}
@@ -1148,7 +1091,7 @@ function! s:remove_link_to_path_from_lines_section(lines, name, target_path, bas
 endfunction
 
 function! s:add_reciprocal_link(target_path, section_name, current_file, current_title) abort
-  if !filereadable(a:target_path)
+  if !s:is_root_note_path(a:target_path)
     return 0
   endif
   let l:lines = s:note_lines_for_path(a:target_path)
@@ -1162,7 +1105,7 @@ function! s:add_reciprocal_link(target_path, section_name, current_file, current
 endfunction
 
 function! s:remove_reciprocal_link(target_path, section_name, current_file) abort
-  if !filereadable(a:target_path)
+  if !s:is_root_note_path(a:target_path)
     return 0
   endif
   let l:lines = s:note_lines_for_path(a:target_path)
@@ -1184,7 +1127,7 @@ function! s:realtime_sync_apply() abort
   endif
   let l:file = expand('%:p')
   let l:root = s:get_pkm_root()
-  if empty(l:root) || empty(l:file) || l:file !~# '^' . escape(l:root, '/\')
+  if empty(l:root) || empty(l:file) || !s:is_root_note_path(l:file)
     return
   endif
 
@@ -2072,7 +2015,7 @@ function! yurii_pkm#autosync_on_save() abort
   if empty(l:root) || !filereadable(s:index_path(l:root))
     return
   endif
-  if l:file !~# '^' . escape(l:root, '/\')
+  if !s:is_root_note_path(l:file)
     return
   endif
 
@@ -2108,6 +2051,9 @@ function! s:update_one_command(target_fp) abort
   if !filereadable(g:yurii_pkm_python) | return '' | endif
   let l:root = s:get_pkm_root()
   if empty(l:root) || !filereadable(s:index_path(l:root))
+    return ''
+  endif
+  if !s:is_root_note_path(a:target_fp)
     return ''
   endif
   let l:py = s:python_cmd()
@@ -2327,6 +2273,11 @@ function! yurii_pkm#create_note(prefix, title, open_after, insert_mode) abort
   let l:parent_file  = expand('%:p')
   let l:parent_title = yurii_pkm#current_title()
 
+  if a:insert_mode ==# 'branch' && s:find_section_line('down') <= 0
+    echoerr 'yurii_PKM: # Down section not found'
+    return {}
+  endif
+
   let l:tmpl = yurii_pkm#note_template(a:title, a:prefix)
   if filereadable(l:parent_file)
     let l:parent_link = yurii_pkm#make_link(l:parent_file, l:parent_title)
@@ -2462,6 +2413,11 @@ function! s:new_note_no_title(prefix) abort
   let l:dir   = s:cwd_note_dir()
   let l:file  = s:join_path(l:dir, l:fname)
   let l:link  = s:make_link_from_dir(l:file, l:title, l:parent_dir)
+
+  if !l:no_parent_link && !l:reverse_link && !l:insert_at_cursor && s:find_section_line('down') <= 0
+    echoerr 'yurii_PKM: # Down section not found'
+    return
+  endif
 
   if !l:no_parent_link && !l:reverse_link
     let l:save_ai = &autoindent
@@ -2875,6 +2831,11 @@ function! yurii_pkm#new_quick(args) abort
   let l:dir   = expand('%:p:h')
   let l:file  = l:dir . s:sep() . l:fname
   let l:link = yurii_pkm#make_link(l:fname, l:title)
+
+  if !l:no_parent_link && !l:reverse_link && !l:insert_at_cursor && s:find_section_line('down') <= 0
+    echoerr 'yurii_PKM: # Down section not found'
+    return
+  endif
 
   if !l:no_parent_link && !l:reverse_link
     let l:save_ai = &autoindent
