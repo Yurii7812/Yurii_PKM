@@ -2138,6 +2138,26 @@ function! s:write_current_and_sync_now() abort
   call s:run_update_one_for_sync(l:file)
 endfunction
 
+function! yurii_pkm#save_before_normal_jump(keys) abort
+  if &buftype ==# '' && &modifiable && &modified
+    let l:file = expand('%:p')
+    if empty(l:file)
+      echohl ErrorMsg | echom 'yurii_PKM: file name is empty; cannot auto-save before jump' | echohl None
+      return
+    endif
+    try
+      silent update
+    catch
+      echohl ErrorMsg | echom 'yurii_PKM: auto-save before jump failed: ' . v:exception | echohl None
+      return
+    endtry
+    if s:is_markdown_file(l:file)
+      call s:run_update_one_for_sync(l:file)
+    endif
+  endif
+  execute 'normal! ' . a:keys
+endfunction
+
 function! s:update_one_done(target_fp, job, status) abort
   if expand('%:p') ==# a:target_fp
     call s:reload_current()
