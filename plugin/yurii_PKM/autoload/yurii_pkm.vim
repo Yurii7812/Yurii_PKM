@@ -1195,12 +1195,14 @@ function! s:realtime_sync_apply() abort
 
   let s:realtime_sync_busy = 1
   try
-    for l:target in s:list_diff(l:new.down, get(l:old, 'down', []))
-      let l:changed += s:add_reciprocal_link(l:target, 'up', l:file, l:title)
-    endfor
-    for l:target in s:list_diff(get(l:old, 'down', []), l:new.down)
-      let l:changed += s:remove_reciprocal_link(l:target, 'up', l:file)
-    endfor
+    if !s:is_index_file_path(l:file)
+      for l:target in s:list_diff(l:new.down, get(l:old, 'down', []))
+        let l:changed += s:add_reciprocal_link(l:target, 'up', l:file, l:title)
+      endfor
+      for l:target in s:list_diff(get(l:old, 'down', []), l:new.down)
+        let l:changed += s:remove_reciprocal_link(l:target, 'up', l:file)
+      endfor
+    endif
     for l:target in s:list_diff(l:new.up, get(l:old, 'up', []))
       let l:changed += s:add_reciprocal_link(l:target, 'down', l:file, l:title)
     endfor
@@ -1909,6 +1911,17 @@ function! yurii_pkm#make_link(path, title) abort
   return s:make_link_from_dir(a:path, a:title, expand('%:p:h'))
 endfunction
 
+function! s:is_index_file_path(path) abort
+  return fnamemodify(a:path, ':t') ==# 'index.md'
+endfunction
+
+function! s:parent_link_lines(parent_path, parent_title, base_dir) abort
+  if empty(a:parent_path) || s:is_index_file_path(a:parent_path)
+    return []
+  endif
+  return [s:make_link_from_dir(a:parent_path, a:parent_title, a:base_dir)]
+endfunction
+
 function! s:cwd_note_dir() abort
   let l:dir = fnamemodify(getcwd(), ':p')
   let l:trimmed = substitute(l:dir, '[\\/]\+$', '', '')
@@ -2328,8 +2341,8 @@ function! yurii_pkm#create_note(prefix, title, open_after, insert_mode) abort
   let l:parent_title = yurii_pkm#current_title()
 
   let l:tmpl = yurii_pkm#note_template(a:title, a:prefix)
-  if filereadable(l:parent_file)
-    let l:parent_link = yurii_pkm#make_link(l:parent_file, l:parent_title)
+  if filereadable(l:parent_file) && !s:is_index_file_path(l:parent_file)
+    let l:parent_link = s:make_link_from_dir(l:parent_file, l:parent_title, l:dir)
     let l:up_idx = index(l:tmpl, '# Up')
     if l:up_idx >= 0
       call insert(l:tmpl, l:parent_link, l:up_idx + 1)
@@ -2486,7 +2499,7 @@ function! s:new_note_no_title(prefix) abort
     call s:run_update_one_for(expand('%:p'))
   endif
 
-  let l:parent_link_line = s:make_link_from_dir(l:parent_path, l:parent_title, l:dir)
+  let l:parent_link_lines = s:parent_link_lines(l:parent_path, l:parent_title, l:dir)
   let l:is_k = (a:prefix ==? 'K')
 
   if l:reverse_link
@@ -2508,7 +2521,7 @@ function! s:new_note_no_title(prefix) abort
             \ '',
             \ '# Up',
             \ '# Down',
-            \ l:parent_link_line,
+          \ ] + l:parent_link_lines + [
             \ '# BackLink',
             \ '[Index](index.md)' ]
     endif
@@ -2532,7 +2545,7 @@ function! s:new_note_no_title(prefix) abort
           \ '',
           \ '',
           \ '# Up',
-          \ l:parent_link_line,
+        \ ] + l:parent_link_lines + [
           \ '# Down',
           \ '# BackLink',
           \ '[Index](index.md)' ]
@@ -2597,7 +2610,7 @@ function! s:visual_new_note(prefix, mode, ...) abort
         \ ? (yurii_pkm#timestamp_filename() . '.md')
         \ : (l:no_prefix_name ? (l:title . '.md') : (a:prefix . '_' . l:title . '.md'))
   let l:file  = s:join_path(l:dir, l:fname)
-  let l:parent_link_line = s:make_link_from_dir(l:parent_path, l:parent_title, l:dir)
+  let l:parent_link_lines = s:parent_link_lines(l:parent_path, l:parent_title, l:dir)
   let l:link_to_new      = s:make_link_from_dir(l:file, l:title, l:parent_dir)
 
   let l:is_b = (a:mode ==? 'b')
@@ -2620,7 +2633,7 @@ function! s:visual_new_note(prefix, mode, ...) abort
             \ '',
             \ '',
             \ '# Up',
-            \ l:parent_link_line,
+          \ ] + l:parent_link_lines + [
             \ '# Down',
             \ '# BackLink',
             \ '[Index](index.md)' ]
@@ -2650,7 +2663,7 @@ function! s:visual_new_note(prefix, mode, ...) abort
       call add(l:content, '')
       call add(l:content, '')
       call add(l:content, '# Up')
-      call add(l:content, l:parent_link_line)
+      call extend(l:content, l:parent_link_lines)
       call add(l:content, '# Down')
       call add(l:content, '# BackLink')
       call add(l:content, '[Index](index.md)')
@@ -2895,7 +2908,7 @@ function! yurii_pkm#new_quick(args) abort
     call s:run_update_one_for(expand('%:p'))
   endif
 
-  let l:parent_link_line = yurii_pkm#make_link(l:parent_file, l:parent_title)
+  let l:parent_link_lines = s:parent_link_lines(l:parent_file, l:parent_title, l:dir)
   let l:is_k = (l:prefix ==? 'K')
 
   if l:reverse_link
@@ -2914,7 +2927,7 @@ function! yurii_pkm#new_quick(args) abort
             \ '',
             \ '',
             \ '# Up',
-            \ l:parent_link_line,
+          \ ] + l:parent_link_lines + [
             \ '# Down',
             \ '# BackLink',
             \ '[Index](index.md)' ]
@@ -2937,7 +2950,7 @@ function! yurii_pkm#new_quick(args) abort
           \ '',
           \ '',
           \ '# Up',
-          \ l:parent_link_line,
+        \ ] + l:parent_link_lines + [
           \ '# Down',
           \ '# BackLink',
           \ '[Index](index.md)' ]
@@ -3354,9 +3367,9 @@ function! yurii_pkm#linkify_selection_new_note() abort range
 
   let l:target = yurii_pkm#timestamp_filename() . '.md'
   let l:new_file = expand('%:p:h') . s:sep() . l:target
-  let l:parent_file = expand('%:t')
+  let l:parent_file = expand('%:p')
   let l:parent_title = yurii_pkm#current_title()
-  let l:parent_link = yurii_pkm#make_link(l:parent_file, l:parent_title)
+  let l:parent_link_lines = s:parent_link_lines(l:parent_file, l:parent_title, expand('%:p:h'))
 
   if !filereadable(l:new_file)
     let l:new_content = [
@@ -3370,7 +3383,7 @@ function! yurii_pkm#linkify_selection_new_note() abort range
           \ '',
           \ '',
           \ '# Up',
-          \ l:parent_link,
+          \ ] + l:parent_link_lines + [
           \ '# Down',
           \ '# BackLink',
           \ '[Index](index.md)'
