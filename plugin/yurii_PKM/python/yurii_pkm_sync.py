@@ -705,6 +705,122 @@ def build_multi_up(
     return [make_link_line(parent, get_title(parent), note_path.parent) for parent in sorted(parents)]
 
 
+def remove_down_links_to_target(
+    lines: list[str],
+    note_path: Path,
+    target_path: Path,
+    root: Path,
+    notes_by_name: dict[str, list[Path]],
+) -> tuple[list[str], bool]:
+    """Remove links to *target_path* from the note's Down section.
+
+    Up and Down are reciprocal structural links.  When a user deletes a parent
+    from the current note's Up section, the old parent still has a Down link
+    pointing back to the current note.  If that stale Down link is left in
+    place, the next sync regenerates the deleted Up link, making the link feel
+    impossible to remove.
+    """
+
+    down_start, down_end = find_section(lines, "down")
+    if down_start < 0:
+        down_start, down_end = find_section(lines, "branch")
+    if down_start < 0:
+        return list(lines), False
+
+    target_path = target_path.resolve()
+    modified = False
+    new_section: list[str] = []
+    in_fence = False
+
+    line_modified = False
+
+    def replacement(match: re.Match[str]) -> str:
+        nonlocal line_modified
+        resolved = resolve_existing_note_link(
+            match.group(2),
+            note_path.parent,
+            root,
+            notes_by_name,
+        )
+        if resolved is not None and resolved.resolve() == target_path:
+            line_modified = True
+            return ""
+        return match.group(0)
+
+    for line in lines[down_start + 1: down_end]:
+        stripped = line.strip()
+
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+            new_section.append(line)
+            continue
+
+        if in_fence or SEP_RE.match(stripped):
+            new_section.append(line)
+            continue
+
+        line_modified = False
+        new_line = LINK_RE.sub(replacement, line)
+        if line_modified:
+            modified = True
+        if line_modified and not new_line.strip():
+            continue
+        new_section.append(new_line.rstrip() if line_modified else line)
+
+    if not modified:
+        return list(lines), False
+
+    return lines[: down_start + 1] + new_section + lines[down_end:], True
+
+
+def remove_reciprocal_down_links_for_missing_up(file_path: Path, root: Path) -> int:
+    """Prune stale reciprocal Down links after Up links are manually removed."""
+
+    file_path = file_path.resolve()
+    root = root.resolve()
+    all_paths = list(iter_notes(root))
+    notes_by_name: dict[str, list[Path]] = {}
+    for path in all_paths:
+        notes_by_name.setdefault(path.name, []).append(path.resolve())
+
+    if file_path not in {p.resolve() for p in all_paths}:
+        return 0
+
+    current_lines = read_lines(file_path)
+    current_up_targets = up_targets(current_lines, file_path, root, notes_by_name)
+    changed = 0
+
+    for parent in all_paths:
+        parent = parent.resolve()
+        if parent == file_path:
+            continue
+        if parent in current_up_targets:
+            continue
+
+        parent_lines = read_lines(parent)
+        has_down_link = False
+        for _, target in outbound_links_from_down(parent_lines):
+            resolved = resolve_existing_note_link(target, parent.parent, root, notes_by_name)
+            if resolved is not None and resolved.resolve() == file_path:
+                has_down_link = True
+                break
+        if not has_down_link:
+            continue
+
+        new_lines, modified = remove_down_links_to_target(
+            parent_lines,
+            parent,
+            file_path,
+            root,
+            notes_by_name,
+        )
+        if modified:
+            write_lines(parent, new_lines)
+            changed += 1
+
+    return changed
+
+
 def update_up_sections(
     root: Path,
     prune_up_target: Path | None = None,
@@ -811,6 +927,10 @@ def update_one(file_path: Path, root: Path) -> str:
 
     if update_titles_in_file(file_path):
         changed_files.append(file_path.name)
+
+    reciprocal_changed = remove_reciprocal_down_links_for_missing_up(file_path, root)
+    if reciprocal_changed:
+        changed_files.append(f"downlinks:{reciprocal_changed}")
 
     changed_count = update_up_sections(root, prune_up_target=file_path)
     if changed_count:
