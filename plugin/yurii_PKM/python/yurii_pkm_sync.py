@@ -821,6 +821,64 @@ def remove_reciprocal_down_links_for_missing_up(file_path: Path, root: Path) -> 
     return changed
 
 
+
+def add_link_to_section_lines(lines: list[str], name: str, link: str) -> tuple[list[str], bool]:
+    """Append *link* to a section if it is not already present."""
+
+    lines = ensure_sections(lines)
+    content = section_content(lines, name)
+    if link in content:
+        return lines, False
+    return replace_section(lines, name, content + [link]), True
+
+
+def sync_reciprocal_links_for_file(file_path: Path, root: Path) -> int:
+    """Lightweight one-hop Up/Down sync for one edited note.
+
+    This intentionally avoids a full root rebuild: it reads the current note's
+    Up and Down sections, then touches only those linked counterpart notes.  It
+    is used by save-time autosync; deletion is handled immediately in Vim by the
+    realtime diff watcher before save.
+    """
+
+    file_path = file_path.resolve()
+    root = root.resolve()
+    if not file_path.exists() or not is_markdown_file(file_path):
+        return 0
+
+    all_paths = list(iter_notes(root))
+    notes_by_name: dict[str, list[Path]] = {}
+    for path in all_paths:
+        notes_by_name.setdefault(path.name, []).append(path.resolve())
+
+    lines = read_lines(file_path)
+    current_title = note_title(lines, file_path)
+    changed = 0
+
+    for _, target in outbound_links_from_down(lines):
+        target_path = resolve_existing_note_link(target, file_path.parent, root, notes_by_name)
+        if target_path is None or target_path.resolve() == file_path:
+            continue
+        target_lines = read_lines(target_path)
+        reciprocal = make_link_line(file_path, current_title, target_path.parent)
+        new_lines, modified = add_link_to_section_lines(target_lines, "up", reciprocal)
+        if modified:
+            write_lines(target_path, new_lines)
+            changed += 1
+
+    for _, target in parse_links(section_content(lines, "up")):
+        target_path = resolve_existing_note_link(target, file_path.parent, root, notes_by_name)
+        if target_path is None or target_path.resolve() == file_path:
+            continue
+        target_lines = read_lines(target_path)
+        reciprocal = make_link_line(file_path, current_title, target_path.parent)
+        new_lines, modified = add_link_to_section_lines(target_lines, "down", reciprocal)
+        if modified:
+            write_lines(target_path, new_lines)
+            changed += 1
+
+    return changed
+
 def update_up_sections(
     root: Path,
     prune_up_target: Path | None = None,
@@ -919,7 +977,7 @@ def update_up_sections(
 # ---------------------------------------------------------------------------
 
 def update_one(file_path: Path, root: Path) -> str:
-    """Update one file and rebuild backlink sections across the PKM root."""
+    """Lightweight save-time sync for a single file."""
     file_path = file_path.resolve()
     root = root.resolve()
 
@@ -928,13 +986,9 @@ def update_one(file_path: Path, root: Path) -> str:
     if update_titles_in_file(file_path):
         changed_files.append(file_path.name)
 
-    reciprocal_changed = remove_reciprocal_down_links_for_missing_up(file_path, root)
+    reciprocal_changed = sync_reciprocal_links_for_file(file_path, root)
     if reciprocal_changed:
-        changed_files.append(f"downlinks:{reciprocal_changed}")
-
-    changed_count = update_up_sections(root, prune_up_target=file_path)
-    if changed_count:
-        changed_files.append(f"uplinks:{changed_count}")
+        changed_files.append(f"reciprocal:{reciprocal_changed}")
 
     if changed_files:
         return "yurii_PKM: updated " + ", ".join(changed_files)

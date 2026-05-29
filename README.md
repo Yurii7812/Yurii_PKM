@@ -54,6 +54,9 @@ let g:yurii_fcitx_remote_cmd = 'fcitx5-remote'
 " 保存時 AutoSync（既定: 1）
 let g:yurii_pkm_autosync = 1
 
+" Up/Down リンクのリアルタイム双方向同期（既定: 1）
+let g:yurii_pkm_realtime_link_sync = 1
+
 " コマンド実行前に自動保存（既定: 1）
 let g:yurii_pkm_auto_save_on_command = 1
 
@@ -91,7 +94,7 @@ Normal モードへ戻ったときの英語入力化は、状態取得に失敗�
 - ノート実体: `*.md` ファイル
 - メタ情報: YAML front matter（`title`, `time`, `filetype` など）
 - 関係性: Markdown リンク `[表示名](target.md)`
-- 同期: 保存時 AutoSync（または `:UpdateMD`）でリンク表示名や逆リンクを整合
+- 同期: Up/Down は編集直後に相手側へ反映し、保存時 AutoSync は軽量な単一ファイル同期、`:UpdateMD` は全体整合
 
 ### セクションモデル
 
@@ -204,7 +207,8 @@ Normal モードへ戻ったときの英語入力化は、状態取得に失敗�
 - 自動同期で表示名を上書きするのは `[xxx](xxx.md)` のように表示名がターゲットstemと一致するリンクのみ（手動表示名は維持）
 - Back セクションは、該当リンクがあるときだけ `category:`（K系）/`note:`（N系）見出しを自動表示
 
-- `.md` 保存時に AutoSync（`g:yurii_pkm_autosync=1` 時）
+- Up/Down リンクは `g:yurii_pkm_realtime_link_sync=1` 時に追加・削除直後に相手ノートへ反映
+- `.md` 保存時に AutoSync（`g:yurii_pkm_autosync=1` 時）は編集中ファイルのタイトルと直接リンク先だけを軽量同期
 
 ### 6) 変換・リネーム
 
