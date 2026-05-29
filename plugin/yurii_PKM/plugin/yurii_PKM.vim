@@ -37,6 +37,9 @@ endif
 if !exists('g:yurii_pkm_auto_save_on_command')
   let g:yurii_pkm_auto_save_on_command = 1
 endif
+if !exists('g:yurii_pkm_realtime_link_sync')
+  let g:yurii_pkm_realtime_link_sync = 1
+endif
 if !exists('g:yurii_pkm_markdown_conceal_links')
   " 既定は 1: [text](url) は text のみ表示
   let g:yurii_pkm_markdown_conceal_links = 1
@@ -345,6 +348,8 @@ endif
 augroup yurii_pkm_autosync
   autocmd!
   autocmd BufWritePost *.md call s:on_write_post()
+  autocmd BufReadPost,BufEnter *.md call yurii_pkm#realtime_sync_snapshot()
+  autocmd TextChanged,TextChangedI *.md call yurii_pkm#realtime_sync_on_text_changed()
   autocmd FileChangedShell *.md let v:fcs_choice = 'reload'
 augroup END
 
