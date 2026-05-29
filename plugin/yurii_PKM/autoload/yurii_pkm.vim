@@ -987,6 +987,254 @@ function! s:add_link_to_lines_section(lines, name, link) abort
   return {'lines': l:lines, 'added': 1}
 endfunction
 
+
+" ---------------------------------------------------------------------------
+" Realtime reciprocal Up/Down link sync (lightweight)
+" ---------------------------------------------------------------------------
+
+let s:realtime_sync_busy = 0
+
+function! s:section_link_targets_from_lines(lines, name, base_dir) abort
+  let l:idx = s:find_section_index_in_lines(a:lines, a:name)
+  if l:idx < 0
+    return []
+  endif
+  let l:end = s:section_end_index_in_lines(a:lines, l:idx)
+  let l:targets = []
+  let l:seen = {}
+  let l:in_fence = 0
+  for l:line in a:lines[l:idx + 1 : l:end - 1]
+    let l:stripped = trim(l:line)
+    if l:stripped =~# '^```'
+      let l:in_fence = !l:in_fence
+      continue
+    endif
+    if l:in_fence || l:stripped =~# '^_\{3,}\s*$'
+      continue
+    endif
+    let l:start = 0
+    while 1
+      let l:m = matchstrpos(l:line, '\v\[[^\]]+\]\(([^)]*)\)', l:start)
+      if empty(l:m) || l:m[1] < 0
+        break
+      endif
+      let l:raw = l:m[0]
+      let l:target = s:extract_target(l:raw)
+      if !empty(l:target)
+        let l:fp = yurii_pkm#resolve_link(l:target, a:base_dir)
+        if filereadable(l:fp) && s:is_markdown_file(l:fp)
+          let l:fp = fnamemodify(l:fp, ':p')
+          if !has_key(l:seen, l:fp)
+            let l:seen[l:fp] = 1
+            call add(l:targets, l:fp)
+          endif
+        endif
+      endif
+      let l:start = l:m[2]
+    endwhile
+  endfor
+  return l:targets
+endfunction
+
+function! s:current_reciprocal_snapshot() abort
+  let l:file = expand('%:p')
+  if empty(l:file)
+    return {'up': [], 'down': []}
+  endif
+  let l:lines = getline(1, '$')
+  let l:base = fnamemodify(l:file, ':h')
+  return {
+        \ 'up': s:section_link_targets_from_lines(l:lines, 'up', l:base),
+        \ 'down': s:section_link_targets_from_lines(l:lines, 'down', l:base),
+        \ }
+endfunction
+
+function! yurii_pkm#realtime_sync_snapshot() abort
+  if !s:is_markdown_file(expand('%:p'))
+    return
+  endif
+  let b:yurii_pkm_realtime_snapshot = s:current_reciprocal_snapshot()
+endfunction
+
+function! s:list_diff(new, old) abort
+  let l:old = {}
+  for l:item in a:old
+    let l:old[l:item] = 1
+  endfor
+  let l:diff = []
+  for l:item in a:new
+    if !has_key(l:old, l:item)
+      call add(l:diff, l:item)
+    endif
+  endfor
+  return l:diff
+endfunction
+
+function! s:note_lines_for_path(path) abort
+  let l:buf = bufnr(a:path)
+  if l:buf > 0 && bufloaded(l:buf)
+    return getbufline(l:buf, 1, '$')
+  endif
+  return filereadable(a:path) ? readfile(a:path) : []
+endfunction
+
+function! s:write_note_lines_for_path(path, lines) abort
+  let l:buf = bufnr(a:path)
+  if l:buf > 0 && bufloaded(l:buf)
+    call setbufline(l:buf, 1, a:lines)
+    let l:old_last = getbufinfo(l:buf)[0].linecount
+    if l:old_last > len(a:lines)
+      call deletebufline(l:buf, len(a:lines) + 1, l:old_last)
+    endif
+  else
+    call writefile(a:lines, a:path)
+  endif
+endfunction
+
+function! s:remove_link_to_path_from_lines_section(lines, name, target_path, base_dir) abort
+  let l:idx = s:find_section_index_in_lines(a:lines, a:name)
+  if l:idx < 0
+    return {'lines': copy(a:lines), 'removed': 0}
+  endif
+  let l:lines = copy(a:lines)
+  let l:end = s:section_end_index_in_lines(l:lines, l:idx)
+  let l:out = []
+  let l:removed = 0
+  let l:target = fnamemodify(a:target_path, ':p')
+  let l:in_fence = 0
+  for l:line in l:lines[l:idx + 1 : l:end - 1]
+    let l:stripped = trim(l:line)
+    if l:stripped =~# '^```'
+      let l:in_fence = !l:in_fence
+      call add(l:out, l:line)
+      continue
+    endif
+    if l:in_fence
+      call add(l:out, l:line)
+      continue
+    endif
+    let l:new_line = ''
+    let l:last = 0
+    let l:start = 0
+    let l:line_removed = 0
+    while 1
+      let l:m = matchstrpos(l:line, '\v\[[^\]]+\]\(([^)]*)\)', l:start)
+      if empty(l:m) || l:m[1] < 0
+        break
+      endif
+      let l:raw = l:m[0]
+      let l:target_text = s:extract_target(l:raw)
+      let l:resolved = empty(l:target_text) ? '' : yurii_pkm#resolve_link(l:target_text, a:base_dir)
+      let l:new_line .= strpart(l:line, l:last, l:m[1] - l:last)
+      if !empty(l:resolved) && fnamemodify(l:resolved, ':p') ==# l:target
+        let l:removed = 1
+        let l:line_removed = 1
+      else
+        let l:new_line .= l:raw
+      endif
+      let l:last = l:m[2]
+      let l:start = l:m[2]
+    endwhile
+    let l:new_line .= strpart(l:line, l:last)
+    if l:line_removed && empty(trim(l:new_line))
+      continue
+    endif
+    call add(l:out, l:line_removed ? substitute(l:new_line, '\s\+$', '', '') : l:line)
+  endfor
+  if !l:removed
+    return {'lines': l:lines, 'removed': 0}
+  endif
+  return {'lines': l:lines[: l:idx] + l:out + l:lines[l:end :], 'removed': 1}
+endfunction
+
+function! s:add_reciprocal_link(target_path, section_name, current_file, current_title) abort
+  if !filereadable(a:target_path)
+    return 0
+  endif
+  let l:lines = s:note_lines_for_path(a:target_path)
+  let l:link = s:make_link_from_dir(a:current_file, a:current_title, fnamemodify(a:target_path, ':h'))
+  let l:result = s:add_link_to_lines_section(l:lines, a:section_name, l:link)
+  if l:result.added
+    call s:write_note_lines_for_path(a:target_path, l:result.lines)
+    return 1
+  endif
+  return 0
+endfunction
+
+function! s:remove_reciprocal_link(target_path, section_name, current_file) abort
+  if !filereadable(a:target_path)
+    return 0
+  endif
+  let l:lines = s:note_lines_for_path(a:target_path)
+  let l:result = s:remove_link_to_path_from_lines_section(
+        \ l:lines, a:section_name, a:current_file, fnamemodify(a:target_path, ':h'))
+  if l:result.removed
+    call s:write_note_lines_for_path(a:target_path, l:result.lines)
+    return 1
+  endif
+  return 0
+endfunction
+
+function! s:realtime_sync_apply() abort
+  if s:realtime_sync_busy || !get(g:, 'yurii_pkm_realtime_link_sync', 1)
+    return
+  endif
+  if !s:is_markdown_file(expand('%:p')) || &buftype !=# ''
+    return
+  endif
+  let l:file = expand('%:p')
+  let l:root = s:get_pkm_root()
+  if empty(l:root) || empty(l:file) || l:file !~# '^' . escape(l:root, '/\')
+    return
+  endif
+
+  let l:old = get(b:, 'yurii_pkm_realtime_snapshot', {'up': [], 'down': []})
+  let l:new = s:current_reciprocal_snapshot()
+  let l:title = yurii_pkm#current_title()
+  let l:changed = 0
+
+  let s:realtime_sync_busy = 1
+  try
+    for l:target in s:list_diff(l:new.down, get(l:old, 'down', []))
+      let l:changed += s:add_reciprocal_link(l:target, 'up', l:file, l:title)
+    endfor
+    for l:target in s:list_diff(get(l:old, 'down', []), l:new.down)
+      let l:changed += s:remove_reciprocal_link(l:target, 'up', l:file)
+    endfor
+    for l:target in s:list_diff(l:new.up, get(l:old, 'up', []))
+      let l:changed += s:add_reciprocal_link(l:target, 'down', l:file, l:title)
+    endfor
+    for l:target in s:list_diff(get(l:old, 'up', []), l:new.up)
+      let l:changed += s:remove_reciprocal_link(l:target, 'down', l:file)
+    endfor
+  finally
+    let s:realtime_sync_busy = 0
+  endtry
+
+  let b:yurii_pkm_realtime_snapshot = l:new
+  if l:changed
+    checktime
+  endif
+endfunction
+
+function! s:realtime_sync_timer(timer) abort
+  call s:realtime_sync_apply()
+endfunction
+
+function! yurii_pkm#realtime_sync_on_text_changed() abort
+  if !get(g:, 'yurii_pkm_realtime_link_sync', 1)
+    return
+  endif
+  if exists('b:yurii_pkm_realtime_timer')
+    call timer_stop(b:yurii_pkm_realtime_timer)
+  endif
+  if has('timers')
+    let b:yurii_pkm_realtime_timer = timer_start(150, function('s:realtime_sync_timer'))
+  else
+    call s:realtime_sync_apply()
+  endif
+endfunction
+
 " Backward compatible name
 function! s:branch_end_line() abort
   return s:down_end_line()
@@ -2818,6 +3066,7 @@ function! yurii_pkm#add_from_clipboard(...) abort
       let l:ins += 1
     endfor
   endif
+  call s:realtime_sync_apply()
   silent write
   echo 'Added ' . len(l:links) . ' link(s)'
 endfunction
@@ -2896,6 +3145,7 @@ function! yurii_pkm#add_clipboard_to_branch() abort
       let l:added += 1
     endif
   endfor
+  call s:realtime_sync_apply()
   silent write
   echo 'Up added ' . l:added . ' link(s)'
 endfunction
