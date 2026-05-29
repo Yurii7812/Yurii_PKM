@@ -837,14 +837,19 @@ def remove_reciprocal_down_links_for_missing_up(file_path: Path, root: Path) -> 
     return changed
 
 
-
 def add_link_to_section_lines(lines: list[str], name: str, link: str) -> tuple[list[str], bool]:
-    """Append *link* to a section if it is not already present."""
+    """Append *link* to an existing section if it is not already present.
 
-    lines = ensure_sections(lines)
+    Save-time reciprocal sync should not create structural sections in older or
+    free-form notes. Up/Down/BackLink headings are created by note-creation
+    commands and are only maintained here when the section already exists.
+    """
+
+    if find_section(lines, name)[0] < 0:
+        return list(lines), False
     content = section_content(lines, name)
     if link in content:
-        return lines, False
+        return list(lines), False
     return replace_section(lines, name, content + [link]), True
 
 
@@ -859,7 +864,7 @@ def sync_reciprocal_links_for_file(file_path: Path, root: Path) -> int:
 
     file_path = file_path.resolve()
     root = root.resolve()
-    if not file_path.exists() or not is_markdown_file(file_path):
+    if not is_root_note(file_path, root):
         return 0
 
     all_paths = list(iter_notes(root))
@@ -880,6 +885,8 @@ def sync_reciprocal_links_for_file(file_path: Path, root: Path) -> int:
         target_path = resolve_existing_note_link(target, file_path.parent, root, notes_by_name)
         if target_path is None or target_path.resolve() == file_path:
             continue
+        if not is_root_note(target_path, root):
+            continue
         target_lines = read_lines(target_path)
         reciprocal = make_link_line(file_path, current_title, target_path.parent)
         new_lines, modified = add_link_to_section_lines(target_lines, "up", reciprocal)
@@ -891,6 +898,8 @@ def sync_reciprocal_links_for_file(file_path: Path, root: Path) -> int:
         target_path = resolve_existing_note_link(target, file_path.parent, root, notes_by_name)
         if target_path is None or target_path.resolve() == file_path:
             continue
+        if not is_root_note(target_path, root):
+            continue
         target_lines = read_lines(target_path)
         reciprocal = make_link_line(file_path, current_title, target_path.parent)
         new_lines, modified = add_link_to_section_lines(target_lines, "down", reciprocal)
@@ -899,6 +908,7 @@ def sync_reciprocal_links_for_file(file_path: Path, root: Path) -> int:
             changed += 1
 
     return changed
+
 
 def update_up_sections(
     root: Path,
@@ -1170,13 +1180,14 @@ def main(argv: list[str]) -> int:
         root = Path(argv[2])
         if not root.exists():
             root.mkdir(parents=True, exist_ok=True)
-        changed = update_up_sections(root, exact_up=True)
-        # Also update title annotations in all files
+        # UpdateAll is intentionally non-structural. Up/Down/BackLink sections
+        # are created by note-creation commands and maintained by realtime sync;
+        # bulk update should not rebuild, add, or delete those sections.
         title_changed = 0
         for p in iter_notes(root):
             if update_titles_in_file(p):
                 title_changed += 1
-        print(f"yurii_PKM: updated {changed + title_changed} file(s) under {root}")
+        print(f"yurii_PKM: updated {title_changed} file(s) under {root}")
         return 0
 
     if mode == "update_one":
