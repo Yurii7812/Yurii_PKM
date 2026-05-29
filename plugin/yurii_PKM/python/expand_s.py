@@ -45,6 +45,83 @@ def is_markdown_file(path: Path) -> bool:
     return path.suffix.lower() == '.md'
 
 
+def is_url_target(target: str) -> bool:
+    return re.match(r'^\w+://', target) is not None
+
+
+def path_has_directory(target: str) -> bool:
+    return '/' in target or '\\' in target
+
+
+def ancestor_dirs_until_root(base: Path, root: Path) -> list[Path]:
+    dirs: list[Path] = []
+    try:
+        root_resolved = root.resolve()
+    except OSError:
+        root_resolved = root
+
+    current = base.resolve()
+    while True:
+        dirs.append(current)
+        if current == root_resolved:
+            break
+        parent = current.parent
+        if parent == current:
+            break
+        current = parent
+    return dirs
+
+
+def find_unique_file_near_tree(base: Path, root: Path, name: str) -> Path | None:
+    files: list[Path] = []
+    seen: set[Path] = set()
+
+    for directory in ancestor_dirs_until_root(base, root):
+        candidate = (directory / name).resolve()
+        if candidate.is_file() and candidate not in seen:
+            seen.add(candidate)
+            files.append(candidate)
+    if len(files) == 1:
+        return files[0]
+    if len(files) > 1:
+        return None
+
+    search_base = root.resolve() if root else base.resolve()
+    if not search_base.exists():
+        search_base = base.resolve()
+
+    for candidate in search_base.rglob(name):
+        resolved = candidate.resolve()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        parts = set(resolved.parts)
+        if candidate.is_file() and '.undo' not in parts and candidate.name == name:
+            files.append(resolved)
+
+    return files[0] if len(files) == 1 else None
+
+
+def resolve_link_target(source_path: Path, target: str, root: Path) -> Path:
+    if '\x00' in target or not target or is_url_target(target):
+        return source_path.parent / target
+
+    target_path = Path(target).expanduser()
+    if target_path.is_absolute():
+        return target_path.resolve()
+
+    direct = (source_path.parent / target_path).resolve()
+    if direct.is_file():
+        return direct
+
+    if not path_has_directory(target):
+        found = find_unique_file_near_tree(source_path.parent, root, target)
+        if found is not None:
+            return found
+
+    return direct
+
+
 def read_lines(path: Path) -> list[str]:
     if not is_markdown_file(path):
         return []
@@ -143,7 +220,7 @@ def note_title(lines: list[str], path: Path) -> str:
     return split_note(path)[0]
 
 
-def body_links(path: Path) -> list[tuple[str, Path]]:
+def body_links(path: Path, root: Path) -> list[tuple[str, Path]]:
     """本文（Back 以前）にあるリンクを順番通り返す。重複は 1 回。"""
     body = extract_body_until_back(path)
     seen: set[Path] = set()
@@ -159,7 +236,7 @@ def body_links(path: Path) -> list[tuple[str, Path]]:
         for text, target in LINK_RE.findall(line):
             if '\x00' in target:
                 continue
-            target_path = (path.parent / target).resolve()
+            target_path = resolve_link_target(path, target, root)
             if not is_markdown_file(target_path):
                 continue
             if not target_path.exists():
@@ -176,7 +253,7 @@ def heading_for_depth(depth: int, title: str) -> str:
     return ('#' * level) + ' ' + title
 
 
-def expand_target(target_path: Path, heading_depth: int, expand_depth: int,
+def expand_target(target_path: Path, root: Path, heading_depth: int, expand_depth: int,
                   active_stack: set[Path]) -> list[str]:
     """リンク先ノートを、区切り付きの見出し＋本文として展開する。"""
     out: list[str] = []
@@ -204,6 +281,7 @@ def expand_target(target_path: Path, heading_depth: int, expand_depth: int,
             expanded = expand_body_inline(
                 nested_body,
                 resolved,
+                root,
                 min(heading_depth + 1, 6),
                 expand_depth - 1,
                 next_stack,
@@ -218,7 +296,7 @@ def expand_target(target_path: Path, heading_depth: int, expand_depth: int,
     return out
 
 
-def expand_body_inline(body: list[str], source_path: Path, heading_depth: int,
+def expand_body_inline(body: list[str], source_path: Path, root: Path, heading_depth: int,
                        expand_depth: int, active_stack: set[Path]) -> list[str]:
     """本文を行ごとに走査し、リンクを読みやすく展開して返す。
 
@@ -251,7 +329,7 @@ def expand_body_inline(body: list[str], source_path: Path, heading_depth: int,
             nonlocal total_links
             total_links += 1
             target = match.group(2)
-            target_path = (source_path.parent / target).resolve()
+            target_path = resolve_link_target(source_path, target, root)
             can_expand = (
                 '\x00' not in target
                 and is_markdown_file(target_path)
@@ -282,12 +360,12 @@ def expand_body_inline(body: list[str], source_path: Path, heading_depth: int,
             out.append('')
 
         for target_path in expanded_targets:
-            out.extend(expand_target(target_path, heading_depth, expand_depth, active_stack))
+            out.extend(expand_target(target_path, root, heading_depth, expand_depth, active_stack))
 
     return out
 
 
-def build_expanded_content(source_path: Path, depth: int) -> list[str]:
+def build_expanded_content(source_path: Path, root: Path, depth: int) -> list[str]:
     """ソースファイルの本文をインライン展開して返す。
 
     depth == 0 のときはソース本文をそのまま出力（展開なし）。
@@ -300,6 +378,7 @@ def build_expanded_content(source_path: Path, depth: int) -> list[str]:
         content = expand_body_inline(
             body,
             source_path,
+            root,
             heading_depth=2,
             expand_depth=depth,
             active_stack={source_path.resolve()},
@@ -318,7 +397,7 @@ def expand_note(file_path: Path, root: Path, depth: int) -> Path:
     ts = timestamp_filename()
     t_path = root / f'T_{ts}.md'
     root.mkdir(parents=True, exist_ok=True)
-    write_lines(t_path, build_expanded_content(file_path, depth))
+    write_lines(t_path, build_expanded_content(file_path, root, depth))
     return t_path
 
 
