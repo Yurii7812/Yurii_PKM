@@ -1560,6 +1560,25 @@ function! s:resolve_existing_link_target(target, ...) abort
   if !s:path_has_directory(l:target)
     return s:find_unique_file_near_current_tree(l:base, l:target)
   endif
+
+  " Directory-bearing links copied from another note are often relative to
+  " the PKM root/current working directory (for example ./N_root.md or
+  " folder/N_child.md).  If they do not exist relative to the destination
+  " note, resolve them from the root so link insertion can rebase them to
+  " ../... for notes inside subdirectories.
+  let l:root = s:get_pkm_root()
+  if !empty(l:root)
+    let l:root_candidate = fnamemodify(l:root . '/' . l:target, ':p')
+    if filereadable(l:root_candidate)
+      return l:root_candidate
+    endif
+  endif
+
+  let l:cwd_candidate = fnamemodify(getcwd() . '/' . l:target, ':p')
+  if filereadable(l:cwd_candidate)
+    return l:cwd_candidate
+  endif
+
   return ''
 endfunction
 
