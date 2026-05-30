@@ -369,6 +369,7 @@ function! s:index_template() abort
         \ '',
         \ '# Index',
         \ '',
+        \ '# Down',
         \ ]
 endfunction
 
