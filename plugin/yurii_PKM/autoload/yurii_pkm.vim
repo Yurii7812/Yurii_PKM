@@ -1318,6 +1318,11 @@ function! yurii_pkm#jump_up() abort
     call yurii_pkm#open_link_under_cursor()
     return
   endif
+  if len(l:links) >= 2
+    call cursor(l:links[0].lnum, l:links[0].col)
+    normal! zv
+    return
+  endif
 
   call s:jump_to_line(l:up)
 endfunction
@@ -1334,6 +1339,13 @@ function! yurii_pkm#jump_down_top() abort
 endfunction
 
 function! yurii_pkm#jump_down_bottom() abort
+  let l:up_links = s:section_link_positions('up')
+  if len(l:up_links) >= 2
+    call cursor(l:up_links[0].lnum, l:up_links[0].col)
+    normal! zv
+    return
+  endif
+
   let l:down = s:find_section_line('down')
   if l:down <= 0
     echo '# Down section not found'
