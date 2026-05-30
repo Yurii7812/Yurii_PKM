@@ -1,74 +1,207 @@
 " SetImageSize - マークダウン画像記法/ファイル名/imgタグをHTMLのimgタグに変換・編集
-function! s:SetImageSize() abort
-  let line = getline('.')
-  let col = col('.')
-  
-  " パターン1: <img src="..." width="..."> 形式
-  let img_pattern = '<img src="\([^"]\+\)"[^>]*>'
-  let img_match = matchstrpos(line, img_pattern)
-  
-  if img_match[1] != -1 && col >= img_match[1] + 1 && col <= img_match[2]
-    let src = substitute(img_match[0], img_pattern, '\1', '')
-    let size = input('Size: ')
-    if size == ''
-      return
+
+let s:image_ext_pattern = 'jpg|jpeg|png|gif|webp|svg'
+let s:file_pattern = '\v[a-zA-Z0-9_\-./]+\.(' . s:image_ext_pattern . ')'
+let s:img_pattern = '<img\s\+[^>]*src="\([^"]\+\)"[^>]*>'
+let s:md_image_pattern = '!\[\([^\]]*\)\](\([^)]\+\))'
+
+function! s:BuildImgTag(src, size) abort
+  return '<img src="' . a:src . '" width="' . a:size . '">'
+endfunction
+
+function! s:FindImgTagAt(line, col) abort
+  let l:pos = 0
+  while 1
+    let l:match = matchstrpos(a:line, s:img_pattern, l:pos)
+    if l:match[1] == -1
+      return ['', -1, -1]
     endif
-    let img_tag = '<img src="' . src . '" width="' . size . '">'
-    let new_line = strpart(line, 0, img_match[1]) . img_tag . strpart(line, img_match[2])
-    call setline('.', new_line)
-    return
-  endif
-  
-  " パターン2: ![alt](image.jpg) 形式
-  let md_pattern = '!\[\([^\]]*\)\](\([^)]\+\))'
-  let md_match = matchstrpos(line, md_pattern)
-  
-  let src = ''
-  let start_pos = -1
-  let end_pos = -1
-  
-  if md_match[1] != -1
-    let match_start = md_match[1]
-    let match_end = md_match[2]
-    if col >= match_start + 1 && col <= match_end
-      let src = substitute(md_match[0], md_pattern, '\2', '')
-      let start_pos = match_start
-      let end_pos = match_end
+    if a:col >= l:match[1] + 1 && a:col <= l:match[2]
+      let l:src = substitute(l:match[0], s:img_pattern, '\1', '')
+      return [l:src, l:match[1], l:match[2]]
     endif
+    let l:pos = l:match[2]
+  endwhile
+endfunction
+
+function! s:FindMarkdownImageAt(line, col) abort
+  let l:pos = 0
+  while 1
+    let l:match = matchstrpos(a:line, s:md_image_pattern, l:pos)
+    if l:match[1] == -1
+      return ['', -1, -1]
+    endif
+    if a:col >= l:match[1] + 1 && a:col <= l:match[2]
+      let l:src = substitute(l:match[0], s:md_image_pattern, '\2', '')
+      return [l:src, l:match[1], l:match[2]]
+    endif
+    let l:pos = l:match[2]
+  endwhile
+endfunction
+
+function! s:FindPlainImageAt(line, col) abort
+  let l:pos = 0
+  while 1
+    let l:match = matchstrpos(a:line, s:file_pattern, l:pos)
+    if l:match[1] == -1
+      return ['', -1, -1]
+    endif
+    if a:col >= l:match[1] + 1 && a:col <= l:match[2]
+      return [l:match[0], l:match[1], l:match[2]]
+    endif
+    let l:pos = l:match[2]
+  endwhile
+endfunction
+
+function! s:FindImageAtCursor(line, col) abort
+  let l:found = s:FindImgTagAt(a:line, a:col)
+  if l:found[1] != -1
+    return l:found
   endif
-  
-  " パターン3: 単純なファイル名 (image.jpg, image.png など)
-  if src == ''
-    let file_pattern = '\v[a-zA-Z0-9_\-./]+\.(jpg|jpeg|png|gif|webp|svg)'
-    let pos = 0
+
+  let l:found = s:FindMarkdownImageAt(a:line, a:col)
+  if l:found[1] != -1
+    return l:found
+  endif
+
+  let l:found = s:FindPlainImageAt(a:line, a:col)
+  if l:found[1] != -1
+    return l:found
+  endif
+
+  return ['', -1, -1]
+endfunction
+
+function! s:UpdateImgTag(match, size) abort
+  let l:src = substitute(a:match, s:img_pattern, '\1', '')
+  return s:BuildImgTag(l:src, a:size)
+endfunction
+
+function! s:UpdateMarkdownImage(match, size) abort
+  let l:src = substitute(a:match, s:md_image_pattern, '\2', '')
+  return s:BuildImgTag(l:src, a:size)
+endfunction
+
+function! s:IsInsideSpan(spans, start, end) abort
+  for l:span in a:spans
+    if a:start >= l:span[0] && a:end <= l:span[1]
+      return 1
+    endif
+  endfor
+  return 0
+endfunction
+
+function! s:ProtectedSpans(line) abort
+  let l:spans = []
+  for l:pattern in [s:img_pattern, s:md_image_pattern, '\[[^\]]*\]([^)]*)']
+    let l:pos = 0
     while 1
-      let file_match = matchstrpos(line, file_pattern, pos)
-      if file_match[1] == -1
+      let l:match = matchstrpos(a:line, l:pattern, l:pos)
+      if l:match[1] == -1
         break
       endif
-      if col >= file_match[1] + 1 && col <= file_match[2]
-        let src = file_match[0]
-        let start_pos = file_match[1]
-        let end_pos = file_match[2]
-        break
-      endif
-      let pos = file_match[2]
+      call add(l:spans, [l:match[1], l:match[2]])
+      let l:pos = l:match[2]
     endwhile
+  endfor
+  return l:spans
+endfunction
+
+function! s:ReplacePlainImages(line, size) abort
+  let l:spans = s:ProtectedSpans(a:line)
+  let l:out = ''
+  let l:pos = 0
+  let l:changed = 0
+
+  while 1
+    let l:match = matchstrpos(a:line, s:file_pattern, l:pos)
+    if l:match[1] == -1
+      break
+    endif
+    if s:IsInsideSpan(l:spans, l:match[1], l:match[2])
+      let l:out .= strpart(a:line, l:pos, l:match[2] - l:pos)
+    else
+      let l:out .= strpart(a:line, l:pos, l:match[1] - l:pos)
+      let l:out .= s:BuildImgTag(l:match[0], a:size)
+      let l:changed = 1
+    endif
+    let l:pos = l:match[2]
+  endwhile
+
+  let l:out .= strpart(a:line, l:pos)
+  return [l:out, l:changed]
+endfunction
+
+function! s:ReplaceImagesInLine(line, size) abort
+  let l:line = a:line
+  let l:changed = 0
+
+  if l:line =~# s:img_pattern
+    let l:line = substitute(l:line, s:img_pattern, '\=s:UpdateImgTag(submatch(0), a:size)', 'g')
+    let l:changed = 1
   endif
-  
-  if src == ''
+
+  if l:line =~# s:md_image_pattern
+    let l:line = substitute(l:line, s:md_image_pattern, '\=s:UpdateMarkdownImage(submatch(0), a:size)', 'g')
+    let l:changed = 1
+  endif
+
+  let l:plain = s:ReplacePlainImages(l:line, a:size)
+  if l:plain[1]
+    let l:line = l:plain[0]
+    let l:changed = 1
+  endif
+
+  return [l:line, l:changed]
+endfunction
+
+function! s:SetImageSizeLine() abort
+  let l:line = getline('.')
+  let l:found = s:FindImageAtCursor(l:line, col('.'))
+
+  if l:found[0] ==# ''
     echo 'カーソル位置に画像が見つかりません'
     return
   endif
-  
-  let size = input('Size: ')
-  if size == ''
+
+  let l:size = input('Size: ')
+  if l:size ==# ''
     return
   endif
-  
-  let img_tag = '<img src="' . src . '" width="' . size . '">'
-  let new_line = strpart(line, 0, start_pos) . img_tag . strpart(line, end_pos)
-  call setline('.', new_line)
+
+  let l:new_line = strpart(l:line, 0, l:found[1]) . s:BuildImgTag(l:found[0], l:size) . strpart(l:line, l:found[2])
+  call setline('.', l:new_line)
 endfunction
 
-command! SetImageSize call s:SetImageSize()
+function! s:SetImageSizeRange(line1, line2) abort
+  let l:size = input('Size: ')
+  if l:size ==# ''
+    return
+  endif
+
+  let l:changed = 0
+  for l:lnum in range(a:line1, a:line2)
+    let l:result = s:ReplaceImagesInLine(getline(l:lnum), l:size)
+    if l:result[1]
+      call setline(l:lnum, l:result[0])
+      let l:changed += 1
+    endif
+  endfor
+
+  if l:changed == 0
+    echo '範囲内に画像が見つかりません'
+  endif
+endfunction
+
+function! s:SetImageSize(line1, line2, range) abort
+  if a:range
+    call s:SetImageSizeRange(a:line1, a:line2)
+  else
+    call s:SetImageSizeLine()
+  endif
+endfunction
+
+command! -range SetImageSize call s:SetImageSize(<line1>, <line2>, <range>)
+
+nnoremap <nowait> <silent> \i <Cmd>SetImageSize<CR>
+xnoremap <nowait> <silent> \i :SetImageSize<CR>
