@@ -70,6 +70,7 @@ command! -nargs=* CU         call yurii_pkm#add_clipboard_before_up()
 command! -nargs=* TT         call yurii_pkm#add_clipboard_to_top()
 command! -nargs=? NT         call yurii_pkm#rename_title(<q-args>)
 command! -nargs=? RenameLinkText call yurii_pkm#rename_link_text(<q-args>)
+command! -range=0 RenameDownLinkTitles call yurii_pkm#rename_down_links_to_yaml_title(<line1>, <line2>, <range>)
 command! -nargs=? LT         call yurii_pkm#rename_link_text(<q-args>)
 command! -nargs=* BC         call yurii_pkm#add_from_clipboard(<f-args>)
 command!          YN         call yurii_pkm#yank_name()
@@ -166,6 +167,9 @@ nnoremap <nowait> <silent> nT  <Cmd>call yurii_pkm#rename_title('')<CR>
 nnoremap <nowait> <silent> nl  <Cmd>call yurii_pkm#rename_link_text_with_default('')<CR>
 " nL: 現在のリンク表示名を残して編集
 nnoremap <nowait> <silent> nL  <Cmd>call yurii_pkm#rename_link_text('')<CR>
+" nd: # Down のリンク表示名をリンク先 YAML title に更新
+nnoremap <nowait> <silent> nd  <Cmd>RenameDownLinkTitles<CR>
+vnoremap <nowait> <silent> nd  :<C-u>'<,'>RenameDownLinkTitles<CR>
 " at: クリップボードのファイルのDownに現在ファイルへのリンクを追加
 nnoremap <nowait> <silent> at  <Cmd>call yurii_pkm#at_add()<CR>
 " bc: クリップボードのファイル名をDownに追加

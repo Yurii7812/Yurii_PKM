@@ -91,6 +91,27 @@ endfunction
 " Current file helpers
 " ---------------------------------------------------------------------------
 
+function! s:get_yaml_title(filepath) abort
+  let l:fp = fnamemodify(a:filepath, ':p')
+  if !s:is_markdown_file(l:fp) || !filereadable(l:fp)
+    return ''
+  endif
+  let l:lines = readfile(l:fp, '', 30)
+  let l:in_yaml = 0
+  for l:line in l:lines
+    if l:line =~# '^---\s*$'
+      if l:in_yaml | break | endif
+      let l:in_yaml = 1
+      continue
+    endif
+    if l:in_yaml && l:line =~? '^title:\s*'
+      let l:title = trim(matchstr(l:line, ':\s*\zs.*'))
+      return substitute(l:title, '^[\"'']\|[\"'']$', '', 'g')
+    endif
+  endfor
+  return ''
+endfunction
+
 function! yurii_pkm#current_file() abort
   return expand('%:p')
 endfunction
@@ -1624,14 +1645,26 @@ function! s:clipboard_text() abort
   return trim(l:cb)
 endfunction
 
+function! s:extract_markdown_link(raw) abort
+  let l:raw = trim(a:raw)
+  if empty(l:raw)
+    return {'text': '', 'target': ''}
+  endif
+  let l:m = matchlist(l:raw, '^\[\([^]]*\)\](\([^)]\+\))')
+  if !empty(l:m)
+    return {'text': l:m[1], 'target': trim(l:m[2])}
+  endif
+  return {'text': '', 'target': ''}
+endfunction
+
 function! s:extract_target(raw) abort
   let l:raw = trim(a:raw)
   if empty(l:raw)
     return ''
   endif
-  let l:m = matchlist(l:raw, '^\[[^]]\+\](\([^)]\+\))')
-  if !empty(l:m)
-    return trim(l:m[1])
+  let l:link = s:extract_markdown_link(l:raw)
+  if !empty(l:link.target)
+    return l:link.target
   endif
   return l:raw
 endfunction
@@ -1708,6 +1741,92 @@ function! s:link_from_target(target) abort
     let l:text = l:name
   endif
   return '[' . l:text . '](' . l:display_target . ')'
+endfunction
+
+function! s:link_from_clipboard_raw(raw) abort
+  let l:link = s:extract_markdown_link(a:raw)
+  if !empty(l:link.target)
+    let l:display_target = s:display_target_from_current_dir(l:link.target)
+    return '[' . l:link.text . '](' . l:display_target . ')'
+  endif
+  return s:link_from_target(a:raw)
+endfunction
+
+function! s:retitle_markdown_links_in_line(line, base_dir) abort
+  let l:line = a:line
+  let l:new_line = ''
+  let l:last = 0
+  let l:start = 0
+  let l:changed = 0
+  while 1
+    let l:m = matchstrpos(l:line, '\v\[[^\]]*\]\(([^)]*)\)', l:start)
+    if empty(l:m) || l:m[1] < 0
+      break
+    endif
+    let l:raw = l:m[0]
+    let l:parts = matchlist(l:raw, '\v\[([^\]]*)\]\(([^)]*)\)')
+    let l:target = get(l:parts, 2, '')
+    let l:new_link = l:raw
+    if !empty(l:target) && s:is_markdown_target(l:target)
+      let l:path = yurii_pkm#resolve_link(l:target, a:base_dir)
+      let l:title = s:get_yaml_title(l:path)
+      if !empty(l:title)
+        let l:new_link = '[' . l:title . '](' . l:target . ')'
+        if l:new_link !=# l:raw
+          let l:changed = 1
+        endif
+      endif
+    endif
+    let l:new_line .= strpart(l:line, l:last, l:m[1] - l:last) . l:new_link
+    let l:last = l:m[2]
+    let l:start = l:m[2]
+  endwhile
+  let l:new_line .= strpart(l:line, l:last)
+  return {'line': l:changed ? l:new_line : a:line, 'changed': l:changed}
+endfunction
+
+function! yurii_pkm#rename_down_links_to_yaml_title(line1, line2, range) range abort
+  let l:base = expand('%:p:h')
+  if a:range > 0
+    let l:start = a:line1
+    let l:end = a:line2
+  else
+    let l:down = s:find_section_line('down')
+    if l:down <= 0
+      echo 'Error: down section not found'
+      return
+    endif
+    let l:start = l:down + 1
+    let l:end = s:down_end_line()
+  endif
+
+  if l:start > l:end
+    echo 'No links to update'
+    return
+  endif
+
+  let l:changed = 0
+  let l:in_fence = 0
+  for l:lnum in range(l:start, l:end)
+    let l:line = getline(l:lnum)
+    if trim(l:line) =~# '^```'
+      let l:in_fence = !l:in_fence
+      continue
+    endif
+    if l:in_fence
+      continue
+    endif
+    let l:result = s:retitle_markdown_links_in_line(l:line, l:base)
+    if l:result.changed
+      call setline(l:lnum, l:result.line)
+      let l:changed += 1
+    endif
+  endfor
+
+  if l:changed
+    silent write
+  endif
+  echo 'YAML title link text updated ' . l:changed . ' line(s)'
 endfunction
 
 function! s:insert_link_below_cursor(link) abort
@@ -3205,7 +3324,7 @@ function! yurii_pkm#add_clipboard_before_up() abort
       echo 'Warning: not found: ' . l:target
       continue
     endif
-    let l:link = s:link_from_target(l:target)
+    let l:link = s:link_from_clipboard_raw(l:raw)
     if !empty(l:link)
       call add(l:links, l:link)
       call add(l:targets, l:target)
