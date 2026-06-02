@@ -2546,7 +2546,7 @@ function! yurii_pkm#new_here_typed(prefix) abort
 endfunction
 
 " ---------------------------------------------------------------------------
-" タイトル入力なし、o/b/h選択あり (nf / nn / nk 共通内部実装, Enter=DownLast)
+" タイトル入力なし、o/b/h選択あり (nf / mm / nk 共通内部実装, Enter=DownLast)
 
 " ---------------------------------------------------------------------------
 
@@ -2667,7 +2667,7 @@ function! s:new_note_no_title(prefix) abort
     let l:content = s:k_note_template(l:title)
     let l:cursor_line = 7
   else
-    " nn/nf の h/Enter/o モード: 従来どおり
+    " mm/nf の h/Enter/o モード: 従来どおり
     let l:content = [
           \ '---',
           \ 'time: ' . yurii_pkm#timestamp_yaml(),
@@ -2712,7 +2712,7 @@ function! s:new_note_no_title(prefix) abort
 endfunction
 
 " ---------------------------------------------------------------------------
-" ビジュアル選択範囲を新ノートに切り出す (nn / nf / nk のビジュアル版)
+" ビジュアル選択範囲を新ノートに切り出す (mm / nf / nk のビジュアル版)
 "
 " 動作:
 "   - 選択範囲のテキストを取得して削除（元ファイルから cut）
@@ -2861,7 +2861,7 @@ function! s:visual_new_note(prefix, mode, ...) abort
   redraw | echon 'Created: ' . l:fname
 endfunction
 
-" ビジュアル選択から nf / nn / nk を呼ぶエントリポイント
+" ビジュアル選択から nf / mm / nk を呼ぶエントリポイント
 function! yurii_pkm#visual_new_quick_no_title() abort
   echo 'prefix (a-z): '
   let l:char = getchar()
@@ -2953,7 +2953,7 @@ function! yurii_pkm#new_quick_no_title() abort
   call s:new_note_no_title(toupper(l:ch))
 endfunction
 
-" nn / nk用: prefix固定 → o/b/h選択（Enter=DownLast）
+" mm / nk用: prefix固定 → o/b/h選択（Enter=DownLast）
 
 function! yurii_pkm#new_prefix_note(prefix) abort
   call s:new_note_no_title(a:prefix)
