@@ -148,10 +148,10 @@ nnoremap <nowait> <silent> m'  <Cmd>call yurii_pkm#jump_down_bottom()<CR>
 
 " ノート操作
 nnoremap <nowait> <silent> nf  <Cmd>call yurii_pkm#new_quick_no_title()<CR>
-nnoremap <nowait> <silent> nn  <Cmd>call yurii_pkm#new_prefix_note('N')<CR>
+nnoremap <nowait> <silent> mm  <Cmd>call yurii_pkm#new_prefix_note('N')<CR>
 nnoremap <nowait> <silent> nk  <Cmd>call yurii_pkm#new_prefix_note('K')<CR>
 vnoremap <nowait> <silent> nf  <Esc><Cmd>call yurii_pkm#visual_new_quick_no_title()<CR>
-vnoremap <nowait> <silent> nn  <Esc><Cmd>call yurii_pkm#visual_new_prefix_note('N')<CR>
+vnoremap <nowait> <silent> mm  <Esc><Cmd>call yurii_pkm#visual_new_prefix_note('N')<CR>
 vnoremap <nowait> <silent> nk  <Esc><Cmd>call yurii_pkm#visual_new_prefix_note('K')<CR>
 nnoremap <nowait> <silent> na  <Cmd>call yurii_pkm#new_here_typed('A')<CR>
 " cu: クリップボードのリンクを # Up セクションへ追加
