@@ -1,8 +1,8 @@
 " SetImageSize - マークダウン画像記法/ファイル名/imgタグをHTMLのimgタグに変換・編集
 
-let s:image_ext_pattern = 'jpg|jpeg|png|gif|webp|svg'
-let s:file_pattern = '\v[a-zA-Z0-9_\-./]+\.(' . s:image_ext_pattern . ')'
-let s:img_pattern = '<img\s\+[^>]*src="\([^"]\+\)"[^>]*>'
+let s:image_ext_pattern = '\c\%(jpe\?g\|png\|gif\|webp\|avif\|svg\|bmp\|tiff\?\|heic\|heif\|jfif\|ico\|apng\)'
+let s:file_pattern = '[^[:space:]<>"''`\[\]]\+\.' . s:image_ext_pattern . '\%([?#][^[:space:]<>"''`]*\)\?'
+let s:img_pattern = '<img\s\+[^>]*src\s*=\s*["'']\([^"'']\+\)["''][^>]*>'
 let s:md_image_pattern = '!\[\([^\]]*\)\](\([^)]\+\))'
 
 function! s:BuildImgTag(src, size) abort
@@ -73,8 +73,15 @@ function! s:FindImageAtCursor(line, col) abort
 endfunction
 
 function! s:UpdateImgTag(match, size) abort
-  let l:src = substitute(a:match, s:img_pattern, '\1', '')
-  return s:BuildImgTag(l:src, a:size)
+  if a:match =~# '\c\swidth\s*='
+    return substitute(a:match, '\c\swidth\s*=\s*["''][^"'']*["'']', ' width="' . a:size . '"', '')
+  endif
+
+  if a:match =~# '/\s*>\s*$'
+    return substitute(a:match, '\s*/\s*>\s*$', ' width="' . a:size . '" />', '')
+  endif
+
+  return substitute(a:match, '>\s*$', ' width="' . a:size . '">', '')
 endfunction
 
 function! s:UpdateMarkdownImage(match, size) abort
@@ -169,7 +176,14 @@ function! s:SetImageSizeLine() abort
     return
   endif
 
-  let l:new_line = strpart(l:line, 0, l:found[1]) . s:BuildImgTag(l:found[0], l:size) . strpart(l:line, l:found[2])
+  let l:matched = strpart(l:line, l:found[1], l:found[2] - l:found[1])
+  if l:matched =~# '^<img\s'
+    let l:replacement = s:UpdateImgTag(l:matched, l:size)
+  else
+    let l:replacement = s:BuildImgTag(l:found[0], l:size)
+  endif
+
+  let l:new_line = strpart(l:line, 0, l:found[1]) . l:replacement . strpart(l:line, l:found[2])
   call setline('.', l:new_line)
 endfunction
 
@@ -204,4 +218,4 @@ endfunction
 command! -range SetImageSize call s:SetImageSize(<line1>, <line2>, <range>)
 
 nnoremap <nowait> <silent> \i <Cmd>SetImageSize<CR>
-xnoremap <nowait> <silent> \i :SetImageSize<CR>
+xnoremap <nowait> <silent> \i :<C-U>call <SID>SetImageSizeRange(line("'<"), line("'>"))<CR>
