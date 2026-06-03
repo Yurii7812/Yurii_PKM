@@ -128,6 +128,17 @@ Markdownファイルを1つの分類として扱い、そのファイル内に�
 ![cat2](./images/cat2.jpg)
 ```
 
+画像の直前にある、空行で区切られた同じブロック内のURLや説明文もキャプションとして表示される。
+
+```markdown
+https://wear.jp/nakamuramizuki0702/25500739/
+<img src="20260602154720.avif" width="50%">
+
+〜を示す図。
+https://www.instagram.com/p/DIOTlVhvVVu/?img_index=2
+<img src="20260602154826.jpg" width="50%">
+```
+
 VimでこのMarkdownファイルを開いた状態で `\gi` または `:Gallery` を実行すると、ローカルサーバーが自動起動し、ブラウザにサムネイルグリッドが表示される。
 サムネイルをクリックすると拡大表示になり、左右矢印キー（`←` / `→`）で前後の画像へ移動できる。`Esc` で一覧へ戻る。
 

@@ -31,6 +31,8 @@ DEFAULT_PORT = 8765
 IMAGE_EXTENSIONS = {".avif", ".bmp", ".gif", ".jpeg", ".jpg", ".png", ".svg", ".webp"}
 MARKDOWN_IMAGE_RE = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
 HTML_IMAGE_RE = re.compile(r"<img\b[^>]*\bsrc=[\"']([^\"']+)[\"'][^>]*>", re.IGNORECASE)
+MARKDOWN_LINK_RE = re.compile(r"\[([^\]]+)\]\((https?://[^)]+)\)")
+URL_RE = re.compile(r"https?://[^\s<>)\"]+")
 
 
 def normalize_port(port: int | str | None) -> int:
@@ -86,30 +88,83 @@ def markdown_url_to_path(note_path: Path, raw_url: str) -> Path | None:
     return path.resolve()
 
 
-def iter_markdown_images(note_path: Path, text: str) -> Iterable[dict[str, str]]:
-    seen: set[Path] = set()
-    for match in MARKDOWN_IMAGE_RE.finditer(text):
+def iter_line_images(line: str) -> Iterable[tuple[int, str, str]]:
+    matches: list[tuple[int, str, str]] = []
+    for match in MARKDOWN_IMAGE_RE.finditer(line):
         alt, raw_url = match.groups()
-        image_path = markdown_url_to_path(note_path, raw_url)
-        if image_path is None or image_path in seen:
-            continue
-        if image_path.suffix.lower() not in IMAGE_EXTENSIONS:
-            continue
-        seen.add(image_path)
-        yield {"path": str(image_path), "label": alt.strip() or image_path.name}
-
-    for match in HTML_IMAGE_RE.finditer(text):
+        matches.append((match.start(), alt.strip(), raw_url))
+    for match in HTML_IMAGE_RE.finditer(line):
         raw_url = match.group(1)
-        image_path = markdown_url_to_path(note_path, raw_url)
-        if image_path is None or image_path in seen:
-            continue
-        if image_path.suffix.lower() not in IMAGE_EXTENSIONS:
-            continue
-        seen.add(image_path)
-        yield {"path": str(image_path), "label": image_path.name}
+        matches.append((match.start(), "", raw_url))
+    for _, alt, raw_url in sorted(matches, key=lambda item: item[0]):
+        yield _, alt, raw_url
 
 
-def read_gallery(note_file: str) -> tuple[Path, list[dict[str, str]], str | None]:
+def context_from_lines(lines: list[str]) -> tuple[str, list[dict[str, str]]]:
+    description_lines: list[str] = []
+    links: list[dict[str, str]] = []
+
+    for line in lines:
+        text = line.strip()
+        if not text:
+            continue
+
+        consumed_spans: list[tuple[int, int]] = []
+        for match in MARKDOWN_LINK_RE.finditer(text):
+            label, href = match.groups()
+            links.append({"href": href, "label": label.strip() or href})
+            consumed_spans.append(match.span())
+
+        masked = list(text)
+        for start, end in consumed_spans:
+            for index in range(start, end):
+                masked[index] = " "
+        remaining = "".join(masked)
+
+        for match in URL_RE.finditer(remaining):
+            href = match.group(0)
+            links.append({"href": href, "label": href})
+
+        remaining = URL_RE.sub(" ", remaining)
+        remaining = re.sub(r"\s+", " ", remaining).strip()
+        if remaining:
+            description_lines.append(remaining)
+
+    return "\n".join(description_lines).strip(), links
+
+
+def iter_markdown_images(note_path: Path, text: str) -> Iterable[dict[str, object]]:
+    seen: set[Path] = set()
+    block_lines: list[str] = []
+
+    for line in text.splitlines():
+        if not line.strip():
+            block_lines = []
+            continue
+
+        images = list(iter_line_images(line))
+        if not images:
+            block_lines.append(line.strip())
+            continue
+
+        description, links = context_from_lines(block_lines)
+        for _, alt, raw_url in images:
+            image_path = markdown_url_to_path(note_path, raw_url)
+            if image_path is None or image_path in seen:
+                continue
+            if image_path.suffix.lower() not in IMAGE_EXTENSIONS:
+                continue
+            seen.add(image_path)
+            label = description or alt or image_path.name
+            yield {
+                "path": str(image_path),
+                "label": label,
+                "description": description,
+                "links": links,
+            }
+
+
+def read_gallery(note_file: str) -> tuple[Path, list[dict[str, object]], str | None]:
     note_path = Path(note_file).expanduser().resolve()
     if not note_path.is_file():
         return note_path, [], f"Markdown file not found: {note_path}"
@@ -131,6 +186,8 @@ def render_gallery(note_file: str, port: int) -> bytes:
             "name": Path(item["path"]).name,
             "path": item["path"],
             "label": item["label"],
+            "description": item.get("description", ""),
+            "links": item.get("links", []),
         }
         for item in images
     ]
@@ -154,7 +211,11 @@ h1 {{ margin:0 0 6px; font-size:22px; }}
 .card {{ border:1px solid #29313c; background:var(--panel); border-radius:12px; overflow:hidden; cursor:pointer; transition:transform .12s ease, border-color .12s ease; }}
 .card:hover {{ transform:translateY(-2px); border-color:var(--accent); }}
 .thumb {{ width:100%; aspect-ratio:1/1; object-fit:cover; display:block; background:#0b0d11; }}
-.caption {{ padding:9px 10px 11px; font-size:12px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
+.caption {{ padding:9px 10px 11px; font-size:12px; color:var(--muted); overflow:hidden; }}
+.caption-title {{ color:#dce6f3; line-height:1.35; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }}
+.caption-links {{ margin-top:6px; display:flex; flex-direction:column; gap:3px; }}
+.source-link {{ color:var(--accent); text-decoration:none; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }}
+.source-link:hover {{ text-decoration:underline; }}
 .empty, .error {{ margin:20px; padding:14px 16px; border-radius:10px; background:#1b2028; color:var(--muted); }}
 .error {{ color:#ffb4b4; }}
 .lightbox {{ position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,.9); z-index:10; }}
@@ -162,6 +223,8 @@ h1 {{ margin:0 0 6px; font-size:22px; }}
 .stage {{ width:100vw; height:100vh; display:flex; align-items:center; justify-content:center; padding:58px 68px 70px; }}
 .stage img {{ max-width:100%; max-height:100%; object-fit:contain; box-shadow:0 12px 40px rgba(0,0,0,.45); }}
 .lb-info {{ position:fixed; left:18px; right:18px; bottom:16px; text-align:center; color:#dce6f3; font-size:14px; overflow-wrap:anywhere; }}
+.lb-title {{ font-weight:600; margin-bottom:5px; white-space:pre-wrap; }}
+.lb-links {{ display:flex; justify-content:center; gap:10px; flex-wrap:wrap; }}
 button {{ position:fixed; border:0; color:white; background:rgba(255,255,255,.12); border-radius:999px; cursor:pointer; }}
 button:hover {{ background:rgba(255,255,255,.2); }}
 .close {{ top:14px; right:14px; width:42px; height:42px; font-size:28px; line-height:42px; }}
@@ -189,7 +252,44 @@ const lightbox = document.getElementById('lightbox');
 const full = document.getElementById('full');
 const info = document.getElementById('info');
 let current = 0;
-function openAt(index) {{ if (!images.length) return; current = (index + images.length) % images.length; const item = images[current]; full.src = item.src; full.alt = item.label; info.textContent = `${{current + 1}} / ${{images.length}} — ${{item.label}} — ${{item.path}}`; lightbox.classList.add('open'); lightbox.setAttribute('aria-hidden', 'false'); }}
+function linkText(link) {{
+  try {{
+    const url = new URL(link.href);
+    return link.label === link.href ? url.hostname + url.pathname : link.label;
+  }} catch (_) {{
+    return link.label || link.href;
+  }}
+}}
+function addLinks(container, links) {{
+  if (!links || !links.length) return;
+  const linksBox = document.createElement('div');
+  linksBox.className = container === info ? 'lb-links' : 'caption-links';
+  links.forEach((link) => {{
+    const anchor = document.createElement('a');
+    anchor.className = 'source-link';
+    anchor.href = link.href;
+    anchor.target = '_blank';
+    anchor.rel = 'noopener noreferrer';
+    anchor.textContent = linkText(link);
+    anchor.title = link.href;
+    anchor.addEventListener('click', (event) => event.stopPropagation());
+    linksBox.appendChild(anchor);
+  }});
+  container.appendChild(linksBox);
+}}
+function fillInfo(item) {{
+  info.replaceChildren();
+  const title = document.createElement('div');
+  title.className = 'lb-title';
+  title.textContent = `${{current + 1}} / ${{images.length}} — ${{item.description || item.label}}`;
+  info.appendChild(title);
+  addLinks(info, item.links);
+  const path = document.createElement('div');
+  path.className = 'meta';
+  path.textContent = item.path;
+  info.appendChild(path);
+}}
+function openAt(index) {{ if (!images.length) return; current = (index + images.length) % images.length; const item = images[current]; full.src = item.src; full.alt = item.label; fillInfo(item); lightbox.classList.add('open'); lightbox.setAttribute('aria-hidden', 'false'); }}
 function closeBox() {{ lightbox.classList.remove('open'); lightbox.setAttribute('aria-hidden', 'true'); full.removeAttribute('src'); }}
 function move(delta) {{ openAt(current + delta); }}
 images.forEach((item, index) => {{
@@ -203,7 +303,11 @@ images.forEach((item, index) => {{
   img.alt = item.label;
   const caption = document.createElement('div');
   caption.className = 'caption';
-  caption.textContent = item.label;
+  const captionTitle = document.createElement('div');
+  captionTitle.className = 'caption-title';
+  captionTitle.textContent = item.description || item.label;
+  caption.appendChild(captionTitle);
+  addLinks(caption, item.links);
   card.append(img, caption);
   card.addEventListener('click', () => openAt(index));
   grid.appendChild(card);
