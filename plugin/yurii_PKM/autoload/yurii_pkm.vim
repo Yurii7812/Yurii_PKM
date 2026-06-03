@@ -5224,6 +5224,49 @@ function! s:python_executable() abort
   return 'python'
 endfunction
 
+
+function! s:current_line_has_image_link() abort
+  let l:line = getline('.')
+  return l:line =~# '!\[[^\]]*\]([^)]\+)' || (l:line =~? '<img' && l:line =~? 'src=')
+endfunction
+
+function! s:run_gallery_command(args, label) abort
+  let l:py = get(g:, 'yurii_pkm_gallery_python', '')
+  if empty(l:py) || !filereadable(l:py)
+    echoerr 'yurii_PKM: gallery.py not found: ' . l:py
+    return
+  endif
+  let l:port = get(g:, 'yurii_pkm_gallery_port', 8765)
+  let l:cmd = [s:python_executable(), l:py] + a:args + ['--port', string(l:port)]
+
+  if exists('*job_start')
+    call job_start(l:cmd, {'out_io': 'null', 'err_io': 'null'})
+    echom 'yurii_PKM: opening gallery for ' . a:label
+    return
+  endif
+
+  let l:result = system(join(map(copy(l:cmd), 'shellescape(v:val)'), ' '))
+  if v:shell_error
+    echohl ErrorMsg | echom 'yurii_PKM Gallery failed: ' . l:result | echohl None
+  else
+    echom 'yurii_PKM: opening gallery for ' . a:label
+  endif
+endfunction
+
+function! yurii_pkm#open_folder_gallery(...) abort
+  let l:target = a:0 >= 1 && !empty(a:1) ? a:1 : expand('%:p')
+  if empty(l:target)
+    let l:target = getcwd()
+  endif
+  let l:path = fnamemodify(expand(l:target), ':p')
+  let l:dir = isdirectory(l:path) ? l:path : fnamemodify(l:path, ':h')
+  if empty(l:dir) || !isdirectory(l:dir)
+    echoerr 'yurii_PKM: folder not found: ' . l:dir
+    return
+  endif
+  call s:run_gallery_command(['--open-folder', l:dir], fnamemodify(l:dir, ':t'))
+endfunction
+
 function! yurii_pkm#open_gallery(...) abort
   let l:file = a:0 >= 1 && !empty(a:1) ? a:1 : expand('%:p')
   if empty(l:file)
@@ -5242,25 +5285,14 @@ function! yurii_pkm#open_gallery(...) abort
   if get(g:, 'yurii_pkm_auto_save_on_command', 1) && expand('%:p') ==# l:file && &modified
     silent write
   endif
+  call s:run_gallery_command(['--open', l:file], fnamemodify(l:file, ':t'))
+endfunction
 
-  let l:py = get(g:, 'yurii_pkm_gallery_python', '')
-  if empty(l:py) || !filereadable(l:py)
-    echoerr 'yurii_PKM: gallery.py not found: ' . l:py
-    return
-  endif
-  let l:port = get(g:, 'yurii_pkm_gallery_port', 8765)
-  let l:cmd = [s:python_executable(), l:py, '--open', l:file, '--port', string(l:port)]
 
-  if exists('*job_start')
-    call job_start(l:cmd, {'out_io': 'null', 'err_io': 'null'})
-    echom 'yurii_PKM: opening gallery for ' . fnamemodify(l:file, ':t')
-    return
-  endif
-
-  let l:result = system(join(map(copy(l:cmd), 'shellescape(v:val)'), ' '))
-  if v:shell_error
-    echohl ErrorMsg | echom 'yurii_PKM Gallery failed: ' . l:result | echohl None
+function! yurii_pkm#open_gallery_smart() abort
+  if s:is_markdown_file(expand('%:p')) && s:current_line_has_image_link()
+    call yurii_pkm#open_gallery()
   else
-    echom 'yurii_PKM: opening gallery for ' . fnamemodify(l:file, ':t')
+    call yurii_pkm#open_folder_gallery()
   endif
 endfunction
