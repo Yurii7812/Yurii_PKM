@@ -5212,3 +5212,55 @@ function! yurii_pkm#toggle_checkbox(first, last, has_range) abort range
     echo 'No checkbox ([ ] / [x]) on this line'
   endif
 endfunction
+
+" ---------------------------------------------------------------------------
+" Image gallery: open current Markdown note as a browser thumbnail grid
+" ---------------------------------------------------------------------------
+
+function! s:python_executable() abort
+  if executable('python3')
+    return 'python3'
+  endif
+  return 'python'
+endfunction
+
+function! yurii_pkm#open_gallery(...) abort
+  let l:file = a:0 >= 1 && !empty(a:1) ? a:1 : expand('%:p')
+  if empty(l:file)
+    echoerr 'yurii_PKM: Gallery requires a Markdown file'
+    return
+  endif
+  let l:file = fnamemodify(expand(l:file), ':p')
+  if !filereadable(l:file)
+    echoerr 'yurii_PKM: file not found: ' . l:file
+    return
+  endif
+  if l:file !~? '\.md$'
+    echoerr 'yurii_PKM: Gallery can only open Markdown files'
+    return
+  endif
+  if get(g:, 'yurii_pkm_auto_save_on_command', 1) && expand('%:p') ==# l:file && &modified
+    silent write
+  endif
+
+  let l:py = get(g:, 'yurii_pkm_gallery_python', '')
+  if empty(l:py) || !filereadable(l:py)
+    echoerr 'yurii_PKM: gallery.py not found: ' . l:py
+    return
+  endif
+  let l:port = get(g:, 'yurii_pkm_gallery_port', 8765)
+  let l:cmd = [s:python_executable(), l:py, '--open', l:file, '--port', string(l:port)]
+
+  if exists('*job_start')
+    call job_start(l:cmd, {'out_io': 'null', 'err_io': 'null'})
+    echom 'yurii_PKM: opening gallery for ' . fnamemodify(l:file, ':t')
+    return
+  endif
+
+  let l:result = system(join(map(copy(l:cmd), 'shellescape(v:val)'), ' '))
+  if v:shell_error
+    echohl ErrorMsg | echom 'yurii_PKM Gallery failed: ' . l:result | echohl None
+  else
+    echom 'yurii_PKM: opening gallery for ' . fnamemodify(l:file, ':t')
+  endif
+endfunction

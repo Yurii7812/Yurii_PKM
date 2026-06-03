@@ -70,6 +70,7 @@
 | `mx` | `:ToggleCheckbox` | カーソル行のチェックボックス `[ ]` / `[x]` をトグル |
 | Visual `mx` | `:'<,'>ToggleCheckbox` | 選択範囲の各行にあるチェックボックス `[ ]` / `[x]` をトグル |
 | `p` | | 行単位ヤンクでも改行なしでカーソル直下に貼り付け（Vim標準の `p` を上書き） |
+| `\gi` | `:Gallery` / `:YuriiGallery` | 現在のMarkdownファイル内の画像リンクを、ブラウザのサムネイルグリッドで開く |
 
 ### ノート変換・管理
 
@@ -110,6 +111,33 @@ filetype [N] →    → 新しい filetype を1文字入力（a-z、大文字に
 |----------|------|
 | `:UpdateMD [path]` | PKMルート（省略時は `g:yurii_pkm_root`）の全ノートのリンクタイトルを一括更新 |
 | `:UpdateAll [path]` | `:UpdateMD` と同じ |
+| `:Gallery [path]` | 指定または現在のMarkdownファイルから画像リンクを抽出してブラウザギャラリーを開く |
+| `:YuriiGallery [path]` | `:Gallery` と同じ |
+
+
+---
+
+## 画像ギャラリー
+
+Markdownファイルを1つの分類として扱い、そのファイル内に書いた画像リンクをブラウザで見やすく表示できる。
+
+```markdown
+# 猫
+
+![cat1](./images/cat1.jpg)
+![cat2](./images/cat2.jpg)
+```
+
+VimでこのMarkdownファイルを開いた状態で `\gi` または `:Gallery` を実行すると、ローカルサーバーが自動起動し、ブラウザにサムネイルグリッドが表示される。
+サムネイルをクリックすると拡大表示になり、左右矢印キー（`←` / `→`）で前後の画像へ移動できる。`Esc` で一覧へ戻る。
+
+分類は「Markdownファイルごと」に行う想定。たとえば `K_cats.md` に猫画像、`K_dogs.md` に犬画像のリンクを書けば、それぞれ別のギャラリーになる。
+
+対応する画像リンク:
+
+- Markdown画像: `![説明](relative/or/absolute/path.jpg)`
+- HTML画像: `<img src="relative/or/absolute/path.jpg">`
+- 対応拡張子: `.jpg`, `.jpeg`, `.png`, `.gif`, `.webp`, `.avif`, `.bmp`, `.svg`
 
 ---
 
@@ -138,6 +166,8 @@ filetype [N] →    → 新しい filetype を1文字入力（a-z、大文字に
 | `g:yurii_pkm_link_color_cterm` | `81` | リンクテキストの色（端末） |
 | `g:yurii_pkm_python` | `{plugin}/python/yurii_pkm_sync.py` | sync スクリプトのパス |
 | `g:yurii_pkm_expand_s_python` | `{plugin}/python/expand_s.py` | S→A 展開スクリプトのパス |
+| `g:yurii_pkm_gallery_python` | `{plugin}/python/gallery.py` | 画像ギャラリー用ローカルサーバースクリプトのパス |
+| `g:yurii_pkm_gallery_port` | `8765` | 画像ギャラリー用ローカルサーバーのポート |
 
 ---
 
