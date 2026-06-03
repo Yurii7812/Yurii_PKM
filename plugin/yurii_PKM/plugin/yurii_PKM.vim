@@ -54,6 +54,12 @@ endif
 if !exists('g:yurii_pkm_expand_s_python')
   let g:yurii_pkm_expand_s_python = s:plugin_root . '/python/expand_s.py'
 endif
+if !exists('g:yurii_pkm_gallery_python')
+  let g:yurii_pkm_gallery_python = s:plugin_root . '/python/gallery.py'
+endif
+if !exists('g:yurii_pkm_gallery_port')
+  let g:yurii_pkm_gallery_port = 8765
+endif
 
 " ---------------------------------------------------------------------------
 " コマンド定義
@@ -94,6 +100,8 @@ command! -nargs=? ExpandToT  call yurii_pkm#expand_s_under_cursor(<q-args>)
 command! -nargs=? SE         call yurii_pkm#expand_s_under_cursor(<q-args>)
 command!          RP         call yurii_pkm#rename_prefix()
 command!          OutlineEdit call yurii_pkm#outline_edit()
+command! -nargs=? Gallery    call yurii_pkm#open_gallery(<q-args>)
+command! -nargs=? YuriiGallery call yurii_pkm#open_gallery(<q-args>)
 " テーブル操作コマンド
 command! -nargs=* TN         call yurii_pkm#table_new(<q-args>)
 command! -nargs=* NewTable   call yurii_pkm#table_new(<q-args>)
@@ -189,6 +197,7 @@ nnoremap <silent> \L        <Cmd>call yurii_pkm#toggle_fixed_link_text_under_cur
 nnoremap <silent> \p        <Cmd>call yurii_pkm#paste_clipboard_link_here()<CR>
 xnoremap <silent> \p        :<C-u>call yurii_pkm#linkify_selection_from_clipboard()<CR>
 nnoremap <silent> \oe       <Cmd>OutlineEdit<CR>
+nnoremap <silent> \gi       <Cmd>Gallery<CR>
 
 " ---------------------------------------------------------------------------
 " Shift-Tab / BackTab の端末互換
