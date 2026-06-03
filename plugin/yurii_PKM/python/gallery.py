@@ -16,6 +16,7 @@ import json
 import mimetypes
 import os
 import re
+import socket
 import subprocess
 import sys
 import time
@@ -28,6 +29,7 @@ from typing import Iterable
 
 HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
+GALLERY_PROTOCOL_VERSION = "2"
 IMAGE_EXTENSIONS = {".avif", ".bmp", ".gif", ".jpeg", ".jpg", ".png", ".svg", ".webp"}
 MARKDOWN_IMAGE_RE = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
 HTML_IMAGE_RE = re.compile(r"<img\b[^>]*\bsrc=[\"']([^\"']+)[\"'][^>]*>", re.IGNORECASE)
@@ -43,18 +45,33 @@ def normalize_port(port: int | str | None) -> int:
     return value if 1 <= value <= 65535 else DEFAULT_PORT
 
 
-def is_server_running(port: int) -> bool:
+def server_health(port: int) -> str | None:
     try:
         with urllib.request.urlopen(f"http://{HOST}:{port}/health", timeout=0.4) as response:
-            return response.status == 200
+            if response.status != 200:
+                return None
+            return response.read().decode("utf-8", errors="replace")
     except Exception:
+        return None
+
+
+def is_compatible_server_running(port: int) -> bool:
+    health = server_health(port)
+    return health is not None and f"gallery_protocol={GALLERY_PROTOCOL_VERSION}" in health
+
+
+def is_port_occupied(port: int) -> bool:
+    try:
+        with socket.create_connection((HOST, port), timeout=0.2):
+            return True
+    except OSError:
         return False
 
 
 def wait_for_server(port: int, timeout: float = 3.0) -> bool:
     deadline = time.time() + timeout
     while time.time() < deadline:
-        if is_server_running(port):
+        if is_compatible_server_running(port):
             return True
         time.sleep(0.05)
     return False
@@ -341,7 +358,7 @@ class GalleryHandler(BaseHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         query = urllib.parse.parse_qs(parsed.query)
         if parsed.path == "/health":
-            self.send_bytes(200, b"ok", "text/plain; charset=utf-8")
+            self.send_bytes(200, f"ok gallery_protocol={GALLERY_PROTOCOL_VERSION}".encode("utf-8"), "text/plain; charset=utf-8")
             return
         if parsed.path == "/gallery":
             note_file = query.get("file", [""])[0]
@@ -364,6 +381,15 @@ def serve(port: int) -> None:
     server.serve_forever()
 
 
+def choose_gallery_port(preferred_port: int) -> int | None:
+    for port in range(preferred_port, min(preferred_port + 20, 65536)):
+        if is_compatible_server_running(port):
+            return port
+        if not is_port_occupied(port):
+            return port
+    return None
+
+
 def start_server(port: int) -> None:
     script = Path(__file__).resolve()
     subprocess.Popen(
@@ -376,13 +402,17 @@ def start_server(port: int) -> None:
 
 
 def open_gallery(note_file: str, port: int) -> int:
-    if not is_server_running(port):
-        start_server(port)
-        if not wait_for_server(port):
-            print(f"Failed to start gallery server on {HOST}:{port}", file=sys.stderr)
+    selected_port = choose_gallery_port(port)
+    if selected_port is None:
+        print(f"No available gallery port near {HOST}:{port}", file=sys.stderr)
+        return 1
+    if not is_compatible_server_running(selected_port):
+        start_server(selected_port)
+        if not wait_for_server(selected_port):
+            print(f"Failed to start gallery server on {HOST}:{selected_port}", file=sys.stderr)
             return 1
     note_path = Path(note_file).expanduser().resolve()
-    url = f"http://{HOST}:{port}/gallery?file={urllib.parse.quote(str(note_path))}"
+    url = f"http://{HOST}:{selected_port}/gallery?file={urllib.parse.quote(str(note_path))}&v={GALLERY_PROTOCOL_VERSION}"
     webbrowser.open(url)
     print(url)
     return 0
