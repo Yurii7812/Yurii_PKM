@@ -153,7 +153,8 @@ VimでこのMarkdownファイル内のどこかに画像リンクがある状態
 
 - Markdown画像: `![説明](relative/or/absolute/path.jpg)`
 - 通常のMarkdownリンク（画像拡張子の場合）: `[説明](relative/or/absolute/path.jpg)`
-- HTML画像: `<img src="relative/or/absolute/path.jpg">`
+- Wikiリンク形式（画像拡張子の場合）: `![[relative/or/absolute/path.jpg]]` / `[[relative/or/absolute/path.jpg]]`
+- HTML画像: `<img src="relative/or/absolute/path.jpg">`（引用符なしの `src=path.jpg` も対応）
 - 対応拡張子: `.jpg`, `.jpeg`, `.png`, `.gif`, `.webp`, `.avif`, `.bmp`, `.svg`
 
 ---

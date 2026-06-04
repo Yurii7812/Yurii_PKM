@@ -30,10 +30,11 @@ from typing import Iterable
 
 HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
-GALLERY_PROTOCOL_VERSION = "4"
+GALLERY_PROTOCOL_VERSION = "5"
 IMAGE_EXTENSIONS = {".avif", ".bmp", ".gif", ".jpeg", ".jpg", ".png", ".svg", ".webp"}
 MARKDOWN_IMAGE_RE = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
-HTML_IMAGE_RE = re.compile(r"<img\b[^>]*\bsrc=[\"']([^\"']+)[\"'][^>]*>", re.IGNORECASE)
+HTML_IMAGE_RE = re.compile(r"<img\b[^>]*\bsrc\s*=\s*(?:[\"']([^\"']+)[\"']|([^\s>]+))[^>]*>", re.IGNORECASE)
+WIKI_IMAGE_RE = re.compile(r"!?\[\[([^\]|]+)(?:\|([^\]]+))?\]\]")
 MARKDOWN_LOCAL_LINK_RE = re.compile(r"(?<!!)\[([^\]]*)\]\(([^)]+)\)")
 MARKDOWN_LINK_RE = re.compile(r"\[([^\]]+)\]\((https?://[^)]+)\)")
 URL_RE = re.compile(r"https?://[^\s<>)\"]+")
@@ -125,9 +126,14 @@ def iter_line_images(line: str) -> Iterable[tuple[int, str, str]]:
         matches.append((match.start(), alt.strip(), raw_url))
         consumed_spans.append(match.span())
     for match in HTML_IMAGE_RE.finditer(line):
-        raw_url = match.group(1)
+        raw_url = match.group(1) or match.group(2) or ""
         matches.append((match.start(), "", raw_url))
         consumed_spans.append(match.span())
+    for match in WIKI_IMAGE_RE.finditer(line):
+        raw_url, label = match.groups()
+        if is_potential_local_image_url(raw_url):
+            matches.append((match.start(), (label or "").strip(), raw_url))
+            consumed_spans.append(match.span())
     for match in MARKDOWN_LOCAL_LINK_RE.finditer(line):
         if any(start <= match.start() < end for start, end in consumed_spans):
             continue
@@ -271,6 +277,34 @@ def folder_gallery_url(path: Path, root_path: Path | None = None) -> str:
     return f"/folder?dir={urllib.parse.quote(str(folder))}&v={GALLERY_PROTOCOL_VERSION}"
 
 
+def render_static_cards(payload: list[dict[str, object]]) -> str:
+    cards: list[str] = []
+    for index, item in enumerate(payload):
+        name = html.escape(str(item.get("name", "")))
+        src = html.escape(str(item.get("src", "")), quote=True)
+        path = html.escape(str(item.get("path", "")), quote=True)
+        label = html.escape(str(item.get("label", "")), quote=True)
+        caption = html.escape(str(item.get("description") or item.get("label") or item.get("name") or ""))
+        links_html = ""
+        links = item.get("links", [])
+        if isinstance(links, list) and links:
+            link_parts: list[str] = []
+            for link in links:
+                if not isinstance(link, dict):
+                    continue
+                href = html.escape(str(link.get("href", "")), quote=True)
+                text = html.escape(str(link.get("label") or link.get("href") or ""))
+                link_parts.append(f'<a class="source-link" href="{href}" target="_blank" rel="noopener noreferrer">{text}</a>')
+            if link_parts:
+                links_html = '<div class="caption-links">' + "".join(link_parts) + "</div>"
+        cards.append(
+            f'<article class="card" title="{path}" data-static-index="{index}">'
+            f'<img class="thumb" loading="lazy" src="{src}" alt="{label}">'
+            f'<div class="caption"><div class="caption-name">{name}</div>'
+            f'<div class="caption-title">{caption}</div>{links_html}</div></article>'
+        )
+    return "".join(cards)
+
 def render_gallery_page(source_path: Path, images: list[dict[str, object]], error: str | None, *, mode: str, root_path: Path | None = None) -> bytes:
     title = source_path.stem if mode == "note" else source_path.name
     title = title or "Gallery"
@@ -289,6 +323,7 @@ def render_gallery_page(source_path: Path, images: list[dict[str, object]], erro
         for item in images
     ]
     data = json.dumps(payload, ensure_ascii=False)
+    static_cards_html = render_static_cards(payload)
     error_html = f'<p class="error">{html.escape(error)}</p>' if error else ""
     if payload:
         empty_html = ""
@@ -362,7 +397,7 @@ h1 {{ margin:0 0 6px; font-size:22px; }}
   </div>
 </header>
 {error_html}{empty_html}
-<main id="grid" class="grid"></main>
+<main id="grid" class="grid">{static_cards_html}</main>
 <div id="lightbox" class="lightbox" aria-hidden="true">
   <div class="help">← →: 前後 / Esc: 閉じる</div>
   <button class="lightbox-button close" id="close" title="閉じる">×</button>
@@ -411,11 +446,13 @@ function addLinks(container, links) {{
   container.appendChild(linksBox);
 }}
 function searchableText(item) {{
-  return [item.name, item.path, item.label, item.description, ...(item.links || []).flatMap((link) => [link.label, link.href])].join('\n').toLowerCase();
+  const parts = [item.name, item.path, item.label, item.description];
+  (item.links || []).forEach((link) => parts.push(link.label, link.href));
+  return parts.join('\\n').toLowerCase();
 }}
 function updateSelectionCount() {{ selectionCount.textContent = `${{selected.size}} selected`; }}
 function fillInfo(item) {{
-  info.replaceChildren();
+  info.textContent = '';
   const title = document.createElement('div');
   title.className = 'lb-title';
   title.textContent = `${{current + 1}} / ${{visibleImages.length}} — ${{item.description || item.label || item.name}}`;
@@ -439,7 +476,7 @@ function render() {{
     return ((Number(a[key]) || 0) - (Number(b[key]) || 0)) * dir;
   }});
   shownCount.textContent = String(visibleImages.length);
-  grid.replaceChildren();
+  grid.textContent = '';
   visibleImages.forEach((item, index) => {{
     const card = document.createElement('article');
     card.className = 'card';
@@ -480,7 +517,7 @@ function render() {{
 async function copySelectedNames() {{
   const names = Array.from(selected);
   if (!names.length) return;
-  const text = names.join('\n');
+  const text = names.join('\\n');
   try {{
     await navigator.clipboard.writeText(text);
     selectionCount.textContent = `${{names.length}} copied`;
@@ -555,10 +592,6 @@ class GalleryHandler(BaseHTTPRequestHandler):
             folder = query.get("dir", [""])[0]
             self.send_bytes(200, render_folder_gallery(folder, self.server.server_port), "text/html; charset=utf-8")
             return
-        if parsed.path == "/folder":
-            folder = query.get("dir", [""])[0]
-            self.send_bytes(200, render_folder_gallery(folder, self.server.server_port), "text/html; charset=utf-8")
-            return
         if parsed.path == "/image":
             image_file = query.get("file", [""])[0]
             path = Path(image_file).expanduser().resolve()
@@ -619,17 +652,6 @@ def open_gallery(note_file: str, port: int, root: str | None = None) -> int:
         root_path = Path(root).expanduser().resolve()
         if root_path.is_dir():
             url += f"&root={urllib.parse.quote(str(root_path))}"
-    webbrowser.open(url)
-    print(url)
-    return 0
-
-
-def open_folder_gallery(folder: str, port: int) -> int:
-    selected_port = ensure_server(port)
-    if selected_port is None:
-        return 1
-    folder_path = Path(folder).expanduser().resolve()
-    url = f"http://{HOST}:{selected_port}/folder?dir={urllib.parse.quote(str(folder_path))}&v={GALLERY_PROTOCOL_VERSION}"
     webbrowser.open(url)
     print(url)
     return 0

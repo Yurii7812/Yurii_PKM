@@ -5226,7 +5226,11 @@ endfunction
 
 
 function! s:line_has_image_link(line) abort
-  return a:line =~# '!\[[^\]]*\]([^)]\+)' || a:line =~? '\[[^\]]*\]([^)]*\.\%(avif\|bmp\|gif\|jpe\?g\|png\|svg\|webp\)\%([#?][^)]*\)\?)' || (a:line =~? '<img' && a:line =~? 'src=')
+  let l:image_ext = '\%(avif\|bmp\|gif\|jpe\?g\|png\|svg\|webp\)'
+  return a:line =~# '!\[[^\]]*\]([^)]\+)'
+        \ || a:line =~? '\[[^\]]*\]([^)]*\.' . l:image_ext . '\%([#?][^)]*\)\?)'
+        \ || a:line =~? '!?\[\[[^]|]\+\.' . l:image_ext . '\%([#?][^]|]\)*\%(|[^]]*\)\?\]\]'
+        \ || (a:line =~? '<img' && a:line =~? 'src\s*=')
 endfunction
 
 function! s:buffer_has_image_link() abort
