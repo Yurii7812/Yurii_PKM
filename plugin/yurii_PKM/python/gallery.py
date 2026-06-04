@@ -555,6 +555,10 @@ class GalleryHandler(BaseHTTPRequestHandler):
             folder = query.get("dir", [""])[0]
             self.send_bytes(200, render_folder_gallery(folder, self.server.server_port), "text/html; charset=utf-8")
             return
+        if parsed.path == "/folder":
+            folder = query.get("dir", [""])[0]
+            self.send_bytes(200, render_folder_gallery(folder, self.server.server_port), "text/html; charset=utf-8")
+            return
         if parsed.path == "/image":
             image_file = query.get("file", [""])[0]
             path = Path(image_file).expanduser().resolve()
@@ -615,6 +619,17 @@ def open_gallery(note_file: str, port: int, root: str | None = None) -> int:
         root_path = Path(root).expanduser().resolve()
         if root_path.is_dir():
             url += f"&root={urllib.parse.quote(str(root_path))}"
+    webbrowser.open(url)
+    print(url)
+    return 0
+
+
+def open_folder_gallery(folder: str, port: int) -> int:
+    selected_port = ensure_server(port)
+    if selected_port is None:
+        return 1
+    folder_path = Path(folder).expanduser().resolve()
+    url = f"http://{HOST}:{selected_port}/folder?dir={urllib.parse.quote(str(folder_path))}&v={GALLERY_PROTOCOL_VERSION}"
     webbrowser.open(url)
     print(url)
     return 0
