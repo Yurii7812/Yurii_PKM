@@ -5225,9 +5225,41 @@ function! s:python_executable() abort
 endfunction
 
 
-function! s:current_line_has_image_link() abort
-  let l:line = getline('.')
-  return l:line =~# '!\[[^\]]*\]([^)]\+)' || (l:line =~? '<img' && l:line =~? 'src=')
+function! s:line_has_image_link(line) abort
+  return a:line =~# '!\[[^\]]*\]([^)]\+)' || a:line =~? '\[[^\]]*\]([^)]*\.\%(avif\|bmp\|gif\|jpe\?g\|png\|svg\|webp\)\%([#?][^)]*\)\?)' || (a:line =~? '<img' && a:line =~? 'src=')
+endfunction
+
+function! s:buffer_has_image_link() abort
+  for l:line in getline(1, '$')
+    if s:line_has_image_link(l:line)
+      return 1
+    endif
+  endfor
+  return 0
+endfunction
+
+function! s:index_root_from_path(path) abort
+  let l:path = fnamemodify(expand(a:path), ':p')
+  let l:dir = isdirectory(l:path) ? l:path : fnamemodify(l:path, ':h')
+  while !empty(l:dir)
+    if filereadable(l:dir . s:sep() . 'index.md')
+      return l:dir
+    endif
+    let l:parent = fnamemodify(l:dir, ':h')
+    if l:parent ==# l:dir
+      break
+    endif
+    let l:dir = l:parent
+  endwhile
+  return ''
+endfunction
+
+function! s:gallery_root() abort
+  let l:root = fnamemodify(expand(get(g:, 'yurii_pkm_root', '')), ':p')
+  if !empty(l:root) && isdirectory(l:root)
+    return l:root
+  endif
+  return s:index_root_from_path(expand('%:p'))
 endfunction
 
 function! s:run_gallery_command(args, label) abort
@@ -5239,6 +5271,11 @@ function! s:run_gallery_command(args, label) abort
   let l:port = get(g:, 'yurii_pkm_gallery_port', 8765)
   let l:cmd = [s:python_executable(), l:py] + a:args + ['--port', string(l:port)]
 
+  if exists('*jobstart')
+    call jobstart(l:cmd, {'detach': v:true})
+    echom 'yurii_PKM: opening gallery for ' . a:label
+    return
+  endif
   if exists('*job_start')
     call job_start(l:cmd, {'out_io': 'null', 'err_io': 'null'})
     echom 'yurii_PKM: opening gallery for ' . a:label
@@ -5254,7 +5291,10 @@ function! s:run_gallery_command(args, label) abort
 endfunction
 
 function! yurii_pkm#open_folder_gallery(...) abort
-  let l:target = a:0 >= 1 && !empty(a:1) ? a:1 : expand('%:p')
+  let l:target = a:0 >= 1 && !empty(a:1) ? a:1 : s:gallery_root()
+  if empty(l:target)
+    let l:target = expand('%:p')
+  endif
   if empty(l:target)
     let l:target = getcwd()
   endif
@@ -5285,12 +5325,17 @@ function! yurii_pkm#open_gallery(...) abort
   if get(g:, 'yurii_pkm_auto_save_on_command', 1) && expand('%:p') ==# l:file && &modified
     silent write
   endif
-  call s:run_gallery_command(['--open', l:file], fnamemodify(l:file, ':t'))
+  let l:args = ['--open', l:file]
+  let l:root = s:gallery_root()
+  if !empty(l:root)
+    call extend(l:args, ['--root', l:root])
+  endif
+  call s:run_gallery_command(l:args, fnamemodify(l:file, ':t'))
 endfunction
 
 
 function! yurii_pkm#open_gallery_smart() abort
-  if s:is_markdown_file(expand('%:p')) && s:current_line_has_image_link()
+  if s:is_markdown_file(expand('%:p')) && s:buffer_has_image_link()
     call yurii_pkm#open_gallery()
   else
     call yurii_pkm#open_folder_gallery()

@@ -70,7 +70,7 @@
 | `mx` | `:ToggleCheckbox` | カーソル行のチェックボックス `[ ]` / `[x]` をトグル |
 | Visual `mx` | `:'<,'>ToggleCheckbox` | 選択範囲の各行にあるチェックボックス `[ ]` / `[x]` をトグル |
 | `p` | | 行単位ヤンクでも改行なしでカーソル直下に貼り付け（Vim標準の `p` を上書き） |
-| `\gi` | `:Gallery` / `:YuriiGallery` / `:GalleryFolder` | 画像リンク行では現在Markdown内の画像リンクを開き、それ以外の場所では現在ファイルと同じフォルダ内の全画像を開く |
+| `\gi` | `:Gallery` / `:YuriiGallery` / `:GalleryFolder` | 画像リンクを含むMarkdownでは現在Markdown内の画像リンクを開き、画像リンクが無い場所ではIndexフォルダ以下の全画像を開く |
 
 ### ノート変換・管理
 
@@ -113,7 +113,7 @@ filetype [N] →    → 新しい filetype を1文字入力（a-z、大文字に
 | `:UpdateAll [path]` | `:UpdateMD` と同じ |
 | `:Gallery [path]` | 指定または現在のMarkdownファイルから画像リンクを抽出してブラウザギャラリーを開く |
 | `:YuriiGallery [path]` | `:Gallery` と同じ |
-| `:GalleryFolder [path-or-dir]` | 指定フォルダ、または指定/現在ファイルの親フォルダ内にあるすべての画像ファイルをブラウザギャラリーで開く |
+| `:GalleryFolder [path-or-dir]` | 指定フォルダ、または引数なしではIndexフォルダ以下にあるすべての画像ファイルをサブフォルダ込みでブラウザギャラリーで開く |
 | `:YuriiGalleryFolder [path-or-dir]` | `:GalleryFolder` と同じ |
 
 
@@ -141,8 +141,8 @@ https://www.instagram.com/p/DIOTlVhvVVu/?img_index=2
 <img src="20260602154826.jpg" width="50%">
 ```
 
-VimでこのMarkdownファイルの画像リンク行にカーソルを置いて `\gi`、または `:Gallery` を実行すると、ローカルサーバーが自動起動し、ブラウザにサムネイルグリッドが表示される。
-画像リンクではない行で `\gi` を実行した場合は、現在ファイルと同じフォルダ内にあるすべての画像ファイルを表示する。ブラウザ上部の「フォルダ内のすべての画像」ボタン、または `:GalleryFolder [path-or-dir]` でも同じフォルダ画像ギャラリーを開ける。
+VimでこのMarkdownファイル内のどこかに画像リンクがある状態で `\gi`、または `:Gallery` を実行すると、ローカルサーバーが自動起動し、ブラウザにサムネイルグリッドが表示される。
+現在のMarkdownに画像リンクが無い状態で `\gi` を実行した場合は、最初に開くIndexがあるフォルダ（`g:yurii_pkm_root`。未設定時は現在ファイルから上位に探した `index.md` のフォルダ）以下にあるすべての画像ファイルをサブフォルダ込みで表示する。ブラウザ上部の「Indexフォルダ以下のすべての画像」ボタン、または引数なしの `:GalleryFolder` でも同じIndex配下の画像ギャラリーを開ける。`:GalleryFolder [path-or-dir]` のように明示した場合は、そのフォルダ/ファイルの親フォルダ以下をサブフォルダ込みで表示する。
 サムネイルをクリックすると拡大表示になり、左右矢印キー（`←` / `→`）で前後の画像へ移動できる。`Esc` で一覧へ戻る。
 
 ギャラリー上部では、ファイル名または作成時刻で昇順/降順に並び替えできる。検索欄はファイル名・パス・説明文・URL/リンクラベルを対象に絞り込みする。サムネイル左上のチェックボックスで複数画像を選択し、「選択ファイル名をコピー」を押すと、パスなしのファイル名だけが改行区切りでクリップボードに入る。
@@ -152,6 +152,7 @@ VimでこのMarkdownファイルの画像リンク行にカーソルを置いて
 対応する画像リンク:
 
 - Markdown画像: `![説明](relative/or/absolute/path.jpg)`
+- 通常のMarkdownリンク（画像拡張子の場合）: `[説明](relative/or/absolute/path.jpg)`
 - HTML画像: `<img src="relative/or/absolute/path.jpg">`
 - 対応拡張子: `.jpg`, `.jpeg`, `.png`, `.gif`, `.webp`, `.avif`, `.bmp`, `.svg`
 

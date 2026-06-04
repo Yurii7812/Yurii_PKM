@@ -30,10 +30,11 @@ from typing import Iterable
 
 HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
-GALLERY_PROTOCOL_VERSION = "3"
+GALLERY_PROTOCOL_VERSION = "4"
 IMAGE_EXTENSIONS = {".avif", ".bmp", ".gif", ".jpeg", ".jpg", ".png", ".svg", ".webp"}
 MARKDOWN_IMAGE_RE = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
 HTML_IMAGE_RE = re.compile(r"<img\b[^>]*\bsrc=[\"']([^\"']+)[\"'][^>]*>", re.IGNORECASE)
+MARKDOWN_LOCAL_LINK_RE = re.compile(r"(?<!!)\[([^\]]*)\]\(([^)]+)\)")
 MARKDOWN_LINK_RE = re.compile(r"\[([^\]]+)\]\((https?://[^)]+)\)")
 URL_RE = re.compile(r"https?://[^\s<>)\"]+")
 
@@ -106,14 +107,33 @@ def markdown_url_to_path(note_path: Path, raw_url: str) -> Path | None:
     return path.resolve()
 
 
+def is_potential_local_image_url(raw_url: str) -> bool:
+    value = strip_wrapping(raw_url)
+    if not value or is_remote_url(value):
+        return False
+    parsed = urllib.parse.urlparse(value)
+    if parsed.scheme and parsed.scheme != "file":
+        return False
+    return Path(urllib.parse.unquote(parsed.path or value)).suffix.lower() in IMAGE_EXTENSIONS
+
+
 def iter_line_images(line: str) -> Iterable[tuple[int, str, str]]:
     matches: list[tuple[int, str, str]] = []
+    consumed_spans: list[tuple[int, int]] = []
     for match in MARKDOWN_IMAGE_RE.finditer(line):
         alt, raw_url = match.groups()
         matches.append((match.start(), alt.strip(), raw_url))
+        consumed_spans.append(match.span())
     for match in HTML_IMAGE_RE.finditer(line):
         raw_url = match.group(1)
         matches.append((match.start(), "", raw_url))
+        consumed_spans.append(match.span())
+    for match in MARKDOWN_LOCAL_LINK_RE.finditer(line):
+        if any(start <= match.start() < end for start, end in consumed_spans):
+            continue
+        label, raw_url = match.groups()
+        if is_potential_local_image_url(raw_url):
+            matches.append((match.start(), label.strip(), raw_url))
     for _, alt, raw_url in sorted(matches, key=lambda item: item[0]):
         yield _, alt, raw_url
 
@@ -216,29 +236,42 @@ def read_gallery(note_file: str) -> tuple[Path, list[dict[str, object]], str | N
     return note_path, images, None
 
 
+def iter_folder_image_paths(folder_path: Path) -> Iterable[Path]:
+    for root, dirnames, filenames in os.walk(folder_path):
+        dirnames[:] = sorted(dirnames, key=str.lower)
+        for filename in sorted(filenames, key=str.lower):
+            path = Path(root) / filename
+            if path.suffix.lower() in IMAGE_EXTENSIONS and path.is_file():
+                yield path.resolve()
+
+
 def read_folder_gallery(folder: str) -> tuple[Path, list[dict[str, object]], str | None]:
     folder_path = Path(folder).expanduser().resolve()
     if not folder_path.is_dir():
         return folder_path, [], f"Folder not found: {folder_path}"
-    images = [
-        image_item(path)
-        for path in folder_path.iterdir()
-        if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS
-    ]
-    images.sort(key=lambda item: str(item["name"]).lower())
+    images = [image_item(path) for path in iter_folder_image_paths(folder_path)]
+    images.sort(key=lambda item: str(item["path"]).lower())
     return folder_path, images, None
+
+
+def find_index_root(path: Path) -> Path | None:
+    start = path if path.is_dir() else path.parent
+    for directory in [start, *start.parents]:
+        if (directory / "index.md").is_file():
+            return directory.resolve()
+    return None
 
 
 def image_url(port: int, image_path: str) -> str:
     return f"/image?file={urllib.parse.quote(image_path)}"
 
 
-def folder_gallery_url(path: Path) -> str:
-    folder = path if path.is_dir() else path.parent
+def folder_gallery_url(path: Path, root_path: Path | None = None) -> str:
+    folder = root_path if root_path is not None else (path if path.is_dir() else path.parent)
     return f"/folder?dir={urllib.parse.quote(str(folder))}&v={GALLERY_PROTOCOL_VERSION}"
 
 
-def render_gallery_page(source_path: Path, images: list[dict[str, object]], error: str | None, *, mode: str) -> bytes:
+def render_gallery_page(source_path: Path, images: list[dict[str, object]], error: str | None, *, mode: str, root_path: Path | None = None) -> bytes:
     title = source_path.stem if mode == "note" else source_path.name
     title = title or "Gallery"
     payload = [
@@ -262,9 +295,9 @@ def render_gallery_page(source_path: Path, images: list[dict[str, object]], erro
     elif mode == "folder":
         empty_html = '<p class="empty">このフォルダには画像ファイルが見つかりませんでした。</p>'
     else:
-        empty_html = '<p class="empty">このMarkdownファイルには画像リンクが見つかりませんでした。上の「フォルダ内のすべての画像」を押すと同じフォルダ内の画像を表示できます。</p>'
-    mode_label = "フォルダ" if mode == "folder" else "Markdown"
-    folder_url = folder_gallery_url(source_path)
+        empty_html = '<p class="empty">このMarkdownファイルには画像リンクが見つかりませんでした。上の「Indexフォルダ以下のすべての画像」を押すとIndexフォルダ配下の画像を表示できます。</p>'
+    mode_label = "フォルダ（サブフォルダ含む）" if mode == "folder" else "Markdown"
+    folder_url = folder_gallery_url(source_path, root_path)
     body = f"""<!doctype html>
 <html lang="ja">
 <head>
@@ -324,7 +357,7 @@ h1 {{ margin:0 0 6px; font-size:22px; }}
     <select id="sort-dir" title="昇順/降順"><option value="asc">昇順</option><option value="desc">降順</option></select>
     <button id="copy-selected" class="action" type="button">選択ファイル名をコピー</button>
     <button id="clear-selected" class="action" type="button">選択解除</button>
-    <a class="folder-link" href="{html.escape(folder_url)}">フォルダ内のすべての画像</a>
+    <a class="folder-link" href="{html.escape(folder_url)}">Indexフォルダ以下のすべての画像</a>
     <span id="selection-count" class="count">0 selected</span>
   </div>
 </header>
@@ -480,9 +513,12 @@ render();
     return body.encode("utf-8")
 
 
-def render_gallery(note_file: str, port: int) -> bytes:
+def render_gallery(note_file: str, port: int, root: str | None = None) -> bytes:
     note_path, images, error = read_gallery(note_file)
-    return render_gallery_page(note_path, images, error, mode="note")
+    root_path = Path(root).expanduser().resolve() if root else find_index_root(note_path)
+    if root_path is not None and not root_path.is_dir():
+        root_path = None
+    return render_gallery_page(note_path, images, error, mode="note", root_path=root_path)
 
 
 def render_folder_gallery(folder: str, port: int) -> bytes:
@@ -512,7 +548,12 @@ class GalleryHandler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/gallery":
             note_file = query.get("file", [""])[0]
-            self.send_bytes(200, render_gallery(note_file, self.server.server_port), "text/html; charset=utf-8")
+            root = query.get("root", [""])[0] or None
+            self.send_bytes(200, render_gallery(note_file, self.server.server_port, root), "text/html; charset=utf-8")
+            return
+        if parsed.path == "/folder":
+            folder = query.get("dir", [""])[0]
+            self.send_bytes(200, render_folder_gallery(folder, self.server.server_port), "text/html; charset=utf-8")
             return
         if parsed.path == "/folder":
             folder = query.get("dir", [""])[0]
@@ -568,12 +609,27 @@ def ensure_server(port: int) -> int | None:
     return selected_port
 
 
-def open_gallery(note_file: str, port: int) -> int:
+def open_gallery(note_file: str, port: int, root: str | None = None) -> int:
     selected_port = ensure_server(port)
     if selected_port is None:
         return 1
     note_path = Path(note_file).expanduser().resolve()
     url = f"http://{HOST}:{selected_port}/gallery?file={urllib.parse.quote(str(note_path))}&v={GALLERY_PROTOCOL_VERSION}"
+    if root:
+        root_path = Path(root).expanduser().resolve()
+        if root_path.is_dir():
+            url += f"&root={urllib.parse.quote(str(root_path))}"
+    webbrowser.open(url)
+    print(url)
+    return 0
+
+
+def open_folder_gallery(folder: str, port: int) -> int:
+    selected_port = ensure_server(port)
+    if selected_port is None:
+        return 1
+    folder_path = Path(folder).expanduser().resolve()
+    url = f"http://{HOST}:{selected_port}/folder?dir={urllib.parse.quote(str(folder_path))}&v={GALLERY_PROTOCOL_VERSION}"
     webbrowser.open(url)
     print(url)
     return 0
@@ -595,14 +651,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--port", type=int, default=int(os.environ.get("YURII_PKM_GALLERY_PORT", DEFAULT_PORT)))
     parser.add_argument("--serve", action="store_true", help="run the localhost gallery server")
     parser.add_argument("--open", metavar="NOTE.md", help="start server if needed and open NOTE.md gallery")
-    parser.add_argument("--open-folder", metavar="DIR", help="start server if needed and open all images in DIR")
+    parser.add_argument("--root", metavar="DIR", help="PKM root used by the gallery button")
+    parser.add_argument("--open-folder", metavar="DIR", help="start server if needed and open all images in DIR recursively")
     args = parser.parse_args(argv)
     port = normalize_port(args.port)
     if args.serve:
         serve(port)
         return 0
     if args.open:
-        return open_gallery(args.open, port)
+        return open_gallery(args.open, port, args.root)
     if args.open_folder:
         return open_folder_gallery(args.open_folder, port)
     parser.error("use --open NOTE.md, --open-folder DIR, or --serve")
