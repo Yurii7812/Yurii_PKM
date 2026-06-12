@@ -25,6 +25,7 @@ SECTION_NAMES = {"parent", "child", "up", "down", "branch", "back", "backlink"}
 def bare_section_name(text: str) -> str:
     stripped = text.strip()
     stripped = re.sub(r'^#+\s*', '', stripped)
+    stripped = re.sub(r':\s*$', '', stripped)
     return stripped.lower()
 
 
@@ -42,12 +43,12 @@ def section_aliases(name: str) -> set[str]:
 def canonical_section_title(name: str) -> str:
     target = name.lower()
     if target in {"parent", "up"}:
-        return "# Parent"
+        return "Parent:"
     if target in {"child", "down", "branch"}:
-        return "# Child"
+        return "Child:"
     if target in {"back", "backlink"}:
-        return "# BackLink"
-    return f"# {name.capitalize()}"
+        return "BackLink:"
+    return f"{name.capitalize()}:"
 
 
 def is_section_header(text: str, name: str) -> bool:
@@ -298,7 +299,7 @@ def ensure_sections(lines: list[str]) -> list[str]:
             lines = lines + [canonical_section_title("down")]
 
     if find_section(lines, "backlink")[0] < 0:
-        lines = lines + ["", "# BackLink"]
+        lines = lines + ["", canonical_section_title("backlink")]
 
     return lines
 
@@ -529,7 +530,7 @@ def create_f_and_link(current_file: Path, root: Path) -> Path:
         "",
         canonical_section_title("up"),
         canonical_section_title("down"),
-        "# BackLink",
+        canonical_section_title("backlink"),
         "[index](index.md)",
     ]
     root.mkdir(parents=True, exist_ok=True)
@@ -607,7 +608,7 @@ def update_titles_in_file(path: Path) -> bool:
             in_fence = not in_fence
 
         if not in_fence:
-            if is_section_header(stripped, "branch"):
+            if is_section_header(stripped, "down") or is_section_header(stripped, "branch"):
                 in_branch, in_back, after_sep = True, False, False
                 result.append(line)
                 continue
@@ -714,7 +715,7 @@ def up_targets(
 
 
 def links_just_before_up(lines: list[str]) -> set[str]:
-    """Return link targets only from the line directly adjacent to # Parent."""
+    """Return link targets only from the line directly adjacent to Parent:."""
     up_start, _ = find_section(lines, "up")
     if up_start <= 0:
         return set()

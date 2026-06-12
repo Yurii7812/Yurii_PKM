@@ -369,7 +369,7 @@ function! s:index_template() abort
         \ '',
         \ '# Index',
         \ '',
-        \ '# Child',
+        \ s:canonical_section_title('down'),
         \ ]
 endfunction
 
@@ -749,6 +749,7 @@ endfunction
 function! s:bare_section_name(text) abort
   let l:s = trim(a:text)
   let l:s = substitute(l:s, '^#\+\s*', '', '')
+  let l:s = substitute(l:s, ':\s*$', '', '')
   return tolower(l:s)
 endfunction
 
@@ -769,20 +770,25 @@ endfunction
 function! s:canonical_section_title(name) abort
   let l:target = tolower(a:name)
   if l:target ==# 'parent' || l:target ==# 'up'
-    return '# Parent'
+    return 'Parent:'
   endif
   if l:target ==# 'child' || l:target ==# 'down' || l:target ==# 'branch'
-    return '# Child'
+    return 'Child:'
   endif
   if l:target ==# 'back' || l:target ==# 'backlink'
-    return '# BackLink'
+    return 'BackLink:'
   endif
-  return '# ' . toupper(strpart(a:name, 0, 1)) . strpart(a:name, 1)
+  return toupper(strpart(a:name, 0, 1)) . strpart(a:name, 1) . ':'
 endfunction
 
 function! s:is_section_header_text(text, name) abort
   let l:sec = s:bare_section_name(a:text)
   return index(s:section_aliases(a:name), l:sec) >= 0
+endfunction
+
+function! s:is_known_section_header_text(text) abort
+  let l:sec = s:bare_section_name(a:text)
+  return index(['parent', 'up', 'child', 'down', 'branch', 'back', 'backlink'], l:sec) >= 0
 endfunction
 
 function! s:find_section_index_in_lines(lines, name) abort
@@ -816,7 +822,7 @@ function! s:find_section_line(name) abort
   return l:found
 endfunction
 
-" Ensure the buffer has a # Child section, placed after # Parent and before # BackLink.
+" Ensure the buffer has a Child: section, placed after Parent: and before BackLink:.
 function! s:ensure_down_section() abort
   if s:find_section_line('down') > 0
     return
@@ -837,7 +843,7 @@ function! s:ensure_down_section() abort
   call append(line('$'), s:canonical_section_title('down'))
 endfunction
 
-" Return insertion end line for outgoing links in # Child.
+" Return insertion end line for outgoing links in Child:.
 function! s:down_end_line() abort
   let l:down = s:find_section_line('down')
   if l:down > 0
@@ -854,7 +860,7 @@ function! s:down_end_line() abort
   return 0
 endfunction
 
-" Return line number where appending inserts at top of # Child.
+" Return line number where appending inserts at top of Child:.
 function! s:down_top_insert_line() abort
   let l:down = s:find_section_line('down')
   if l:down > 0
@@ -864,7 +870,7 @@ function! s:down_top_insert_line() abort
   return 0
 endfunction
 
-" Return insertion end line for # Parent section (just before next section header / EOF).
+" Return insertion end line for Parent: section (just before next section header / EOF).
 function! s:before_up_line() abort
   let l:up = s:find_section_line('up')
   if l:up > 0
@@ -879,7 +885,7 @@ function! s:up_end_line() abort
     return 0
   endif
   for l:i in range(l:up + 1, line('$'))
-    if getline(l:i) =~# '^\s*#\+\s\+'
+    if s:is_known_section_header_text(getline(l:i))
       return l:i - 1
     endif
   endfor
@@ -894,7 +900,7 @@ function! s:replace_section(name, new_lines) abort
 
   let l:end = l:sec
   for l:i in range(l:sec + 1, line('$'))
-    if getline(l:i) =~# '^\s*#\+\s\+'
+    if s:is_known_section_header_text(getline(l:i))
       let l:end = l:i - 1
       break
     endif
@@ -918,7 +924,7 @@ function! s:section_end_line(name) abort
   endif
   let l:end = l:sec
   for l:i in range(l:sec + 1, line('$'))
-    if getline(l:i) =~# '^\s*#\+\s\+'
+    if s:is_known_section_header_text(getline(l:i))
       return l:i - 1
     endif
     let l:end = l:i
@@ -947,7 +953,7 @@ function! s:section_end_index_in_lines(lines, start_idx) abort
     return l:end
   endif
   for l:i in range(a:start_idx + 1, len(a:lines) - 1)
-    if get(a:lines, l:i, '') =~# '^\s*#\+\s\+'
+    if s:is_known_section_header_text(get(a:lines, l:i, ''))
       let l:end = l:i
       break
     endif
@@ -1353,7 +1359,7 @@ endfunction
 function! yurii_pkm#jump_up() abort
   let l:up = s:find_section_line('up')
   if l:up <= 0
-    echo '# Parent section not found'
+    echo 'Parent: section not found'
     return
   endif
 
@@ -1376,7 +1382,7 @@ endfunction
 function! yurii_pkm#jump_down_top() abort
   let l:down = s:find_section_line('down')
   if l:down <= 0
-    echo '# Child section not found'
+    echo 'Child: section not found'
     return
   endif
 
@@ -1394,7 +1400,7 @@ function! yurii_pkm#jump_down_bottom() abort
 
   let l:down = s:find_section_line('down')
   if l:down <= 0
-    echo '# Child section not found'
+    echo 'Child: section not found'
     return
   endif
 
@@ -1950,9 +1956,9 @@ function! s:k_note_template(title) abort
         \ '',
         \ '# ' . a:title,
         \ '',
-        \ '# Parent',
-        \ '# Child',
-        \ '# BackLink',
+        \ s:canonical_section_title('up'),
+        \ s:canonical_section_title('down'),
+        \ s:canonical_section_title('backlink'),
         \ '[Index](index.md)' ]
 endfunction
 
@@ -2016,9 +2022,9 @@ function! yurii_pkm#note_template(title, ...) abort
         \ '',
         \ '',
         \ '',
-        \ '# Parent',
-        \ '# Child',
-        \ '# BackLink',
+        \ s:canonical_section_title('up'),
+        \ s:canonical_section_title('down'),
+        \ s:canonical_section_title('backlink'),
         \ '[Index](index.md)',
         \ ]
 endfunction
@@ -2489,14 +2495,14 @@ function! yurii_pkm#create_note(prefix, title, open_after, insert_mode) abort
   let l:parent_title = yurii_pkm#current_title()
 
   if a:insert_mode ==# 'branch' && s:find_section_line('down') <= 0
-    echoerr 'yurii_PKM: # Child section not found'
+    echoerr 'yurii_PKM: Child: section not found'
     return {}
   endif
 
   let l:tmpl = yurii_pkm#note_template(a:title, a:prefix)
   if filereadable(l:parent_file)
     let l:parent_link = s:make_link_from_dir(l:parent_file, l:parent_title, l:dir)
-    let l:up_idx = index(l:tmpl, '# Parent')
+    let l:up_idx = s:find_section_index_in_lines(l:tmpl, 'up')
     if l:up_idx >= 0
       call insert(l:tmpl, l:parent_link, l:up_idx + 1)
     else
@@ -2630,7 +2636,7 @@ function! s:new_note_no_title(prefix) abort
   let l:link  = s:make_link_from_dir(l:file, l:title, l:parent_dir)
 
   if !l:no_parent_link && !l:reverse_link && !l:insert_at_cursor && s:find_section_line('down') <= 0
-    echoerr 'yurii_PKM: # Child section not found'
+    echoerr 'yurii_PKM: Child: section not found'
     return
   endif
 
@@ -2677,10 +2683,10 @@ function! s:new_note_no_title(prefix) abort
             \ '',
             \ '',
             \ '',
-            \ '# Parent',
-            \ '# Child',
+            \ s:canonical_section_title('up'),
+            \ s:canonical_section_title('down'),
           \ ] + l:parent_link_lines + [
-            \ '# BackLink',
+            \ s:canonical_section_title('backlink'),
             \ '[Index](index.md)' ]
     endif
     if !l:is_k
@@ -2702,10 +2708,10 @@ function! s:new_note_no_title(prefix) abort
           \ '',
           \ '',
           \ '',
-          \ '# Parent',
+          \ s:canonical_section_title('up'),
         \ ] + l:parent_link_lines + [
-          \ '# Child',
-          \ '# BackLink',
+          \ s:canonical_section_title('down'),
+          \ s:canonical_section_title('backlink'),
           \ '[Index](index.md)' ]
     let l:cursor_line = 8
   endif
@@ -2790,10 +2796,10 @@ function! s:visual_new_note(prefix, mode, ...) abort
             \ '',
             \ '',
             \ '',
-            \ '# Parent',
+            \ s:canonical_section_title('up'),
           \ ] + l:parent_link_lines + [
-            \ '# Child',
-            \ '# BackLink',
+            \ s:canonical_section_title('down'),
+            \ s:canonical_section_title('backlink'),
             \ '[Index](index.md)' ]
     endif
     if !l:is_k
@@ -2820,10 +2826,10 @@ function! s:visual_new_note(prefix, mode, ...) abort
       call add(l:content, '')
       call add(l:content, '')
       call add(l:content, '')
-      call add(l:content, '# Parent')
+      call add(l:content, s:canonical_section_title('up'))
       call extend(l:content, l:parent_link_lines)
-      call add(l:content, '# Child')
-      call add(l:content, '# BackLink')
+      call add(l:content, s:canonical_section_title('down'))
+      call add(l:content, s:canonical_section_title('backlink'))
       call add(l:content, '[Index](index.md)')
     endif
   endif
@@ -2860,7 +2866,7 @@ function! s:visual_new_note(prefix, mode, ...) abort
       if index(l:plines, l:link_to_new) < 0
         if l:back_idx2 < 0
           call add(l:plines, '')
-          call add(l:plines, '# BackLink')
+          call add(l:plines, s:canonical_section_title('backlink'))
           call add(l:plines, '[Index](index.md)')
           let l:back_idx2 = len(l:plines) - 2
         endif
@@ -3048,7 +3054,7 @@ function! yurii_pkm#new_quick(args) abort
   let l:link = yurii_pkm#make_link(l:fname, l:title)
 
   if !l:no_parent_link && !l:reverse_link && !l:insert_at_cursor && s:find_section_line('down') <= 0
-    echoerr 'yurii_PKM: # Child section not found'
+    echoerr 'yurii_PKM: Child: section not found'
     return
   endif
 
@@ -3089,10 +3095,10 @@ function! yurii_pkm#new_quick(args) abort
             \ '',
             \ '',
             \ '',
-            \ '# Parent',
+            \ s:canonical_section_title('up'),
           \ ] + l:parent_link_lines + [
-            \ '# Child',
-            \ '# BackLink',
+            \ s:canonical_section_title('down'),
+            \ s:canonical_section_title('backlink'),
             \ '[Index](index.md)' ]
     endif
     if !l:is_k
@@ -3112,10 +3118,10 @@ function! yurii_pkm#new_quick(args) abort
           \ '',
           \ '',
           \ '',
-          \ '# Parent',
+          \ s:canonical_section_title('up'),
         \ ] + l:parent_link_lines + [
-          \ '# Child',
-          \ '# BackLink',
+          \ s:canonical_section_title('down'),
+          \ s:canonical_section_title('backlink'),
           \ '[Index](index.md)' ]
     let l:cursor_line = 8
   endif
@@ -3142,7 +3148,7 @@ function! yurii_pkm#new_quick(args) abort
       if index(l:plines, l:new_link) < 0
         if l:back_idx < 0
           call add(l:plines, '')
-          call add(l:plines, '# BackLink')
+          call add(l:plines, s:canonical_section_title('backlink'))
           call add(l:plines, '[Index](index.md)')
           let l:back_idx = len(l:plines) - 2
         endif
@@ -3545,10 +3551,10 @@ function! yurii_pkm#linkify_selection_new_note() abort range
           \ '',
           \ '',
           \ '',
-          \ '# Parent',
+          \ s:canonical_section_title('up'),
           \ ] + l:parent_link_lines + [
-          \ '# Child',
-          \ '# BackLink',
+          \ s:canonical_section_title('down'),
+          \ s:canonical_section_title('backlink'),
           \ '[Index](index.md)'
           \ ]
     call writefile(l:new_content, l:new_file)

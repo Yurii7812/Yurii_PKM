@@ -169,9 +169,9 @@ vnoremap <nowait> <silent> nf  <Esc><Cmd>call yurii_pkm#visual_new_quick_no_titl
 vnoremap <nowait> <silent> mm  <Esc><Cmd>call yurii_pkm#visual_new_prefix_note('N')<CR>
 vnoremap <nowait> <silent> nk  <Esc><Cmd>call yurii_pkm#visual_new_prefix_note('K')<CR>
 nnoremap <nowait> <silent> na  <Cmd>call yurii_pkm#new_here_typed('A')<CR>
-" cu: クリップボードのリンクを # Parent セクションへ追加
+" cu: クリップボードのリンクを Parent: セクションへ追加
 nnoremap <nowait> <silent> cu  <Cmd>call yurii_pkm#add_clipboard_to_branch()<CR>
-" ca: クリップボードのリンクを # Child に追加し、リンク先の # Parent に現在ノートを追加
+" ca: クリップボードのリンクを Child: に追加し、リンク先の Parent: に現在ノートを追加
 nnoremap <nowait> <silent> ca  <Cmd>call yurii_pkm#add_clipboard_before_up()<CR>
 nnoremap <nowait> <silent> tt  <Cmd>call yurii_pkm#add_clipboard_to_top()<CR>
 " nt: タイトル変更（空欄から開始）
@@ -182,7 +182,7 @@ nnoremap <nowait> <silent> nT  <Cmd>call yurii_pkm#rename_title('')<CR>
 nnoremap <nowait> <silent> nl  <Cmd>call yurii_pkm#rename_link_text_with_default('')<CR>
 " nL: 現在のリンク表示名を残して編集
 nnoremap <nowait> <silent> nL  <Cmd>call yurii_pkm#rename_link_text('')<CR>
-" nd: # Child のリンク表示名をリンク先 YAML title に更新
+" nd: Child: のリンク表示名をリンク先 YAML title に更新
 nnoremap <nowait> <silent> nd  <Cmd>RenameChildLinkTitles<CR>
 vnoremap <nowait> <silent> nd  :<C-u>'<,'>RenameChildLinkTitles<CR>
 " at: クリップボードのファイルのChildに現在ファイルへのリンクを追加

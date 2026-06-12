@@ -29,6 +29,7 @@ H1_RE = re.compile(r'^#{1,6}\s+(.+)$')
 def bare_section_name(text: str) -> str:
     stripped = text.strip()
     stripped = re.sub(r'^#+\s*', '', stripped)
+    stripped = re.sub(r':\s*$', '', stripped)
     return stripped.lower()
 
 
@@ -209,7 +210,7 @@ def split_note(path: Path) -> tuple[str, list[str]]:
             in_fence = not in_fence
             body.append(line)
             continue
-        if not in_fence and is_any_section_header(stripped, ('parent', 'backlink', 'back')):
+        if not in_fence and is_any_section_header(stripped, ('parent', 'child', 'backlink', 'back')):
             break
         if not in_fence and is_section_header(stripped, 'branch'):
             continue
