@@ -369,7 +369,7 @@ function! s:index_template() abort
         \ '',
         \ '# Index',
         \ '',
-        \ '# Down',
+        \ '# Child',
         \ ]
 endfunction
 
@@ -752,13 +752,37 @@ function! s:bare_section_name(text) abort
   return tolower(l:s)
 endfunction
 
+function! s:section_aliases(name) abort
+  let l:target = tolower(a:name)
+  if l:target ==# 'parent' || l:target ==# 'up'
+    return ['parent', 'up']
+  endif
+  if l:target ==# 'child' || l:target ==# 'down' || l:target ==# 'branch'
+    return ['child', 'down', 'branch']
+  endif
+  if l:target ==# 'back' || l:target ==# 'backlink'
+    return ['back', 'backlink']
+  endif
+  return [l:target]
+endfunction
+
+function! s:canonical_section_title(name) abort
+  let l:target = tolower(a:name)
+  if l:target ==# 'parent' || l:target ==# 'up'
+    return '# Parent'
+  endif
+  if l:target ==# 'child' || l:target ==# 'down' || l:target ==# 'branch'
+    return '# Child'
+  endif
+  if l:target ==# 'back' || l:target ==# 'backlink'
+    return '# BackLink'
+  endif
+  return '# ' . toupper(strpart(a:name, 0, 1)) . strpart(a:name, 1)
+endfunction
+
 function! s:is_section_header_text(text, name) abort
   let l:sec = s:bare_section_name(a:text)
-  let l:target = tolower(a:name)
-  if l:target ==# 'back' || l:target ==# 'backlink'
-    return l:sec ==# 'back' || l:sec ==# 'backlink'
-  endif
-  return l:sec ==# l:target
+  return index(s:section_aliases(a:name), l:sec) >= 0
 endfunction
 
 function! s:find_section_index_in_lines(lines, name) abort
@@ -792,7 +816,7 @@ function! s:find_section_line(name) abort
   return l:found
 endfunction
 
-" Ensure the buffer has a # Down section, placed after # Up and before # BackLink.
+" Ensure the buffer has a # Child section, placed after # Parent and before # BackLink.
 function! s:ensure_down_section() abort
   if s:find_section_line('down') > 0
     return
@@ -800,20 +824,20 @@ function! s:ensure_down_section() abort
 
   let l:back = s:find_section_line('back')
   if l:back > 0
-    call append(l:back - 1, '# Down')
+    call append(l:back - 1, s:canonical_section_title('down'))
     return
   endif
 
   let l:up_end = s:up_end_line()
   if l:up_end > 0
-    call append(l:up_end, '# Down')
+    call append(l:up_end, s:canonical_section_title('down'))
     return
   endif
 
-  call append(line('$'), '# Down')
+  call append(line('$'), s:canonical_section_title('down'))
 endfunction
 
-" Return insertion end line for outgoing links in # Down.
+" Return insertion end line for outgoing links in # Child.
 function! s:down_end_line() abort
   let l:down = s:find_section_line('down')
   if l:down > 0
@@ -830,7 +854,7 @@ function! s:down_end_line() abort
   return 0
 endfunction
 
-" Return line number where appending inserts at top of # Down.
+" Return line number where appending inserts at top of # Child.
 function! s:down_top_insert_line() abort
   let l:down = s:find_section_line('down')
   if l:down > 0
@@ -840,7 +864,7 @@ function! s:down_top_insert_line() abort
   return 0
 endfunction
 
-" Return insertion end line for # Up section (just before next section header / EOF).
+" Return insertion end line for # Parent section (just before next section header / EOF).
 function! s:before_up_line() abort
   let l:up = s:find_section_line('up')
   if l:up > 0
@@ -954,7 +978,7 @@ endfunction
 
 
 " ---------------------------------------------------------------------------
-" Realtime reciprocal Up/Down link sync (lightweight)
+" Realtime reciprocal Parent/Child link sync (lightweight)
 " ---------------------------------------------------------------------------
 
 let s:realtime_sync_busy = 0
@@ -1329,7 +1353,7 @@ endfunction
 function! yurii_pkm#jump_up() abort
   let l:up = s:find_section_line('up')
   if l:up <= 0
-    echo '# Up section not found'
+    echo '# Parent section not found'
     return
   endif
 
@@ -1352,7 +1376,7 @@ endfunction
 function! yurii_pkm#jump_down_top() abort
   let l:down = s:find_section_line('down')
   if l:down <= 0
-    echo '# Down section not found'
+    echo '# Child section not found'
     return
   endif
 
@@ -1370,7 +1394,7 @@ function! yurii_pkm#jump_down_bottom() abort
 
   let l:down = s:find_section_line('down')
   if l:down <= 0
-    echo '# Down section not found'
+    echo '# Child section not found'
     return
   endif
 
@@ -1381,7 +1405,7 @@ endfunction
 function! yurii_pkm#jump_last_link_before_up() abort
   let l:up = s:find_section_line('up')
   if l:up <= 0
-    echo 'Up section not found'
+    echo 'Parent section not found'
     return
   endif
 
@@ -1417,7 +1441,7 @@ function! yurii_pkm#jump_last_link_before_up() abort
   endif
 
   if l:last_lnum <= 0
-    echo 'No links before Up or in Up'
+    echo 'No links before Parent or in Parent'
     return
   endif
 
@@ -1794,7 +1818,7 @@ function! yurii_pkm#rename_down_links_to_yaml_title(line1, line2, range) range a
   else
     let l:down = s:find_section_line('down')
     if l:down <= 0
-      echo 'Error: down section not found'
+      echo 'Error: child section not found'
       return
     endif
     let l:start = l:down + 1
@@ -1926,8 +1950,8 @@ function! s:k_note_template(title) abort
         \ '',
         \ '# ' . a:title,
         \ '',
-        \ '# Up',
-        \ '# Down',
+        \ '# Parent',
+        \ '# Child',
         \ '# BackLink',
         \ '[Index](index.md)' ]
 endfunction
@@ -1992,8 +2016,8 @@ function! yurii_pkm#note_template(title, ...) abort
         \ '',
         \ '',
         \ '',
-        \ '# Up',
-        \ '# Down',
+        \ '# Parent',
+        \ '# Child',
         \ '# BackLink',
         \ '[Index](index.md)',
         \ ]
@@ -2465,14 +2489,14 @@ function! yurii_pkm#create_note(prefix, title, open_after, insert_mode) abort
   let l:parent_title = yurii_pkm#current_title()
 
   if a:insert_mode ==# 'branch' && s:find_section_line('down') <= 0
-    echoerr 'yurii_PKM: # Down section not found'
+    echoerr 'yurii_PKM: # Child section not found'
     return {}
   endif
 
   let l:tmpl = yurii_pkm#note_template(a:title, a:prefix)
   if filereadable(l:parent_file)
     let l:parent_link = s:make_link_from_dir(l:parent_file, l:parent_title, l:dir)
-    let l:up_idx = index(l:tmpl, '# Up')
+    let l:up_idx = index(l:tmpl, '# Parent')
     if l:up_idx >= 0
       call insert(l:tmpl, l:parent_link, l:up_idx + 1)
     else
@@ -2546,7 +2570,7 @@ function! yurii_pkm#new_here_typed(prefix) abort
 endfunction
 
 " ---------------------------------------------------------------------------
-" タイトル入力なし、o/b/h選択あり (nf / mm / nk 共通内部実装, Enter=DownLast)
+" タイトル入力なし、o/b/h選択あり (nf / mm / nk 共通内部実装, Enter=ChildLast)
 
 " ---------------------------------------------------------------------------
 
@@ -2568,7 +2592,7 @@ function! s:new_note_no_title(prefix) abort
   let l:parent_dir   = expand('%:p:h')
   let l:parent_title = yurii_pkm#current_title()
 
-  echon 'mode: (O)rphan (B)ack (H)=cursor Enter=DownLast: '
+  echon 'mode: (O)rphan (B)ack (H)=cursor Enter=ChildLast: '
 
   let l:char = getchar()
   redraw
@@ -2606,7 +2630,7 @@ function! s:new_note_no_title(prefix) abort
   let l:link  = s:make_link_from_dir(l:file, l:title, l:parent_dir)
 
   if !l:no_parent_link && !l:reverse_link && !l:insert_at_cursor && s:find_section_line('down') <= 0
-    echoerr 'yurii_PKM: # Down section not found'
+    echoerr 'yurii_PKM: # Child section not found'
     return
   endif
 
@@ -2641,8 +2665,8 @@ function! s:new_note_no_title(prefix) abort
       let l:content = s:k_note_template(l:title)
       let l:cursor_line = 7
     else
-      " b モード: 新ノートの Down に現在ノートへのリンクを入れる
-      " # title / (空) / Up / Down / [親リンク] / Back / [index]
+      " b モード: 新ノートの Child に現在ノートへのリンクを入れる
+      " # title / (空) / Parent / Child / [親リンク] / Back / [index]
       let l:content = [
             \ '---',
             \ 'time: ' . yurii_pkm#timestamp_yaml(),
@@ -2653,8 +2677,8 @@ function! s:new_note_no_title(prefix) abort
             \ '',
             \ '',
             \ '',
-            \ '# Up',
-            \ '# Down',
+            \ '# Parent',
+            \ '# Child',
           \ ] + l:parent_link_lines + [
             \ '# BackLink',
             \ '[Index](index.md)' ]
@@ -2678,9 +2702,9 @@ function! s:new_note_no_title(prefix) abort
           \ '',
           \ '',
           \ '',
-          \ '# Up',
+          \ '# Parent',
         \ ] + l:parent_link_lines + [
-          \ '# Down',
+          \ '# Child',
           \ '# BackLink',
           \ '[Index](index.md)' ]
     let l:cursor_line = 8
@@ -2688,7 +2712,7 @@ function! s:new_note_no_title(prefix) abort
 
   call writefile(l:content, l:file)
 
-  " bモード: 新ノートの Down を元に Up/BackLink を同期
+  " bモード: 新ノートの Child を元に Parent/BackLink を同期
   if l:reverse_link
     call s:run_update_one_for(l:file)
   endif
@@ -2766,9 +2790,9 @@ function! s:visual_new_note(prefix, mode, ...) abort
             \ '',
             \ '',
             \ '',
-            \ '# Up',
+            \ '# Parent',
           \ ] + l:parent_link_lines + [
-            \ '# Down',
+            \ '# Child',
             \ '# BackLink',
             \ '[Index](index.md)' ]
     endif
@@ -2796,9 +2820,9 @@ function! s:visual_new_note(prefix, mode, ...) abort
       call add(l:content, '')
       call add(l:content, '')
       call add(l:content, '')
-      call add(l:content, '# Up')
+      call add(l:content, '# Parent')
       call extend(l:content, l:parent_link_lines)
-      call add(l:content, '# Down')
+      call add(l:content, '# Child')
       call add(l:content, '# BackLink')
       call add(l:content, '[Index](index.md)')
     endif
@@ -2893,7 +2917,7 @@ function! s:visual_select_mode(prefix) abort
     return
   endif
 
-  echon 'mode: (O)rphan (B)ack (H)=cursor Enter=DownLast: '
+  echon 'mode: (O)rphan (B)ack (H)=cursor Enter=ChildLast: '
 
   let l:char = getchar()
   redraw
@@ -2905,7 +2929,7 @@ function! s:visual_select_mode(prefix) abort
   call s:visual_new_note(a:prefix, l:mode)
 endfunction
 
-" nf用: prefix入力 → o/b/h選択（Enter=DownLast）
+" nf用: prefix入力 → o/b/h選択（Enter=ChildLast）
 
 function! s:new_k_note_with_title() abort
   let l:title = input('title: ')
@@ -2953,7 +2977,7 @@ function! yurii_pkm#new_quick_no_title() abort
   call s:new_note_no_title(toupper(l:ch))
 endfunction
 
-" mm / nk用: prefix固定 → o/b/h選択（Enter=DownLast）
+" mm / nk用: prefix固定 → o/b/h選択（Enter=ChildLast）
 
 function! yurii_pkm#new_prefix_note(prefix) abort
   call s:new_note_no_title(a:prefix)
@@ -2963,7 +2987,7 @@ endfunction
 " :NQ - Quick new child (旧 QuickNewChildWithMode に忠実)
 "   1. プレフィックス1文字入力（即時確定）
 "   2. タイトル入力
-"   3. モード選択: (O)rphan / (B)ack / (H)=cursor / Enter=DownLast
+"   3. モード選択: (O)rphan / (B)ack / (H)=cursor / Enter=ChildLast
 
 " ---------------------------------------------------------------------------
 
@@ -2989,7 +3013,7 @@ function! yurii_pkm#new_quick(args) abort
 
   let l:title = input('title: ', a:args)
 
-  echon "\nmode: (O)rphan (B)ack (H)=cursor Enter=DownLast: "
+  echon "\nmode: (O)rphan (B)ack (H)=cursor Enter=ChildLast: "
 
   let l:raw2 = getchar()
   redraw
@@ -3024,7 +3048,7 @@ function! yurii_pkm#new_quick(args) abort
   let l:link = yurii_pkm#make_link(l:fname, l:title)
 
   if !l:no_parent_link && !l:reverse_link && !l:insert_at_cursor && s:find_section_line('down') <= 0
-    echoerr 'yurii_PKM: # Down section not found'
+    echoerr 'yurii_PKM: # Child section not found'
     return
   endif
 
@@ -3065,9 +3089,9 @@ function! yurii_pkm#new_quick(args) abort
             \ '',
             \ '',
             \ '',
-            \ '# Up',
+            \ '# Parent',
           \ ] + l:parent_link_lines + [
-            \ '# Down',
+            \ '# Child',
             \ '# BackLink',
             \ '[Index](index.md)' ]
     endif
@@ -3088,9 +3112,9 @@ function! yurii_pkm#new_quick(args) abort
           \ '',
           \ '',
           \ '',
-          \ '# Up',
+          \ '# Parent',
         \ ] + l:parent_link_lines + [
-          \ '# Down',
+          \ '# Child',
           \ '# BackLink',
           \ '[Index](index.md)' ]
     let l:cursor_line = 8
@@ -3210,7 +3234,7 @@ function! yurii_pkm#add_from_clipboard(...) abort
   else
     let l:ins = s:down_end_line()
     if l:ins <= 0
-      echo 'Error: down section not found'
+      echo 'Error: child section not found'
       return
     endif
     for l:lk in l:links
@@ -3299,7 +3323,7 @@ function! yurii_pkm#add_clipboard_to_branch() abort
   endfor
   call s:realtime_sync_apply()
   silent write
-  echo 'Up added ' . l:added . ' link(s)'
+  echo 'Parent added ' . l:added . ' link(s)'
 endfunction
 
 
@@ -3357,7 +3381,7 @@ function! yurii_pkm#add_clipboard_before_up() abort
     endif
   endfor
   silent write
-  echo 'ca: Down added ' . l:down_added . ', reciprocal Up added ' . l:up_added
+  echo 'ca: Child added ' . l:down_added . ', reciprocal Parent added ' . l:up_added
 endfunction
 
 function! yurii_pkm#add_clipboard_to_top() abort
@@ -3521,9 +3545,9 @@ function! yurii_pkm#linkify_selection_new_note() abort range
           \ '',
           \ '',
           \ '',
-          \ '# Up',
+          \ '# Parent',
           \ ] + l:parent_link_lines + [
-          \ '# Down',
+          \ '# Child',
           \ '# BackLink',
           \ '[Index](index.md)'
           \ ]
@@ -3703,12 +3727,12 @@ function! yurii_pkm#at_add() abort
   endfor
 
   silent write
-  echo 'AT: Down added ' . l:down_added . ', Up added ' . l:up_added . ', already ' . l:already . ', missing ' . l:missing
+  echo 'AT: Child added ' . l:down_added . ', Parent added ' . l:up_added . ', already ' . l:already . ', missing ' . l:missing
 endfunction
 
 
 " ---------------------------------------------------------------------------
-" SortYomi (Down セクション yomi ソート) - Python 経由
+" SortYomi (Child セクション yomi ソート) - Python 経由
 " ---------------------------------------------------------------------------
 
 function! yurii_pkm#open_index() abort
@@ -3819,13 +3843,13 @@ function! yurii_pkm#sort_time(...) abort
   else
     let l:down = s:find_section_line('down')
     if l:down <= 0
-      echo 'Down section not found'
+      echo 'Child section not found'
       return
     endif
     let l:back = s:find_section_line('back')
     let l:start = l:down + 1
     let l:end = l:back > l:down ? l:back - 1 : line('$')
-    let l:scope = 'Down links'
+    let l:scope = 'Child links'
   endif
 
   if l:end < l:start

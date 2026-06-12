@@ -18,7 +18,7 @@ TITLE_RE   = re.compile(r'^title:\s*(.*)$', re.IGNORECASE)
 FILETYPE_RE = re.compile(r'^filetype:\s*(.*)$', re.IGNORECASE)
 H1_RE      = re.compile(r'^#\s+(.+)$')
 SEP_RE     = re.compile(r'^_{3,}\s*$')
-SECTION_NAMES = {"up", "down", "branch", "back", "backlink"}
+SECTION_NAMES = {"parent", "child", "up", "down", "branch", "back", "backlink"}
 
 
 
@@ -28,12 +28,30 @@ def bare_section_name(text: str) -> str:
     return stripped.lower()
 
 
-def is_section_header(text: str, name: str) -> bool:
-    section = bare_section_name(text)
+def section_aliases(name: str) -> set[str]:
     target = name.lower()
+    if target in {"parent", "up"}:
+        return {"parent", "up"}
+    if target in {"child", "down", "branch"}:
+        return {"child", "down", "branch"}
     if target in {"back", "backlink"}:
-        return section in {"back", "backlink"}
-    return section == target
+        return {"back", "backlink"}
+    return {target}
+
+
+def canonical_section_title(name: str) -> str:
+    target = name.lower()
+    if target in {"parent", "up"}:
+        return "# Parent"
+    if target in {"child", "down", "branch"}:
+        return "# Child"
+    if target in {"back", "backlink"}:
+        return "# BackLink"
+    return f"# {name.capitalize()}"
+
+
+def is_section_header(text: str, name: str) -> bool:
+    return bare_section_name(text) in section_aliases(name)
 
 
 def is_markdown_file(path: Path) -> bool:
@@ -251,7 +269,7 @@ def section_content(lines: list[str], name: str) -> list[str]:
 def replace_section(lines: list[str], name: str, new_content: list[str]) -> list[str]:
     start, end = find_section(lines, name)
     if start < 0:
-        lines = list(lines) + ["# " + name.capitalize()]
+        lines = list(lines) + [canonical_section_title(name)]
         start = len(lines) - 1
         end = len(lines)
     return lines[: start + 1] + new_content + lines[end:]
@@ -270,14 +288,14 @@ def remove_section(lines: list[str], name: str) -> list[str]:
 def ensure_sections(lines: list[str]) -> list[str]:
     lines = list(lines)
     if find_section(lines, "up")[0] < 0:
-        lines = lines + ["# Up"]
+        lines = lines + [canonical_section_title("up")]
 
     if find_section(lines, "down")[0] < 0:
         back_start, _ = find_section(lines, "backlink")
         if back_start >= 0:
-            lines = lines[:back_start] + ["# Down"] + lines[back_start:]
+            lines = lines[:back_start] + [canonical_section_title("down")] + lines[back_start:]
         else:
-            lines = lines + ["# Down"]
+            lines = lines + [canonical_section_title("down")]
 
     if find_section(lines, "backlink")[0] < 0:
         lines = lines + ["", "# BackLink"]
@@ -297,7 +315,7 @@ def parse_links(lines: list[str]) -> list[tuple[str, str]]:
 
 
 def outbound_links_from_down(lines: list[str]) -> list[tuple[str, str]]:
-    """Collect markdown links from Down section (or legacy Branch)."""
+    """Collect markdown links from Child section (or legacy Branch)."""
     result: list[tuple[str, str]] = []
     down_start, down_end = find_section(lines, "down")
     if down_start < 0:
@@ -325,7 +343,7 @@ def outbound_links_from_down(lines: list[str]) -> list[tuple[str, str]]:
 
 
 def outbound_links_for_backlink(lines: list[str]) -> list[tuple[str, str]]:
-    """Collect markdown links from body text (exclude Up/Down/BackLink sections)."""
+    """Collect markdown links from body text (exclude Parent/Child/BackLink sections)."""
     result: list[tuple[str, str]] = []
     in_yaml = False
     in_fence = False
@@ -509,8 +527,8 @@ def create_f_and_link(current_file: Path, root: Path) -> Path:
         "",
         "",
         "",
-        "# Up",
-        "# Down",
+        canonical_section_title("up"),
+        canonical_section_title("down"),
         "# BackLink",
         "[index](index.md)",
     ]
@@ -652,7 +670,7 @@ def update_titles_in_file(path: Path) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# update_up_sections (full scan: Down -> Up propagation)
+# update_up_sections (full scan: Child -> Parent propagation)
 # ---------------------------------------------------------------------------
 
 
@@ -696,7 +714,7 @@ def up_targets(
 
 
 def links_just_before_up(lines: list[str]) -> set[str]:
-    """Return link targets only from the line directly adjacent to # Up."""
+    """Return link targets only from the line directly adjacent to # Parent."""
     up_start, _ = find_section(lines, "up")
     if up_start <= 0:
         return set()
@@ -712,7 +730,7 @@ def build_multi_up(
     prune_targets: set[Path] | None = None,
     exact: bool = False,
 ) -> list[str]:
-    """Build Up from Down-derived parents, pruning stale links when requested."""
+    """Build Parent from Child-derived parents, pruning stale links when requested."""
 
     resolved_parents = {p.resolve() for p in parent_paths}
     if exact:
@@ -735,12 +753,12 @@ def remove_down_links_to_target(
     root: Path,
     notes_by_name: dict[str, list[Path]],
 ) -> tuple[list[str], bool]:
-    """Remove links to *target_path* from the note's Down section.
+    """Remove links to *target_path* from the note's Child section.
 
-    Up and Down are reciprocal structural links.  When a user deletes a parent
-    from the current note's Up section, the old parent still has a Down link
-    pointing back to the current note.  If that stale Down link is left in
-    place, the next sync regenerates the deleted Up link, making the link feel
+    Parent and Child are reciprocal structural links.  When a user deletes a parent
+    from the current note's Parent section, the old parent still has a Child link
+    pointing back to the current note.  If that stale Child link is left in
+    place, the next sync regenerates the deleted Parent link, making the link feel
     impossible to remove.
     """
 
@@ -797,7 +815,7 @@ def remove_down_links_to_target(
 
 
 def remove_reciprocal_down_links_for_missing_up(file_path: Path, root: Path) -> int:
-    """Prune stale reciprocal Down links after Up links are manually removed."""
+    """Prune stale reciprocal Child links after Parent links are manually removed."""
 
     file_path = file_path.resolve()
     root = root.resolve()
@@ -856,10 +874,10 @@ def add_link_to_section_lines(lines: list[str], name: str, link: str) -> tuple[l
 
 
 def sync_reciprocal_links_for_file(file_path: Path, root: Path) -> int:
-    """Lightweight one-hop Up/Down sync for one edited note.
+    """Lightweight one-hop Parent/Child sync for one edited note.
 
     This intentionally avoids a full root rebuild: it reads the current note's
-    Up and Down sections, then touches only those linked counterpart notes.  It
+    Parent and Child sections, then touches only those linked counterpart notes.  It
     is used by save-time autosync; deletion is handled immediately in Vim by the
     realtime diff watcher before save.
     """
@@ -907,7 +925,7 @@ def update_up_sections(
     prune_up_target: Path | None = None,
     exact_up: bool = False,
 ) -> int:
-    """Scan all notes; rebuild Up from Down and BackLink from body links."""
+    """Scan all notes; rebuild Parent from Child and BackLink from body links."""
 
     root = root.resolve()
     prune_up_targets = {prune_up_target.resolve()} if prune_up_target else set()
@@ -1026,7 +1044,7 @@ def update_one(file_path: Path, root: Path) -> str:
 # ---------------------------------------------------------------------------
 
 def rename_prefix(old_path: Path, new_prefix: str, root: Path) -> str:
-    """Rename old_path's prefix to new_prefix, update all Down/Back links in root.
+    """Rename old_path's prefix to new_prefix, update all Child/Back links in root.
 
     Returns a human-readable summary string.
     """
@@ -1063,7 +1081,7 @@ def rename_prefix(old_path: Path, new_prefix: str, root: Path) -> str:
     self_lines = _rewrite_link_target(self_lines, old_name, new_name)
     write_lines(new_path, self_lines)
 
-    # 3. PKMルート配下の全.mdファイルのDown/Backリンクを更新
+    # 3. PKMルート配下の全.mdファイルのChild/Backリンクを更新
     changed: list[str] = []
     for p in iter_notes(root):
         if p.resolve() == new_path.resolve():
@@ -1172,7 +1190,7 @@ def main(argv: list[str]) -> int:
         root = Path(argv[2])
         if not root.exists():
             root.mkdir(parents=True, exist_ok=True)
-        # UpdateAll is intentionally non-structural. Up/Down/BackLink sections
+        # UpdateAll is intentionally non-structural. Parent/Child/BackLink sections
         # are created by note-creation commands and maintained by realtime sync;
         # bulk update should not rebuild, add, or delete those sections.
         title_changed = 0
