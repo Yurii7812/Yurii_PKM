@@ -2597,6 +2597,22 @@ function! s:new_note_no_title(prefix) abort
   let l:parent_path  = expand('%:p')
   let l:parent_dir   = expand('%:p:h')
   let l:parent_title = yurii_pkm#current_title()
+  let l:filetype = toupper(a:prefix)
+  let l:is_k = (l:filetype ==# 'K')
+  let l:timestamp = yurii_pkm#timestamp_filename()
+  let l:title = l:timestamp
+
+  if l:is_k
+    try
+      let l:title = input('title: ')
+    catch /^Vim:Interrupt$/
+      echo 'Cancelled'
+      return
+    endtry
+    if empty(l:title)
+      let l:title = l:timestamp
+    endif
+  endif
 
   echon 'mode: (O)rphan (B)ack (H)=cursor Enter=ChildLast: '
 
@@ -2625,11 +2641,9 @@ function! s:new_note_no_title(prefix) abort
     let l:insert_at_down_end = 1
   endif
 
-  let l:title = yurii_pkm#timestamp_filename()
-  let l:filetype = toupper(a:prefix)
   let l:no_prefix_name = (l:filetype ==# 'N')
-  let l:fname = (l:filetype ==# 'K')
-        \ ? (yurii_pkm#timestamp_filename() . '.md')
+  let l:fname = l:is_k
+        \ ? (l:timestamp . '.md')
         \ : (l:no_prefix_name ? (l:title . '.md') : (a:prefix . '_' . l:title . '.md'))
   let l:dir   = s:cwd_note_dir()
   let l:file  = s:join_path(l:dir, l:fname)
@@ -2664,7 +2678,6 @@ function! s:new_note_no_title(prefix) abort
   endif
 
   let l:parent_link_lines = s:parent_link_lines(l:parent_path, l:parent_title, l:dir)
-  let l:is_k = (a:prefix ==? 'K')
 
   if l:reverse_link
     if l:is_k
@@ -2767,11 +2780,12 @@ function! s:visual_new_note(prefix, mode, ...) abort
   let l:parent_title = yurii_pkm#current_title()
   let l:dir          = s:cwd_note_dir()
 
-  let l:title = (a:0 >= 1 && !empty(a:1)) ? a:1 : yurii_pkm#timestamp_filename()
+  let l:timestamp = yurii_pkm#timestamp_filename()
+  let l:title = (a:0 >= 1 && !empty(a:1)) ? a:1 : l:timestamp
   let l:filetype = toupper(a:prefix)
   let l:no_prefix_name = (l:filetype ==# 'N')
   let l:fname = (l:filetype ==# 'K')
-        \ ? (yurii_pkm#timestamp_filename() . '.md')
+        \ ? (l:timestamp . '.md')
         \ : (l:no_prefix_name ? (l:title . '.md') : (a:prefix . '_' . l:title . '.md'))
   let l:file  = s:join_path(l:dir, l:fname)
   let l:parent_link_lines = s:parent_link_lines(l:parent_path, l:parent_title, l:dir)
@@ -2913,14 +2927,14 @@ function! yurii_pkm#visual_new_prefix_note(prefix) abort
 endfunction
 
 function! s:visual_select_mode(prefix) abort
+  let l:title = ''
   if a:prefix ==? 'K'
-    let l:title = input('title: ')
-    if empty(l:title)
+    try
+      let l:title = input('title: ')
+    catch /^Vim:Interrupt$/
       echo 'Cancelled'
       return
-    endif
-    call s:visual_new_note(a:prefix, '', l:title)
-    return
+    endtry
   endif
 
   echon 'mode: (O)rphan (B)ack (H)=cursor Enter=ChildLast: '
@@ -2932,7 +2946,11 @@ function! s:visual_select_mode(prefix) abort
     return
   endif
   let l:mode = nr2char(l:char)
-  call s:visual_new_note(a:prefix, l:mode)
+  if a:prefix ==? 'K'
+    call s:visual_new_note(a:prefix, l:mode, l:title)
+  else
+    call s:visual_new_note(a:prefix, l:mode)
+  endif
 endfunction
 
 " nf用: prefix入力 → o/b/h選択（Enter=ChildLast）
