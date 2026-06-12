@@ -76,6 +76,7 @@ command! -nargs=* CU         call yurii_pkm#add_clipboard_before_up()
 command! -nargs=* TT         call yurii_pkm#add_clipboard_to_top()
 command! -nargs=? NT         call yurii_pkm#rename_title(<q-args>)
 command! -nargs=? RenameLinkText call yurii_pkm#rename_link_text(<q-args>)
+command! -range=0 RenameChildLinkTitles call yurii_pkm#rename_down_links_to_yaml_title(<line1>, <line2>, <range>)
 command! -range=0 RenameDownLinkTitles call yurii_pkm#rename_down_links_to_yaml_title(<line1>, <line2>, <range>)
 command! -nargs=? LT         call yurii_pkm#rename_link_text(<q-args>)
 command! -nargs=* BC         call yurii_pkm#add_from_clipboard(<f-args>)
@@ -91,6 +92,10 @@ command! -range=0 -bang SortTime call yurii_pkm#sort_time(<bang>0, <line1>, <lin
 command!          YuriiIndex call yurii_pkm#open_index()
 command!          YuriiChooseIndexDir call yurii_pkm#choose_index_root()
 command! -nargs=? ExpandLinks call yurii_pkm#expand_s_under_cursor(<q-args>)
+command!          JumpLastLinkBeforeParent call yurii_pkm#jump_last_link_before_up()
+command!          JumpParent call yurii_pkm#jump_up()
+command!          JumpChildTop call yurii_pkm#jump_down_top()
+command!          JumpChildBottom call yurii_pkm#jump_down_bottom()
 command!          JumpLastLinkBeforeUp call yurii_pkm#jump_last_link_before_up()
 command!          JumpUp     call yurii_pkm#jump_up()
 command!          JumpDownTop call yurii_pkm#jump_down_top()
@@ -164,9 +169,9 @@ vnoremap <nowait> <silent> nf  <Esc><Cmd>call yurii_pkm#visual_new_quick_no_titl
 vnoremap <nowait> <silent> mm  <Esc><Cmd>call yurii_pkm#visual_new_prefix_note('N')<CR>
 vnoremap <nowait> <silent> nk  <Esc><Cmd>call yurii_pkm#visual_new_prefix_note('K')<CR>
 nnoremap <nowait> <silent> na  <Cmd>call yurii_pkm#new_here_typed('A')<CR>
-" cu: クリップボードのリンクを # Up セクションへ追加
+" cu: クリップボードのリンクを Parent: セクションへ追加
 nnoremap <nowait> <silent> cu  <Cmd>call yurii_pkm#add_clipboard_to_branch()<CR>
-" ca: クリップボードのリンクを # Down に追加し、リンク先の # Up に現在ノートを追加
+" ca: クリップボードのリンクを Child: に追加し、リンク先の Parent: に現在ノートを追加
 nnoremap <nowait> <silent> ca  <Cmd>call yurii_pkm#add_clipboard_before_up()<CR>
 nnoremap <nowait> <silent> tt  <Cmd>call yurii_pkm#add_clipboard_to_top()<CR>
 " nt: タイトル変更（空欄から開始）
@@ -177,12 +182,12 @@ nnoremap <nowait> <silent> nT  <Cmd>call yurii_pkm#rename_title('')<CR>
 nnoremap <nowait> <silent> nl  <Cmd>call yurii_pkm#rename_link_text_with_default('')<CR>
 " nL: 現在のリンク表示名を残して編集
 nnoremap <nowait> <silent> nL  <Cmd>call yurii_pkm#rename_link_text('')<CR>
-" nd: # Down のリンク表示名をリンク先 YAML title に更新
-nnoremap <nowait> <silent> nd  <Cmd>RenameDownLinkTitles<CR>
-vnoremap <nowait> <silent> nd  :<C-u>'<,'>RenameDownLinkTitles<CR>
-" at: クリップボードのファイルのDownに現在ファイルへのリンクを追加
+" nd: Child: のリンク表示名をリンク先 YAML title に更新
+nnoremap <nowait> <silent> nd  <Cmd>RenameChildLinkTitles<CR>
+vnoremap <nowait> <silent> nd  :<C-u>'<,'>RenameChildLinkTitles<CR>
+" at: クリップボードのファイルのChildに現在ファイルへのリンクを追加
 nnoremap <nowait> <silent> at  <Cmd>call yurii_pkm#at_add()<CR>
-" bc: クリップボードのファイル名をDownに追加
+" bc: クリップボードのファイル名をChildに追加
 nnoremap <nowait> <silent> bc  <Cmd>call yurii_pkm#add_from_clipboard()<CR>
 " yn: 現在のファイル名をヤンク
 nnoremap <nowait> <silent> yn  <Cmd>call yurii_pkm#yank_name()<CR>

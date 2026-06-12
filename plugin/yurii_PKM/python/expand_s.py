@@ -29,16 +29,28 @@ H1_RE = re.compile(r'^#{1,6}\s+(.+)$')
 def bare_section_name(text: str) -> str:
     stripped = text.strip()
     stripped = re.sub(r'^#+\s*', '', stripped)
+    stripped = re.sub(r':\s*$', '', stripped)
     return stripped.lower()
 
 
+def section_aliases(name: str) -> set[str]:
+    target = name.lower()
+    if target in {"parent", "up"}:
+        return {"parent", "up"}
+    if target in {"child", "down", "branch"}:
+        return {"child", "down", "branch"}
+    if target in {"back", "backlink"}:
+        return {"back", "backlink"}
+    return {target}
+
+
 def is_section_header(text: str, name: str) -> bool:
-    return bare_section_name(text) == name.lower()
+    return bare_section_name(text) in section_aliases(name)
 
 
 def is_any_section_header(text: str, names: tuple[str, ...]) -> bool:
     section = bare_section_name(text)
-    return section in {name.lower() for name in names}
+    return any(section in section_aliases(name) for name in names)
 
 
 def is_markdown_file(path: Path) -> bool:
@@ -147,7 +159,7 @@ def split_note(path: Path) -> tuple[str, list[str]]:
     2. 先頭付近の H1
     3. 本文最初の非空行をタイトル扱い
 
-    Up / BackLink / Back セクション以降は本文に含めない。
+    Parent / BackLink / Back セクション以降は本文に含めない。
     Branch 見出し単独行は無視する。
     """
     lines = read_lines(path)
@@ -198,7 +210,7 @@ def split_note(path: Path) -> tuple[str, list[str]]:
             in_fence = not in_fence
             body.append(line)
             continue
-        if not in_fence and is_any_section_header(stripped, ('up', 'backlink', 'back')):
+        if not in_fence and is_any_section_header(stripped, ('parent', 'child', 'backlink', 'back')):
             break
         if not in_fence and is_section_header(stripped, 'branch'):
             continue
