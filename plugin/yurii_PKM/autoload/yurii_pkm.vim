@@ -369,7 +369,6 @@ function! s:index_template() abort
         \ '',
         \ '# Index',
         \ '',
-        \ s:canonical_section_title('down'),
         \ ]
 endfunction
 

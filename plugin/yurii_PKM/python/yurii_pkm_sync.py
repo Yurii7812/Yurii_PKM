@@ -377,6 +377,18 @@ def outbound_links_for_backlink(lines: list[str]) -> list[tuple[str, str]]:
     return result
 
 
+def outbound_links_from_index(lines: list[str]) -> list[tuple[str, str]]:
+    """Collect structural links from index.md without requiring a Child section."""
+    result: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for links in (outbound_links_for_backlink(lines), outbound_links_from_down(lines)):
+        for text, target in links:
+            if target in seen:
+                continue
+            seen.add(target)
+            result.append((text, target))
+    return result
+
 def sort_back_links(
     link_lines: list[str],
     from_dir: Path,
@@ -897,7 +909,12 @@ def sync_reciprocal_links_for_file(file_path: Path, root: Path) -> int:
     current_title = note_title(lines, file_path)
     changed = 0
 
-    for _, target in outbound_links_from_down(lines):
+    structural_links = (
+        outbound_links_from_index(lines)
+        if file_path.name == "index.md"
+        else outbound_links_from_down(lines)
+    )
+    for _, target in structural_links:
         target_path = resolve_existing_note_link(target, file_path.parent, root, notes_by_name)
         if target_path is None or target_path.resolve() == file_path:
             continue
@@ -911,6 +928,8 @@ def sync_reciprocal_links_for_file(file_path: Path, root: Path) -> int:
     for _, target in parse_links(section_content(lines, "up")):
         target_path = resolve_existing_note_link(target, file_path.parent, root, notes_by_name)
         if target_path is None or target_path.resolve() == file_path:
+            continue
+        if target_path.name == "index.md":
             continue
         target_lines = read_lines(target_path)
         reciprocal = make_link_line(file_path, current_title, target_path.parent)
@@ -954,7 +973,12 @@ def update_up_sections(
 
         down_kids: list[Path] = []
         down_seen: set[Path] = set()
-        for _, target in outbound_links_from_down(lines):
+        structural_links = (
+            outbound_links_from_index(lines)
+            if p.name == "index.md"
+            else outbound_links_from_down(lines)
+        )
+        for _, target in structural_links:
             resolved = resolve_existing_note_link(target, p.parent, root, notes_by_name)
             if resolved is None or resolved in down_seen:
                 continue
@@ -970,8 +994,6 @@ def update_up_sections(
 
     down_parents_of: dict[Path, list[Path]] = {p: [] for p in all_paths}
     for parent, kids in down_children_of.items():
-        if parent.name == 'index.md':
-            continue
         for child in kids:
             if child in down_parents_of:
                 down_parents_of[child].append(parent)
@@ -980,7 +1002,7 @@ def update_up_sections(
     for p in all_paths:
         lines = lines_map[p]
         if p.name == 'index.md':
-            new_lines = remove_section(remove_section(lines, 'back'), 'backlink')
+            new_lines = remove_section(remove_section(remove_section(lines, 'down'), 'back'), 'backlink')
         elif is_expand_generated_t_note(p, lines):
             new_lines = lines
         else:
