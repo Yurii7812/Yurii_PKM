@@ -869,6 +869,36 @@ function! s:down_top_insert_line() abort
   return 0
 endfunction
 
+function! s:is_current_index_buffer() abort
+  let l:root = s:get_pkm_root()
+  if empty(l:root) || empty(expand('%:p'))
+    return 0
+  endif
+  return fnamemodify(expand('%:p'), ':p') ==# fnamemodify(s:index_path(l:root), ':p')
+endfunction
+
+function! s:structural_link_append_line() abort
+  let l:down = s:down_end_line()
+  if l:down > 0
+    return l:down
+  endif
+  if s:is_current_index_buffer()
+    return line('$')
+  endif
+  return 0
+endfunction
+
+function! s:structural_link_prepend_line() abort
+  let l:down = s:down_top_insert_line()
+  if l:down > 0
+    return l:down
+  endif
+  if s:is_current_index_buffer()
+    return line('$')
+  endif
+  return 0
+endfunction
+
 " Return insertion end line for Parent: section (just before next section header / EOF).
 function! s:before_up_line() abort
   let l:up = s:find_section_line('up')
@@ -2493,7 +2523,7 @@ function! yurii_pkm#create_note(prefix, title, open_after, insert_mode) abort
   let l:parent_file  = expand('%:p')
   let l:parent_title = yurii_pkm#current_title()
 
-  if a:insert_mode ==# 'branch' && s:find_section_line('down') <= 0
+  if a:insert_mode ==# 'branch' && s:structural_link_append_line() <= 0
     echoerr 'yurii_PKM: Child: section not found'
     return {}
   endif
@@ -2515,7 +2545,7 @@ function! yurii_pkm#create_note(prefix, title, open_after, insert_mode) abort
   let l:save_si = &smartindent
   setlocal noautoindent nosmartindent
   if a:insert_mode ==# 'branch'
-    let l:ins = s:down_end_line()
+    let l:ins = s:structural_link_append_line()
     call append(l:ins, l:link)
     silent write
   elseif a:insert_mode ==# 'cursor'
@@ -2648,7 +2678,7 @@ function! s:new_note_no_title(prefix) abort
   let l:file  = s:join_path(l:dir, l:fname)
   let l:link  = s:make_link_from_dir(l:file, l:title, l:parent_dir)
 
-  if !l:no_parent_link && !l:reverse_link && !l:insert_at_cursor && s:find_section_line('down') <= 0
+  if !l:no_parent_link && !l:reverse_link && !l:insert_at_cursor && s:structural_link_append_line() <= 0
     echoerr 'yurii_PKM: Child: section not found'
     return
   endif
@@ -2660,13 +2690,13 @@ function! s:new_note_no_title(prefix) abort
     if l:insert_at_cursor
       call append(l:parent_line, l:link)
     elseif l:insert_at_down_end
-      let l:ins = s:down_end_line()
+      let l:ins = s:structural_link_append_line()
       call append(l:ins, l:link)
     else
       if a:prefix ==? 'N'
-        let l:ins = s:down_top_insert_line()
+        let l:ins = s:structural_link_prepend_line()
       else
-        let l:ins = s:down_end_line()
+        let l:ins = s:structural_link_append_line()
       endif
       call append(l:ins, l:link)
     endif
@@ -2966,7 +2996,11 @@ function! s:new_k_note_with_title() abort
   let l:file  = l:dir . s:sep() . l:fname
   let l:link  = yurii_pkm#make_link(l:fname, l:title)
 
-  let l:ins = s:down_end_line()
+  let l:ins = s:structural_link_append_line()
+  if l:ins <= 0
+    echoerr 'yurii_PKM: Child: section not found'
+    return
+  endif
   let l:save_ai = &autoindent
   let l:save_si = &smartindent
   setlocal noautoindent nosmartindent
@@ -3070,7 +3104,7 @@ function! yurii_pkm#new_quick(args) abort
   let l:file  = l:dir . s:sep() . l:fname
   let l:link = yurii_pkm#make_link(l:fname, l:title)
 
-  if !l:no_parent_link && !l:reverse_link && !l:insert_at_cursor && s:find_section_line('down') <= 0
+  if !l:no_parent_link && !l:reverse_link && !l:insert_at_cursor && s:structural_link_append_line() <= 0
     echoerr 'yurii_PKM: Child: section not found'
     return
   endif
@@ -3082,10 +3116,10 @@ function! yurii_pkm#new_quick(args) abort
     if l:insert_at_cursor
       call append(l:parent_line, l:link)
     elseif l:insert_at_down_end
-      let l:ins = s:down_end_line()
+      let l:ins = s:structural_link_append_line()
       call append(l:ins, l:link)
     else
-      let l:ins = s:down_end_line()
+      let l:ins = s:structural_link_append_line()
       call append(l:ins, l:link)
     endif
     let &autoindent = l:save_ai
@@ -3255,7 +3289,7 @@ function! yurii_pkm#add_from_clipboard(...) abort
       call append(l:ins, l:lk)
     endfor
   else
-    let l:ins = s:down_end_line()
+    let l:ins = s:structural_link_append_line()
     if l:ins <= 0
       echo 'Error: child section not found'
       return
@@ -4763,7 +4797,7 @@ function! s:csv_lines_to_table(lines, indent) abort
 endfunction
 
 function! s:append_current_file_branch_link(link) abort
-  let l:ins = s:down_end_line()
+  let l:ins = s:structural_link_append_line()
   if l:ins <= 0
     return 0
   endif
