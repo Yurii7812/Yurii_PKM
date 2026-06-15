@@ -940,6 +940,94 @@ def sync_reciprocal_links_for_file(file_path: Path, root: Path) -> int:
 
     return changed
 
+
+def backlink_targets(
+    lines: list[str],
+    note_path: Path,
+    root: Path,
+    notes_by_name: dict[str, list[Path]],
+) -> list[Path]:
+    """Return resolved notes already listed in a BackLink section."""
+
+    targets: list[Path] = []
+    seen: set[Path] = set()
+    for _, target in parse_links(section_content(lines, "backlink")):
+        resolved = resolve_existing_note_link(target, note_path.parent, root, notes_by_name)
+        if resolved is None:
+            continue
+        resolved = resolved.resolve()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        targets.append(resolved)
+    return targets
+
+
+def sync_backlinks_for_file(file_path: Path, root: Path) -> int:
+    """Update BackLink sections for notes referenced from one note's body."""
+
+    file_path = file_path.resolve()
+    root = root.resolve()
+    if not file_path.exists() or not is_markdown_file(file_path):
+        return 0
+
+    all_paths = list(iter_notes(root))
+    known_paths = {p.resolve() for p in all_paths}
+    for path in sorted(root.rglob("*.md")):
+        resolved = path.resolve()
+        if path.is_file() and ".undo" not in path.parts and resolved not in known_paths:
+            all_paths.append(resolved)
+            known_paths.add(resolved)
+    if file_path not in known_paths:
+        all_paths.append(file_path)
+
+    notes_by_name: dict[str, list[Path]] = {}
+    for path in all_paths:
+        notes_by_name.setdefault(path.name, []).append(path.resolve())
+
+    source_lines = read_lines(file_path)
+    changed = 0
+    seen_targets: set[Path] = set()
+
+    for _, target in outbound_links_for_backlink(source_lines):
+        target_path = resolve_existing_note_link(target, file_path.parent, root, notes_by_name)
+        if target_path is None:
+            continue
+        target_path = target_path.resolve()
+        if target_path == file_path or target_path in seen_targets:
+            continue
+        seen_targets.add(target_path)
+
+        target_lines = read_lines(target_path)
+        if find_section(target_lines, "backlink")[0] < 0:
+            continue
+
+        target_up_targets = up_targets(target_lines, target_path, root, notes_by_name)
+        if file_path in {p.resolve() for p in target_up_targets}:
+            continue
+
+        existing_backlink_targets = backlink_targets(
+            target_lines,
+            target_path,
+            root,
+            notes_by_name,
+        )
+        if file_path in {p.resolve() for p in existing_backlink_targets}:
+            continue
+
+        new_back = build_back(
+            existing_backlink_targets + [file_path],
+            target_path,
+            section_content(target_lines, "backlink"),
+            category_parents={file_path} if get_filetype(file_path) == "K" else set(),
+        )
+        new_lines = replace_section(target_lines, "backlink", new_back)
+        if new_lines != target_lines:
+            write_lines(target_path, new_lines)
+            changed += 1
+
+    return changed
+
 def update_up_sections(
     root: Path,
     prune_up_target: Path | None = None,
@@ -1056,6 +1144,10 @@ def update_one(file_path: Path, root: Path) -> str:
     reciprocal_changed = sync_reciprocal_links_for_file(file_path, root)
     if reciprocal_changed:
         changed_files.append(f"reciprocal:{reciprocal_changed}")
+
+    backlink_changed = sync_backlinks_for_file(file_path, root)
+    if backlink_changed:
+        changed_files.append(f"backlink:{backlink_changed}")
 
     if changed_files:
         return "yurii_PKM: updated " + ", ".join(changed_files)

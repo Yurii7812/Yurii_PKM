@@ -2548,9 +2548,11 @@ function! yurii_pkm#create_note(prefix, title, open_after, insert_mode) abort
     let l:ins = s:structural_link_append_line()
     call append(l:ins, l:link)
     silent write
+    call s:run_update_one_for_sync(expand('%:p'))
   elseif a:insert_mode ==# 'cursor'
     call append(line('.'), l:link)
     silent write
+    call s:run_update_one_for_sync(expand('%:p'))
   endif
   let &autoindent = l:save_ai
   let &smartindent = l:save_si
@@ -2703,7 +2705,6 @@ function! s:new_note_no_title(prefix) abort
     let &autoindent = l:save_ai
     let &smartindent = l:save_si
     silent noautocmd write
-    call s:run_update_one_for(expand('%:p'))
   endif
 
   let l:parent_link_lines = s:parent_link_lines(l:parent_path, l:parent_title, l:dir)
@@ -2759,6 +2760,11 @@ function! s:new_note_no_title(prefix) abort
   endif
 
   call writefile(l:content, l:file)
+
+  " 通常モード: 新ノート作成前はリンク先が未存在のため、作成後に親の本文リンクを同期する
+  if !l:no_parent_link && !l:reverse_link
+    call s:run_update_one_for_sync(expand('%:p'))
+  endif
 
   " bモード: 新ノートの Child を元に Parent/BackLink を同期
   if l:reverse_link
@@ -3125,7 +3131,6 @@ function! yurii_pkm#new_quick(args) abort
     let &autoindent = l:save_ai
     let &smartindent = l:save_si
     silent noautocmd write
-    call s:run_update_one_for(expand('%:p'))
   endif
 
   let l:parent_link_lines = s:parent_link_lines(l:parent_file, l:parent_title, l:dir)
@@ -3178,6 +3183,11 @@ function! yurii_pkm#new_quick(args) abort
   endif
 
   call writefile(l:content, l:file)
+
+  " 通常モード: 新ノート作成前はリンク先が未存在のため、作成後に親の本文リンクを同期する
+  if !l:no_parent_link && !l:reverse_link
+    call s:run_update_one_for_sync(expand('%:p'))
+  endif
 
   " bモード: 親ファイルの Back セクション直後に新ノートへのリンクを追記してsync
   if l:reverse_link
