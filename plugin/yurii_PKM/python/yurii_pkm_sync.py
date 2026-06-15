@@ -1305,14 +1305,15 @@ def main(argv: list[str]) -> int:
         root = Path(argv[2])
         if not root.exists():
             root.mkdir(parents=True, exist_ok=True)
-        # UpdateAll is intentionally non-structural. Parent/Child/BackLink sections
-        # are created by note-creation commands and maintained by realtime sync;
-        # bulk update should not rebuild, add, or delete those sections.
         title_changed = 0
         for p in iter_notes(root):
             if update_titles_in_file(p):
                 title_changed += 1
-        print(f"yurii_PKM: updated {title_changed} file(s) under {root}")
+        structural_changed = update_up_sections(root)
+        print(
+            f"yurii_PKM: updated {title_changed} title file(s), "
+            f"{structural_changed} structural file(s) under {root}"
+        )
         return 0
 
     if mode == "update_one":
