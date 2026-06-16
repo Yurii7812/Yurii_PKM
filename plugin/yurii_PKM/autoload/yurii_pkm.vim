@@ -1545,6 +1545,19 @@ function! s:path_has_directory(target) abort
   return a:target =~# '[\\/]'
 endfunction
 
+function! s:markdown_relative_target(relpath) abort
+  let l:rel = substitute(a:relpath, '\\', '/', 'g')
+  if empty(l:rel)
+    return l:rel
+  endif
+  " Links to files in child directories should be explicit Markdown relative
+  " links from the current note directory, e.g. ./2026-03-26/260616161959.md.
+  if l:rel !~# '^\.\.\?/' && l:rel =~# '/'
+    return './' . l:rel
+  endif
+  return l:rel
+endfunction
+
 function! s:relpath_from_dir(path, base) abort
   let l:path = fnamemodify(a:path, ':p')
   let l:base = fnamemodify(a:base, ':p')
@@ -1573,7 +1586,7 @@ function! s:relpath_from_dir(path, base) abort
     return fnamemodify(l:path, ':t')
   endif
   let l:rel = join(l:rel_parts, '/')
-  return empty(l:rel) ? fnamemodify(l:path, ':t') : l:rel
+  return empty(l:rel) ? fnamemodify(l:path, ':t') : s:markdown_relative_target(l:rel)
 endfunction
 
 function! s:ancestor_dirs_until_root(base) abort
@@ -2064,7 +2077,7 @@ function! s:make_link_from_dir(path, title, base_dir) abort
   if s:is_absolute_path(l:path)
     let l:file = s:relpath_from_dir(l:path, a:base_dir)
   else
-    let l:file = substitute(l:path, '\\', '/', 'g')
+    let l:file = s:markdown_relative_target(l:path)
   endif
   let l:name = fnamemodify(l:file, ':t')
   let l:text = empty(a:title) ? fnamemodify(l:name, ':r') : a:title
@@ -3699,14 +3712,15 @@ function! yurii_pkm#linkify_selection_from_clipboard() abort range
     return
   endif
 
-  if l:target =~# '\.md$'
+  if s:is_markdown_target(l:target)
     let l:path = yurii_pkm#resolve_link(l:target)
     if !filereadable(l:path)
       return
     endif
   endif
 
-  let l:link = '[' . l:text . '](' . l:target . ')'
+  let l:display_target = s:display_target_from_current_dir(l:target)
+  let l:link = '[' . l:text . '](' . l:display_target . ')'
   call s:replace_visual_selection_with_link(l:link, l:is_linewise, l:sline, l:eline, l:scol, l:ecol, l:lines)
 endfunction
 
