@@ -3712,14 +3712,15 @@ function! yurii_pkm#linkify_selection_from_clipboard() abort range
     return
   endif
 
-  if l:target =~# '\.md$'
+  if s:is_markdown_target(l:target)
     let l:path = yurii_pkm#resolve_link(l:target)
     if !filereadable(l:path)
       return
     endif
   endif
 
-  let l:link = '[' . l:text . '](' . l:target . ')'
+  let l:display_target = s:display_target_from_current_dir(l:target)
+  let l:link = '[' . l:text . '](' . l:display_target . ')'
   call s:replace_visual_selection_with_link(l:link, l:is_linewise, l:sline, l:eline, l:scol, l:ecol, l:lines)
 endfunction
 
