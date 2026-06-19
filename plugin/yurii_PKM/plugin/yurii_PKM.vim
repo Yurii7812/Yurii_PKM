@@ -157,9 +157,9 @@ nnoremap <silent> <BS>     <Cmd>call yurii_pkm#go_back()<CR>
 " 標準のジャンプリスト戻りでも、E37 を出さず保存してから移動する
 nnoremap <silent> <C-O>    <Cmd>call yurii_pkm#save_before_normal_jump("\<C-O>")<CR>
 nnoremap <nowait> <silent> bu  <Cmd>call yurii_pkm#jump_last_link_before_up()<CR>
-nnoremap <nowait> <silent> ml  <Cmd>call yurii_pkm#jump_up()<CR>
-nnoremap <nowait> <silent> m;  <Cmd>call yurii_pkm#jump_down_top()<CR>
-nnoremap <nowait> <silent> m'  <Cmd>call yurii_pkm#jump_down_bottom()<CR>
+nnoremap <nowait> <silent> ,,  <Cmd>call yurii_pkm#jump_up()<CR>
+nnoremap <nowait> <silent> ,.  <Cmd>call yurii_pkm#jump_down_top()<CR>
+nnoremap <nowait> <silent> ,/  <Cmd>call yurii_pkm#jump_down_bottom()<CR>
 
 " ノート操作
 nnoremap <nowait> <silent> nf  <Cmd>call yurii_pkm#new_quick_no_title()<CR>
