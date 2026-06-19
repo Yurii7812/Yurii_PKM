@@ -124,7 +124,7 @@ Normal モードへ戻ったときの英語入力化は、状態取得に失敗�
 - 使い方:
   - 現在ノートの文脈上の「上位」へ戻るための導線として運用
   - `bu`（`JumpLastLinkBeforeParent`）で Parent: 近傍のリンクへ素早く移動
-  - `ml`（`:JumpParent`）で、Parent リンクが1つだけならリンク先へ直接移動し、複数ある場合は `Parent:` 見出しへ移動
+  - `,.`（`:JumpParent`）で、Parent リンクが1つだけならリンク先へ直接移動し、複数ある場合は `Parent:` 見出しへ移動
   - 親文脈を増やしたい場合は、Parent: にリンクを追加できる
   - Child: からの親子関係が複数ある場合、同期後も Parent: に複数リンクとして反映
   - PKM ルート配下のサブフォルダをまたぐ Child/Parent 関係も、相手ノート基準の相対パス付きリンクとして反映
@@ -176,9 +176,8 @@ Normal モードへ戻ったときの英語入力化は、状態取得に失敗�
 - `<Enter>` : カーソル下リンクを開く
 - `<BS>` : 履歴を戻る
 - `bu` : `Parent:` 近傍のリンクへ移動
-- `mj` / `:JumpParent` : Parent リンクが1つだけならリンク先へ直接移動、複数ある場合は一番上の Parent リンクへ移動
-- `mk` / `:JumpChildTop` : `Child:` セクションの先頭行へ移動
-- `ml` / `:JumpChildBottom` : Parent リンクが複数ある場合は一番上の Parent リンクへ移動し、それ以外は `Child:` セクションの最後尾行へ移動
+- `,.` / `:JumpParent` : Parent リンクが1つだけならリンク先へ直接移動、複数ある場合は `Parent:` 見出しへ移動
+- `,/` / `:JumpChildBottom` : Parent リンクが複数ある場合は一番上の Parent リンクへ移動し、それ以外は `Child:` セクションの最後尾行へ移動
 
 ### 3) タイトル変更
 
