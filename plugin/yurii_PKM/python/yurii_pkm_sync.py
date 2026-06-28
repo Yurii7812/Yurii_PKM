@@ -886,6 +886,124 @@ def add_link_to_section_lines(lines: list[str], name: str, link: str) -> tuple[l
     return replace_section(lines, name, content + [link]), True
 
 
+
+def remove_link_targets_from_section_lines(
+    lines: list[str],
+    name: str,
+    targets: set[Path],
+    note_path: Path,
+    root: Path,
+    notes_by_name: dict[str, list[Path]],
+) -> tuple[list[str], bool]:
+    """Remove links whose resolved targets are in *targets* from a section."""
+
+    start, end = find_section(lines, name)
+    if start < 0:
+        return list(lines), False
+
+    targets = {target.resolve() for target in targets}
+    modified = False
+    new_content: list[str] = []
+    in_fence = False
+
+    for line in lines[start + 1: end]:
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+            new_content.append(line)
+            continue
+        if in_fence or SEP_RE.match(stripped):
+            new_content.append(line)
+            continue
+
+        line_modified = False
+
+        def replacement(match: re.Match[str]) -> str:
+            nonlocal line_modified
+            resolved = resolve_existing_note_link(
+                match.group(2),
+                note_path.parent,
+                root,
+                notes_by_name,
+            )
+            if resolved is not None and resolved.resolve() in targets:
+                line_modified = True
+                return ""
+            return match.group(0)
+
+        new_line = LINK_RE.sub(replacement, line)
+        if line_modified:
+            modified = True
+            if new_line.strip():
+                new_content.append(new_line.rstrip())
+        else:
+            new_content.append(line)
+
+    if not modified:
+        return list(lines), False
+    return lines[: start + 1] + new_content + lines[end:], True
+
+
+def reparent_down_children(new_parent_path: Path, old_parent_path: Path, root: Path) -> int:
+    """Make notes linked from new parent's Child section point to the new parent.
+
+    This is used when a selected Child link is cut into a newly-created note:
+    the selected linked notes must stop listing the old note as Parent and start
+    listing the newly-created note instead.
+    """
+
+    new_parent_path = new_parent_path.resolve()
+    old_parent_path = old_parent_path.resolve()
+    root = root.resolve()
+
+    all_paths = list(iter_notes(root))
+    known_paths = {p.resolve() for p in all_paths}
+    for path in sorted(root.rglob("*.md")):
+        resolved = path.resolve()
+        if path.is_file() and ".undo" not in path.parts and resolved not in known_paths:
+            all_paths.append(resolved)
+            known_paths.add(resolved)
+
+    notes_by_name: dict[str, list[Path]] = {}
+    for path in all_paths:
+        notes_by_name.setdefault(path.name, []).append(path.resolve())
+
+    if not new_parent_path.exists():
+        return 0
+
+    new_parent_lines = read_lines(new_parent_path)
+    new_parent_title = note_title(new_parent_lines, new_parent_path)
+    child_paths: list[Path] = []
+    seen: set[Path] = set()
+    for _, target in outbound_links_from_down(new_parent_lines):
+        resolved = resolve_existing_note_link(target, new_parent_path.parent, root, notes_by_name)
+        if resolved is None:
+            continue
+        resolved = resolved.resolve()
+        if resolved == new_parent_path or resolved in seen:
+            continue
+        seen.add(resolved)
+        child_paths.append(resolved)
+
+    changed = 0
+    for child_path in child_paths:
+        child_lines = read_lines(child_path)
+        new_lines, removed = remove_link_targets_from_section_lines(
+            child_lines,
+            "up",
+            {old_parent_path},
+            child_path,
+            root,
+            notes_by_name,
+        )
+        new_link = make_link_line(new_parent_path, new_parent_title, child_path.parent)
+        new_lines, added = add_link_to_section_lines(new_lines, "up", new_link)
+        if removed or added:
+            write_lines(child_path, new_lines)
+            changed += 1
+
+    return changed
+
 def sync_reciprocal_links_for_file(file_path: Path, root: Path) -> int:
     """Lightweight one-hop Parent/Child sync for one edited note.
 
@@ -1323,6 +1441,14 @@ def main(argv: list[str]) -> int:
         file_path = Path(argv[2])
         root = Path(argv[3])
         print(update_one(file_path, root))
+        return 0
+
+    if mode == "reparent_down_children":
+        if len(argv) < 5:
+            print("usage: yurii_pkm_sync.py reparent_down_children NEW_PARENT OLD_PARENT ROOT", file=sys.stderr)
+            return 2
+        changed = reparent_down_children(Path(argv[2]), Path(argv[3]), Path(argv[4]))
+        print(f"yurii_PKM: reparented {changed} child parent link(s)")
         return 0
 
     if mode == "update_titles":

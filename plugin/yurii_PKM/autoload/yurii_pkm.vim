@@ -2305,6 +2305,25 @@ function! s:update_one_command(target_fp) abort
         \ . ' ' . shellescape(l:root)
 endfunction
 
+function! s:reparent_down_children_for_sync(new_parent_fp, old_parent_fp) abort
+  if !g:yurii_pkm_autosync | return | endif
+  if !filereadable(g:yurii_pkm_python) | return | endif
+  let l:root = s:get_pkm_root()
+  if empty(l:root) || !filereadable(s:index_path(l:root))
+    return
+  endif
+  let l:cmd = s:python_cmd() . ' ' . shellescape(g:yurii_pkm_python)
+        \ . ' reparent_down_children ' . shellescape(a:new_parent_fp)
+        \ . ' ' . shellescape(a:old_parent_fp)
+        \ . ' ' . shellescape(l:root)
+  let l:out = system(l:cmd)
+  if v:shell_error
+    echoerr substitute(l:out, '\n\+$', '', '')
+    return
+  endif
+  checktime
+endfunction
+
 function! s:run_update_one_for(target_fp) abort
   let l:cmd = s:update_one_command(a:target_fp)
   if empty(l:cmd) | return | endif
@@ -2948,7 +2967,9 @@ function! s:visual_new_note(prefix, mode, ...) abort
   call cursor(l:cursor_line, 1)
 
   silent noautocmd write
+  call s:reparent_down_children_for_sync(l:file, l:parent_path)
   call s:run_update_one_for(expand('%:p'))
+  call s:run_update_one_for(l:file)
 
   redraw | echon 'Created: ' . l:fname
 endfunction
