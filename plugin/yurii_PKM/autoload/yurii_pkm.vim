@@ -2789,17 +2789,20 @@ function! s:new_note_no_title(prefix) abort
     let l:save_si = &smartindent
     setlocal noautoindent nosmartindent
     if l:insert_at_cursor
-      call append(l:parent_line, l:link)
+      if !s:link_already_present_in_branch(l:link)
+        call append(l:parent_line, l:link)
+      endif
     elseif l:insert_at_down_end
-      let l:ins = s:structural_link_append_line()
-      call append(l:ins, l:link)
+      call s:append_link_to_buffer_section('down', l:link)
     else
       if a:prefix ==? 'N'
         let l:ins = s:structural_link_prepend_line()
+        if !s:link_already_present_in_branch(l:link)
+          call append(l:ins, l:link)
+        endif
       else
-        let l:ins = s:structural_link_append_line()
+        call s:append_link_to_buffer_section('down', l:link)
       endif
-      call append(l:ins, l:link)
     endif
     let &autoindent = l:save_ai
     let &smartindent = l:save_si

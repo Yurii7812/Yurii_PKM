@@ -892,12 +892,37 @@ def remove_reciprocal_down_links_for_missing_up(file_path: Path, root: Path) -> 
 
 
 
+def dedupe_exact_link_lines(lines: list[str]) -> tuple[list[str], bool]:
+    """Remove repeated identical Markdown link lines while preserving order."""
+
+    seen: set[str] = set()
+    result: list[str] = []
+    changed = False
+    for line in lines:
+        stripped = line.strip()
+        if LINK_RE.fullmatch(stripped):
+            if stripped in seen:
+                changed = True
+                continue
+            seen.add(stripped)
+        result.append(line)
+    return result, changed
+
+
 def add_link_to_section_lines(lines: list[str], name: str, link: str) -> tuple[list[str], bool]:
-    """Append *link* to a section if it is not already present."""
+    """Append *link* to a section if it is not already present.
+
+    Existing duplicate link rows in the target section are also collapsed so a
+    save-time sync cannot preserve or compound double-generated Child/Parent
+    links.
+    """
 
     lines = ensure_sections(lines)
     content = section_content(lines, name)
+    content, deduped = dedupe_exact_link_lines(content)
     if link in content:
+        if deduped:
+            return replace_section(lines, name, content), True
         return lines, False
     return replace_section(lines, name, content + [link]), True
 
