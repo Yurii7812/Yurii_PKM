@@ -3448,7 +3448,7 @@ function! yurii_pkm#paste_clipboard_link_here() abort
   for l:lk in reverse(copy(l:links))
     call append(l:ins, l:lk)
   endfor
-  silent write
+  call s:write_current_and_sync_now()
 endfunction
 
 function! yurii_pkm#add_clipboard_to_branch() abort
@@ -3807,6 +3807,7 @@ function! yurii_pkm#linkify_selection_from_clipboard() abort range
   let l:display_target = s:display_target_from_current_dir(l:target)
   let l:link = '[' . l:text . '](' . l:display_target . ')'
   call s:replace_visual_selection_with_link(l:link, l:is_linewise, l:sline, l:eline, l:scol, l:ecol, l:lines)
+  call s:write_current_and_sync_now()
 endfunction
 
 
