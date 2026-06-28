@@ -357,7 +357,8 @@ function! s:is_root_note_path(path) abort
   let l:root = fnamemodify(l:root, ':p')
   return s:is_markdown_file(l:path)
         \ && filereadable(l:path)
-        \ && fnamemodify(l:path, ':h:p') ==# l:root
+        \ && stridx(l:path, l:root) == 0
+        \ && index(split(l:path, s:sep()), '.undo') < 0
 endfunction
 
 function! s:index_template() abort
@@ -1060,16 +1061,72 @@ function! s:section_link_targets_from_lines(lines, name, base_dir) abort
   return l:targets
 endfunction
 
+function! s:body_link_targets_from_lines(lines, base_dir) abort
+  let l:targets = []
+  let l:seen = {}
+  let l:in_yaml = 0
+  let l:in_fence = 0
+  for l:i in range(0, len(a:lines) - 1)
+    let l:line = a:lines[l:i]
+    let l:stripped = trim(l:line)
+    if l:i == 0 && l:stripped ==# '---'
+      let l:in_yaml = 1
+      continue
+    endif
+    if l:in_yaml
+      if l:stripped ==# '---'
+        let l:in_yaml = 0
+      endif
+      continue
+    endif
+    if l:stripped =~# '^```'
+      let l:in_fence = !l:in_fence
+      continue
+    endif
+    if l:in_fence
+      continue
+    endif
+    if l:stripped =~# '^_\{3,}\s*$'
+      break
+    endif
+    if s:is_known_section_header_text(l:stripped)
+      break
+    endif
+
+    let l:start = 0
+    while 1
+      let l:m = matchstrpos(l:line, '\v\[[^\]]+\]\(([^)]*)\)', l:start)
+      if empty(l:m) || l:m[1] < 0
+        break
+      endif
+      let l:target = s:extract_target(l:m[0])
+      if !empty(l:target)
+        let l:fp = yurii_pkm#resolve_link(l:target, a:base_dir)
+        if filereadable(l:fp) && s:is_markdown_file(l:fp)
+          let l:fp = fnamemodify(l:fp, ':p')
+          if !has_key(l:seen, l:fp)
+            let l:seen[l:fp] = 1
+            call add(l:targets, l:fp)
+          endif
+        endif
+      endif
+      let l:start = l:m[2]
+    endwhile
+  endfor
+  return l:targets
+endfunction
+
 function! s:current_reciprocal_snapshot() abort
   let l:file = expand('%:p')
   if empty(l:file)
-    return {'up': [], 'down': []}
+    return {'up': [], 'down': [], 'back': []}
   endif
   let l:lines = getline(1, '$')
   let l:base = fnamemodify(l:file, ':h')
   return {
         \ 'up': s:section_link_targets_from_lines(l:lines, 'up', l:base),
         \ 'down': s:section_link_targets_from_lines(l:lines, 'down', l:base),
+        \ 'back': s:body_link_targets_from_lines(l:lines, l:base),
         \ }
 endfunction
 
@@ -1216,6 +1273,8 @@ function! s:realtime_sync_apply() abort
   let l:new = s:current_reciprocal_snapshot()
   let l:title = yurii_pkm#current_title()
   let l:changed = 0
+  let l:back_changed = !empty(s:list_diff(l:new.back, get(l:old, 'back', [])))
+        \ || !empty(s:list_diff(get(l:old, 'back', []), l:new.back))
 
   let s:realtime_sync_busy = 1
   try
@@ -1231,11 +1290,17 @@ function! s:realtime_sync_apply() abort
     for l:target in s:list_diff(get(l:old, 'up', []), l:new.up)
       let l:changed += s:remove_reciprocal_link(l:target, 'down', l:file)
     endfor
+    if l:back_changed
+      if &modified
+        silent noautocmd update
+      endif
+      call s:run_update_one_for_sync(l:file)
+    endif
   finally
     let s:realtime_sync_busy = 0
   endtry
 
-  let b:yurii_pkm_realtime_snapshot = l:new
+  let b:yurii_pkm_realtime_snapshot = s:current_reciprocal_snapshot()
   if l:changed
     checktime
   endif
@@ -2289,8 +2354,9 @@ function! s:autosync_done(job, status) abort
 endfunction
 
 " 任意のファイルパスに対して update_one を起動するヘルパー
-function! s:update_one_command(target_fp) abort
-  if !g:yurii_pkm_autosync | return '' | endif
+function! s:update_one_command(target_fp, ...) abort
+  let l:force = a:0 > 0 ? a:1 : 0
+  if !l:force && !g:yurii_pkm_autosync | return '' | endif
   if !filereadable(g:yurii_pkm_python) | return '' | endif
   let l:root = s:get_pkm_root()
   if empty(l:root) || !filereadable(s:index_path(l:root))
@@ -2320,8 +2386,9 @@ function! s:run_update_one_for(target_fp) abort
   endif
 endfunction
 
-function! s:run_update_one_for_sync(target_fp) abort
-  let l:cmd = s:update_one_command(a:target_fp)
+function! s:run_update_one_for_sync(target_fp, ...) abort
+  let l:force = a:0 > 0 ? a:1 : 0
+  let l:cmd = s:update_one_command(a:target_fp, l:force)
   if empty(l:cmd) | return | endif
   let l:out = system(l:cmd)
   if v:shell_error
@@ -2339,7 +2406,7 @@ function! s:write_current_and_sync_now() abort
     return
   endif
   silent write
-  call s:run_update_one_for_sync(l:file)
+  call s:run_update_one_for_sync(l:file, 1)
 endfunction
 
 function! yurii_pkm#save_before_normal_jump(keys) abort
@@ -3363,7 +3430,7 @@ function! yurii_pkm#paste_clipboard_link_here() abort
   for l:lk in reverse(copy(l:links))
     call append(l:ins, l:lk)
   endfor
-  silent write
+  call s:write_current_and_sync_now()
 endfunction
 
 function! yurii_pkm#add_clipboard_to_branch() abort
@@ -3722,6 +3789,7 @@ function! yurii_pkm#linkify_selection_from_clipboard() abort range
   let l:display_target = s:display_target_from_current_dir(l:target)
   let l:link = '[' . l:text . '](' . l:display_target . ')'
   call s:replace_visual_selection_with_link(l:link, l:is_linewise, l:sline, l:eline, l:scol, l:ecol, l:lines)
+  call s:write_current_and_sync_now()
 endfunction
 
 
