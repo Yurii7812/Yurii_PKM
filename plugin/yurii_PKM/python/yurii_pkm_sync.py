@@ -726,6 +726,22 @@ def up_targets(
     return targets
 
 
+def down_targets(
+    lines: list[str],
+    note_path: Path,
+    root: Path,
+    notes_by_name: dict[str, list[Path]],
+) -> set[Path]:
+    """Return resolved notes listed in a note's Child section."""
+
+    targets: set[Path] = set()
+    for _, target in outbound_links_from_down(lines):
+        resolved = resolve_existing_note_link(target, note_path.parent, root, notes_by_name)
+        if resolved is not None:
+            targets.add(resolved.resolve())
+    return targets
+
+
 def links_just_before_up(lines: list[str]) -> set[str]:
     """Return link targets only from the line directly adjacent to Parent:."""
     up_start, _ = find_section(lines, "up")
@@ -964,7 +980,15 @@ def backlink_targets(
 
 
 def sync_backlinks_for_file(file_path: Path, root: Path) -> int:
-    """Update BackLink sections for notes referenced from one note's body."""
+    """Update BackLink sections for notes referenced from one note's body.
+
+    This is the save-time counterpart to the full BackLink rebuild in
+    ``update_up_sections``.  It adds the edited note to current body-link
+    targets and removes it from stale BackLink sections when a body link was
+    deleted.  Structural Child/Parent relationships take precedence over
+    BackLink display, so a note already shown as Child/Parent is not duplicated
+    in BackLink.
+    """
 
     file_path = file_path.resolve()
     root = root.resolve()
@@ -988,6 +1012,7 @@ def sync_backlinks_for_file(file_path: Path, root: Path) -> int:
     source_lines = read_lines(file_path)
     changed = 0
     seen_targets: set[Path] = set()
+    desired_targets: set[Path] = set()
 
     for _, target in outbound_links_for_backlink(source_lines):
         target_path = resolve_existing_note_link(target, file_path.parent, root, notes_by_name)
@@ -997,13 +1022,16 @@ def sync_backlinks_for_file(file_path: Path, root: Path) -> int:
         if target_path == file_path or target_path in seen_targets:
             continue
         seen_targets.add(target_path)
+        desired_targets.add(target_path)
 
         target_lines = read_lines(target_path)
         if find_section(target_lines, "backlink")[0] < 0:
             continue
 
         target_up_targets = up_targets(target_lines, target_path, root, notes_by_name)
-        if file_path in {p.resolve() for p in target_up_targets}:
+        target_down_targets = down_targets(target_lines, target_path, root, notes_by_name)
+        structural_targets = {p.resolve() for p in target_up_targets | target_down_targets}
+        if file_path in structural_targets:
             continue
 
         existing_backlink_targets = backlink_targets(
@@ -1020,6 +1048,45 @@ def sync_backlinks_for_file(file_path: Path, root: Path) -> int:
             target_path,
             section_content(target_lines, "backlink"),
             category_parents={file_path} if get_filetype(file_path) == "K" else set(),
+        )
+        new_lines = replace_section(target_lines, "backlink", new_back)
+        if new_lines != target_lines:
+            write_lines(target_path, new_lines)
+            changed += 1
+
+    for target_path in all_paths:
+        target_path = target_path.resolve()
+        if target_path == file_path:
+            continue
+
+        target_lines = read_lines(target_path)
+        if find_section(target_lines, "backlink")[0] < 0:
+            continue
+
+        target_up_targets = up_targets(target_lines, target_path, root, notes_by_name)
+        target_down_targets = down_targets(target_lines, target_path, root, notes_by_name)
+        structural_targets = {p.resolve() for p in target_up_targets | target_down_targets}
+        should_remove = target_path not in desired_targets or file_path in structural_targets
+        if not should_remove:
+            continue
+
+        existing_backlink_targets = backlink_targets(
+            target_lines,
+            target_path,
+            root,
+            notes_by_name,
+        )
+        if file_path not in {p.resolve() for p in existing_backlink_targets}:
+            continue
+
+        new_backlink_targets = [
+            p for p in existing_backlink_targets
+            if p.resolve() != file_path
+        ]
+        new_back = build_back(
+            new_backlink_targets,
+            target_path,
+            section_content(target_lines, "backlink"),
         )
         new_lines = replace_section(target_lines, "backlink", new_back)
         if new_lines != target_lines:
@@ -1109,9 +1176,11 @@ def update_up_sections(
 
             if find_section(new_lines, "backlink")[0] >= 0:
                 up_link_targets = up_targets(new_lines, p, root, notes_by_name)
+                down_link_targets = down_targets(new_lines, p, root, notes_by_name)
+                structural_link_targets = up_link_targets | down_link_targets
                 backlinks_parents = sorted(
                     parent for parent in set(backlinks_parents_of.get(p, []))
-                    if parent not in up_link_targets
+                    if parent not in structural_link_targets
                 )
                 existing_back = section_content(new_lines, "backlink")
                 new_back = build_back(
