@@ -357,7 +357,8 @@ function! s:is_root_note_path(path) abort
   let l:root = fnamemodify(l:root, ':p')
   return s:is_markdown_file(l:path)
         \ && filereadable(l:path)
-        \ && fnamemodify(l:path, ':h:p') ==# l:root
+        \ && stridx(l:path, l:root) == 0
+        \ && index(split(l:path, s:sep()), '.undo') < 0
 endfunction
 
 function! s:index_template() abort
@@ -2353,8 +2354,9 @@ function! s:autosync_done(job, status) abort
 endfunction
 
 " 任意のファイルパスに対して update_one を起動するヘルパー
-function! s:update_one_command(target_fp) abort
-  if !g:yurii_pkm_autosync | return '' | endif
+function! s:update_one_command(target_fp, ...) abort
+  let l:force = a:0 > 0 ? a:1 : 0
+  if !l:force && !g:yurii_pkm_autosync | return '' | endif
   if !filereadable(g:yurii_pkm_python) | return '' | endif
   let l:root = s:get_pkm_root()
   if empty(l:root) || !filereadable(s:index_path(l:root))
@@ -2403,8 +2405,9 @@ function! s:run_update_one_for(target_fp) abort
   endif
 endfunction
 
-function! s:run_update_one_for_sync(target_fp) abort
-  let l:cmd = s:update_one_command(a:target_fp)
+function! s:run_update_one_for_sync(target_fp, ...) abort
+  let l:force = a:0 > 0 ? a:1 : 0
+  let l:cmd = s:update_one_command(a:target_fp, l:force)
   if empty(l:cmd) | return | endif
   let l:out = system(l:cmd)
   if v:shell_error
@@ -2422,7 +2425,7 @@ function! s:write_current_and_sync_now() abort
     return
   endif
   silent write
-  call s:run_update_one_for_sync(l:file)
+  call s:run_update_one_for_sync(l:file, 1)
 endfunction
 
 function! yurii_pkm#save_before_normal_jump(keys) abort
