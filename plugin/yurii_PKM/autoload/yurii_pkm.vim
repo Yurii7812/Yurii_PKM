@@ -1060,16 +1060,72 @@ function! s:section_link_targets_from_lines(lines, name, base_dir) abort
   return l:targets
 endfunction
 
+function! s:body_link_targets_from_lines(lines, base_dir) abort
+  let l:targets = []
+  let l:seen = {}
+  let l:in_yaml = 0
+  let l:in_fence = 0
+  for l:i in range(0, len(a:lines) - 1)
+    let l:line = a:lines[l:i]
+    let l:stripped = trim(l:line)
+    if l:i == 0 && l:stripped ==# '---'
+      let l:in_yaml = 1
+      continue
+    endif
+    if l:in_yaml
+      if l:stripped ==# '---'
+        let l:in_yaml = 0
+      endif
+      continue
+    endif
+    if l:stripped =~# '^```'
+      let l:in_fence = !l:in_fence
+      continue
+    endif
+    if l:in_fence
+      continue
+    endif
+    if l:stripped =~# '^_\{3,}\s*$'
+      break
+    endif
+    if s:is_known_section_header_text(l:stripped)
+      break
+    endif
+
+    let l:start = 0
+    while 1
+      let l:m = matchstrpos(l:line, '\v\[[^\]]+\]\(([^)]*)\)', l:start)
+      if empty(l:m) || l:m[1] < 0
+        break
+      endif
+      let l:target = s:extract_target(l:m[0])
+      if !empty(l:target)
+        let l:fp = yurii_pkm#resolve_link(l:target, a:base_dir)
+        if filereadable(l:fp) && s:is_markdown_file(l:fp)
+          let l:fp = fnamemodify(l:fp, ':p')
+          if !has_key(l:seen, l:fp)
+            let l:seen[l:fp] = 1
+            call add(l:targets, l:fp)
+          endif
+        endif
+      endif
+      let l:start = l:m[2]
+    endwhile
+  endfor
+  return l:targets
+endfunction
+
 function! s:current_reciprocal_snapshot() abort
   let l:file = expand('%:p')
   if empty(l:file)
-    return {'up': [], 'down': []}
+    return {'up': [], 'down': [], 'back': []}
   endif
   let l:lines = getline(1, '$')
   let l:base = fnamemodify(l:file, ':h')
   return {
         \ 'up': s:section_link_targets_from_lines(l:lines, 'up', l:base),
         \ 'down': s:section_link_targets_from_lines(l:lines, 'down', l:base),
+        \ 'back': s:body_link_targets_from_lines(l:lines, l:base),
         \ }
 endfunction
 
@@ -1216,6 +1272,8 @@ function! s:realtime_sync_apply() abort
   let l:new = s:current_reciprocal_snapshot()
   let l:title = yurii_pkm#current_title()
   let l:changed = 0
+  let l:back_changed = !empty(s:list_diff(l:new.back, get(l:old, 'back', [])))
+        \ || !empty(s:list_diff(get(l:old, 'back', []), l:new.back))
 
   let s:realtime_sync_busy = 1
   try
@@ -1231,11 +1289,17 @@ function! s:realtime_sync_apply() abort
     for l:target in s:list_diff(get(l:old, 'up', []), l:new.up)
       let l:changed += s:remove_reciprocal_link(l:target, 'down', l:file)
     endfor
+    if l:back_changed
+      if &modified
+        silent noautocmd update
+      endif
+      call s:run_update_one_for_sync(l:file)
+    endif
   finally
     let s:realtime_sync_busy = 0
   endtry
 
-  let b:yurii_pkm_realtime_snapshot = l:new
+  let b:yurii_pkm_realtime_snapshot = s:current_reciprocal_snapshot()
   if l:changed
     checktime
   endif
