@@ -909,7 +909,70 @@ def dedupe_exact_link_lines(lines: list[str]) -> tuple[list[str], bool]:
     return result, changed
 
 
-def add_link_to_section_lines(lines: list[str], name: str, link: str) -> tuple[list[str], bool]:
+def dedupe_section_link_targets(
+    lines: list[str],
+    name: str,
+    note_path: Path,
+    root: Path,
+    notes_by_name: dict[str, list[Path]],
+) -> tuple[list[str], bool]:
+    """Collapse duplicate full-line links in one section by resolved target."""
+
+    content = section_content(lines, name)
+    if not content:
+        return lines, False
+
+    seen_targets: set[Path] = set()
+    result: list[str] = []
+    changed = False
+    for line in content:
+        stripped = line.strip()
+        m = LINK_RE.fullmatch(stripped)
+        if not m:
+            result.append(line)
+            continue
+        resolved = resolve_existing_note_link(m.group(2), note_path.parent, root, notes_by_name)
+        if resolved is None:
+            result.append(line)
+            continue
+        resolved = resolved.resolve()
+        if resolved in seen_targets:
+            changed = True
+            continue
+        seen_targets.add(resolved)
+        result.append(line)
+
+    if not changed:
+        return lines, False
+    return replace_section(lines, name, result), True
+
+
+def section_has_resolved_link(
+    content: list[str],
+    target_path: Path | None,
+    from_dir: Path | None,
+    root: Path | None,
+    notes_by_name: dict[str, list[Path]] | None,
+) -> bool:
+    if target_path is None or from_dir is None or root is None or notes_by_name is None:
+        return False
+    wanted = target_path.resolve()
+    for _, target in parse_links(content):
+        resolved = resolve_existing_note_link(target, from_dir, root, notes_by_name)
+        if resolved is not None and resolved.resolve() == wanted:
+            return True
+    return False
+
+
+def add_link_to_section_lines(
+    lines: list[str],
+    name: str,
+    link: str,
+    target_path: Path | None = None,
+    from_dir: Path | None = None,
+    root: Path | None = None,
+    notes_by_name: dict[str, list[Path]] | None = None,
+) -> tuple[list[str], bool]:
     """Append *link* to a section if it is not already present.
 
     Existing duplicate link rows in the target section are also collapsed so a
@@ -920,7 +983,7 @@ def add_link_to_section_lines(lines: list[str], name: str, link: str) -> tuple[l
     lines = ensure_sections(lines)
     content = section_content(lines, name)
     content, deduped = dedupe_exact_link_lines(content)
-    if link in content:
+    if link in content or section_has_resolved_link(content, target_path, from_dir, root, notes_by_name):
         if deduped:
             return replace_section(lines, name, content), True
         return lines, False
@@ -1038,7 +1101,9 @@ def reparent_down_children(new_parent_path: Path, old_parent_path: Path, root: P
             notes_by_name,
         )
         new_link = make_link_line(new_parent_path, new_parent_title, child_path.parent)
-        new_lines, added = add_link_to_section_lines(new_lines, "up", new_link)
+        new_lines, added = add_link_to_section_lines(
+            new_lines, "up", new_link, new_parent_path, child_path.parent, root, notes_by_name
+        )
         if removed or added:
             write_lines(child_path, new_lines)
             changed += 1
@@ -1079,7 +1144,9 @@ def sync_reciprocal_links_for_file(file_path: Path, root: Path) -> int:
             continue
         target_lines = read_lines(target_path)
         reciprocal = make_link_line(file_path, current_title, target_path.parent)
-        new_lines, modified = add_link_to_section_lines(target_lines, "up", reciprocal)
+        new_lines, modified = add_link_to_section_lines(
+            target_lines, "up", reciprocal, file_path, target_path.parent, root, notes_by_name
+        )
         if modified:
             write_lines(target_path, new_lines)
             changed += 1
@@ -1092,7 +1159,9 @@ def sync_reciprocal_links_for_file(file_path: Path, root: Path) -> int:
             continue
         target_lines = read_lines(target_path)
         reciprocal = make_link_line(file_path, current_title, target_path.parent)
-        new_lines, modified = add_link_to_section_lines(target_lines, "down", reciprocal)
+        new_lines, modified = add_link_to_section_lines(
+            target_lines, "down", reciprocal, file_path, target_path.parent, root, notes_by_name
+        )
         if modified:
             write_lines(target_path, new_lines)
             changed += 1
@@ -1465,9 +1534,14 @@ def _rewrite_link_target(lines: list[str], old_name: str, new_name: str) -> list
 def retitle_links(target_file: Path, root: Path, old_title: str, new_title: str) -> int:
     """Rename link text old_title -> new_title only for links targeting target_file."""
     target_resolved = target_file.resolve()
+    root = root.resolve()
+    all_paths = list(iter_notes(root))
+    notes_by_name: dict[str, list[Path]] = {}
+    for path in all_paths:
+        notes_by_name.setdefault(path.name, []).append(path.resolve())
     changed_files = 0
 
-    for p in iter_notes(root):
+    for p in all_paths:
         lines = read_lines(p)
         modified = False
         out: list[str] = []
@@ -1482,12 +1556,16 @@ def retitle_links(target_file: Path, root: Path, old_title: str, new_title: str)
             if text != old_title:
                 out.append(line)
                 continue
-            resolved = (p.parent / rel_target).resolve()
-            if resolved != target_resolved:
+            resolved = resolve_existing_note_link(rel_target, p.parent, root, notes_by_name)
+            if resolved is None or resolved.resolve() != target_resolved:
                 out.append(line)
                 continue
             modified = True
             out.append(f"{m.group(1)}[{new_title}]({rel_target}){m.group(4)}")
+
+        for section in ("up", "down", "back"):
+            out, deduped = dedupe_section_link_targets(out, section, p, root, notes_by_name)
+            modified = modified or deduped
 
         if modified:
             write_lines(p, out)

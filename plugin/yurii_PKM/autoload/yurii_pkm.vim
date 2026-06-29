@@ -969,11 +969,52 @@ function! s:append_link_to_buffer_section(name, link) abort
   endif
 
   let l:end = s:section_end_line(a:name)
-  if l:end > l:sec && index(getline(l:sec + 1, l:end), a:link) >= 0
-    return 0
+  if l:end > l:sec
+    let l:new_target = s:extract_target(a:link)
+    let l:new_fp = empty(l:new_target) ? '' : fnamemodify(yurii_pkm#resolve_link(l:new_target, expand('%:p:h')), ':p')
+    for l:line in getline(l:sec + 1, l:end)
+      if l:line ==# a:link
+        return 0
+      endif
+      let l:old_target = s:extract_target(l:line)
+      if !empty(l:new_fp) && !empty(l:old_target)
+        let l:old_fp = fnamemodify(yurii_pkm#resolve_link(l:old_target, expand('%:p:h')), ':p')
+        if l:old_fp ==# l:new_fp
+          return 0
+        endif
+      endif
+    endfor
   endif
 
   call append(l:end, a:link)
+  return 1
+endfunction
+
+function! s:append_structural_link_to_buffer(link) abort
+  let l:down = s:find_section_line('down')
+  if l:down > 0
+    return s:append_link_to_buffer_section('down', a:link)
+  endif
+
+  if !s:is_current_index_buffer()
+    return 0
+  endif
+
+  let l:new_target = s:extract_target(a:link)
+  let l:new_fp = empty(l:new_target) ? '' : fnamemodify(yurii_pkm#resolve_link(l:new_target, expand('%:p:h')), ':p')
+  for l:i in range(1, line('$'))
+    let l:old_target = s:extract_target(getline(l:i))
+    if getline(l:i) ==# a:link
+      return 0
+    endif
+    if !empty(l:new_fp) && !empty(l:old_target)
+      let l:old_fp = fnamemodify(yurii_pkm#resolve_link(l:old_target, expand('%:p:h')), ':p')
+      if l:old_fp ==# l:new_fp
+        return 0
+      endif
+    endif
+  endfor
+  call append(line('$'), a:link)
   return 1
 endfunction
 
@@ -2793,7 +2834,7 @@ function! s:new_note_no_title(prefix) abort
         call append(l:parent_line, l:link)
       endif
     elseif l:insert_at_down_end
-      call s:append_link_to_buffer_section('down', l:link)
+      call s:append_structural_link_to_buffer(l:link)
     else
       if a:prefix ==? 'N'
         let l:ins = s:structural_link_prepend_line()
@@ -2801,7 +2842,7 @@ function! s:new_note_no_title(prefix) abort
           call append(l:ins, l:link)
         endif
       else
-        call s:append_link_to_buffer_section('down', l:link)
+        call s:append_structural_link_to_buffer(l:link)
       endif
     endif
     let &autoindent = l:save_ai
