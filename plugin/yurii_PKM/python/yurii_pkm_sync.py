@@ -687,28 +687,36 @@ def update_titles_in_file(path: Path) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def is_root_note(path: Path, root: Path) -> bool:
-    """Return True when *path* is a managed note directly under *root*."""
+def is_managed_note(path: Path, root: Path) -> bool:
+    """Return True when *path* is a markdown note managed under *root*."""
     path = path.resolve()
     root = root.resolve()
+    try:
+        path.relative_to(root)
+    except ValueError:
+        return False
     return (
         is_markdown_file(path)
         and path.is_file()
-        and path.parent == root
         and ".undo" not in path.parts
     )
 
 
-def iter_notes(root: Path) -> Iterable[Path]:
-    """Yield markdown notes directly under the active PKM root.
+def is_root_note(path: Path, root: Path) -> bool:
+    """Backward-compatible alias for managed-note checks."""
+    return is_managed_note(path, root)
 
-    Bulk update operations are intentionally scoped to the directory that
-    contains the initial index.md. Notes in subdirectories may still be linked
-    to or resolved, but they are not rewritten by UpdateAll/autosync scans.
+
+def iter_notes(root: Path) -> Iterable[Path]:
+    """Yield all managed markdown notes under the active PKM root.
+
+    Structural links can cross folders, so full/update-one sync must consider
+    nested notes as first-class notes instead of only rewriting files directly
+    below the root. ``.undo`` snapshots are excluded.
     """
     root = root.resolve()
-    for path in sorted(root.glob("*.md")):
-        if is_root_note(path, root):
+    for path in sorted(root.rglob("*.md")):
+        if is_managed_note(path, root):
             yield path
 
 
@@ -857,6 +865,8 @@ def remove_reciprocal_down_links_for_missing_up(file_path: Path, root: Path) -> 
         return 0
 
     current_lines = read_lines(file_path)
+    if find_section(current_lines, "up")[0] < 0:
+        return 0
     current_up_targets = up_targets(current_lines, file_path, root, notes_by_name)
     changed = 0
 
@@ -890,6 +900,65 @@ def remove_reciprocal_down_links_for_missing_up(file_path: Path, root: Path) -> 
 
     return changed
 
+
+
+def remove_reciprocal_up_links_for_missing_down(file_path: Path, root: Path) -> int:
+    """Prune stale reciprocal Parent links after Child links are manually removed."""
+
+    file_path = file_path.resolve()
+    root = root.resolve()
+    all_paths = list(iter_notes(root))
+    notes_by_name: dict[str, list[Path]] = {}
+    for path in all_paths:
+        notes_by_name.setdefault(path.name, []).append(path.resolve())
+
+    if file_path not in {p.resolve() for p in all_paths}:
+        return 0
+
+    current_lines = read_lines(file_path)
+    if file_path.name == "index.md":
+        structural_links = outbound_links_from_index(current_lines)
+        current_down_targets = {
+            resolved.resolve()
+            for _, target in structural_links
+            if (resolved := resolve_existing_note_link(target, file_path.parent, root, notes_by_name)) is not None
+        }
+    else:
+        if find_section(current_lines, "down")[0] < 0 and find_section(current_lines, "branch")[0] < 0:
+            return 0
+        current_down_targets = down_targets(current_lines, file_path, root, notes_by_name)
+    changed = 0
+
+    for child in all_paths:
+        child = child.resolve()
+        if child == file_path:
+            continue
+        if child in current_down_targets:
+            continue
+
+        child_lines = read_lines(child)
+        has_up_link = False
+        for _, target in parse_links(section_content(child_lines, "up")):
+            resolved = resolve_existing_note_link(target, child.parent, root, notes_by_name)
+            if resolved is not None and resolved.resolve() == file_path:
+                has_up_link = True
+                break
+        if not has_up_link:
+            continue
+
+        new_lines, modified = remove_link_targets_from_section_lines(
+            child_lines,
+            "up",
+            {file_path},
+            child,
+            root,
+            notes_by_name,
+        )
+        if modified:
+            write_lines(child, new_lines)
+            changed += 1
+
+    return changed
 
 
 def dedupe_exact_link_lines(lines: list[str]) -> tuple[list[str], bool]:
@@ -1419,8 +1488,14 @@ def update_one(file_path: Path, root: Path) -> str:
 
     changed_files: list[str] = []
 
-    if is_root_note(file_path, root) and update_titles_in_file(file_path):
+    if is_managed_note(file_path, root) and update_titles_in_file(file_path):
         changed_files.append(file_path.name)
+
+    pruned_up_changed = remove_reciprocal_down_links_for_missing_up(file_path, root)
+    pruned_down_changed = remove_reciprocal_up_links_for_missing_down(file_path, root)
+    pruned_changed = pruned_up_changed + pruned_down_changed
+    if pruned_changed:
+        changed_files.append(f"pruned:{pruned_changed}")
 
     reciprocal_changed = sync_reciprocal_links_for_file(file_path, root)
     if reciprocal_changed:
