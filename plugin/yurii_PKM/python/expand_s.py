@@ -5,7 +5,7 @@ usage:
     expand_s.py expand_s FILE ROOT [DEPTH]
     expand_s.py expand_any FILE ROOT [DEPTH]
 
-- FILE の本文にある markdown リンクを展開する
+- FILE の本文と Child セクションにある markdown リンクを展開する
 - Back セクション以降は読まない
 - 生成先は ROOT/T_YYMMDDhhmmss.md
 - DEPTH は再帰展開の深さ
@@ -159,7 +159,7 @@ def split_note(path: Path) -> tuple[str, list[str]]:
     2. 先頭付近の H1
     3. 本文最初の非空行をタイトル扱い
 
-    Parent / BackLink / Back セクション以降は本文に含めない。
+    Parent / Child / BackLink / Back セクション以降は本文に含めない。
     Branch 見出し単独行は無視する。
     """
     lines = read_lines(path)
@@ -223,6 +223,75 @@ def split_note(path: Path) -> tuple[str, list[str]]:
     return title, body
 
 
+def section_lines(path: Path, name: str) -> list[str]:
+    """指定セクション内の行を返す（次の既知セクション手前まで）。"""
+    lines = read_lines(path)
+    result: list[str] = []
+    in_section = False
+    in_fence = False
+
+    first_content_seen = False
+
+    for line in lines:
+        stripped = line.strip()
+        if not first_content_seen:
+            if stripped == '':
+                continue
+            first_content_seen = True
+            if H1_RE.match(stripped):
+                continue
+        if stripped.startswith('```'):
+            if in_section:
+                result.append(line)
+            in_fence = not in_fence
+            continue
+
+        if not in_fence and is_any_section_header(stripped, ('parent', 'child', 'backlink', 'back')):
+            if in_section:
+                break
+            if is_section_header(stripped, name):
+                in_section = True
+            continue
+
+        if in_section:
+            result.append(line)
+
+    return result
+
+
+def linked_markdown_targets(lines: list[str], source_path: Path, root: Path) -> list[Path]:
+    """行群に含まれる展開可能な Markdown リンク先を順番通り返す。"""
+    targets: list[Path] = []
+    seen: set[Path] = set()
+    in_fence = False
+
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith('```'):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        for _, target in LINK_RE.findall(line):
+            if '\x00' in target:
+                continue
+            target_path = resolve_link_target(source_path, target, root)
+            if not is_markdown_file(target_path) or not target_path.exists():
+                continue
+            resolved = target_path.resolve()
+            if resolved in seen:
+                continue
+            seen.add(resolved)
+            targets.append(resolved)
+
+    return targets
+
+
+def child_links(path: Path, root: Path) -> list[Path]:
+    """Child/Down/Branch セクションにある Markdown リンク先を返す。"""
+    return linked_markdown_targets(section_lines(path, 'child'), path, root)
+
+
 def extract_body_until_back(path: Path) -> list[str]:
     return split_note(path)[1]
 
@@ -284,21 +353,38 @@ def expand_target(target_path: Path, root: Path, heading_depth: int, expand_dept
     out.append(heading_for_depth(heading_depth, title))
     out.append('')
 
-    if expand_depth > 0 and nested_body:
-        if expand_depth == 1:
-            out.extend(nested_body)
-        else:
-            next_stack = set(active_stack)
-            next_stack.add(resolved)
-            expanded = expand_body_inline(
-                nested_body,
-                resolved,
-                root,
-                min(heading_depth + 1, 6),
-                expand_depth - 1,
-                next_stack,
+    if expand_depth > 0:
+        next_stack = set(active_stack)
+        next_stack.add(resolved)
+
+        if nested_body:
+            if expand_depth == 1:
+                out.extend(nested_body)
+            else:
+                expanded = expand_body_inline(
+                    nested_body,
+                    resolved,
+                    root,
+                    min(heading_depth + 1, 6),
+                    expand_depth - 1,
+                    next_stack,
+                )
+                out.extend(expanded)
+
+        for child_path in child_links(resolved, root):
+            if child_path in next_stack:
+                continue
+            if out and out[-1].strip() != '':
+                out.append('')
+            out.extend(
+                expand_target(
+                    child_path,
+                    root,
+                    min(heading_depth + 1, 6),
+                    expand_depth - 1,
+                    next_stack,
+                )
             )
-            out.extend(expanded)
 
     # 展開内容後、空行を確保して ## 区切り
     if out and out[-1].strip() != '':
@@ -387,14 +473,21 @@ def build_expanded_content(source_path: Path, root: Path, depth: int) -> list[st
     if depth <= 0:
         content = list(body)
     else:
+        active_stack = {source_path.resolve()}
         content = expand_body_inline(
             body,
             source_path,
             root,
             heading_depth=2,
             expand_depth=depth,
-            active_stack={source_path.resolve()},
+            active_stack=active_stack,
         )
+        for child_path in child_links(source_path, root):
+            if child_path in active_stack:
+                continue
+            if content and content[-1].strip() != '':
+                content.append('')
+            content.extend(expand_target(child_path, root, 2, depth, active_stack))
 
     header = ['# ' + title, '']
     content = header + content
