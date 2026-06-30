@@ -16,6 +16,8 @@ import curses
 import unicodedata
 import datetime
 import locale
+import time
+from functools import lru_cache
 from typing import List, Dict, Optional, Tuple
 
 locale.setlocale(locale.LC_ALL, '')
@@ -237,11 +239,18 @@ def hit_lines(info: dict, q: dict):
     return hits
 
 
+@lru_cache(maxsize=4096)
+def char_width(ch: str) -> int:
+    return 2 if unicodedata.east_asian_width(ch) in ('W', 'F') else 1
+
+
+@lru_cache(maxsize=16384)
 def str_width(s: str) -> int:
-    w = 0
-    for ch in s:
-        w += 2 if unicodedata.east_asian_width(ch) in ('W', 'F') else 1
-    return w
+    return sum(char_width(ch) for ch in s)
+
+
+def is_narrow_text(s: str) -> bool:
+    return all(char_width(ch) == 1 for ch in s)
 
 
 def clip_str(s: str, max_width: int) -> str:
@@ -250,7 +259,7 @@ def clip_str(s: str, max_width: int) -> str:
     w = 0
     result = ''
     for ch in s:
-        cw = 2 if unicodedata.east_asian_width(ch) in ('W', 'F') else 1
+        cw = char_width(ch)
         if w + cw > max_width:
             break
         result += ch
@@ -328,9 +337,15 @@ def safe_add(row: int, col: int, text: str, width: int, add_func, attr: int = cu
     if width <= 0:
         return
     s = pad_to_width(text, width)
+    if is_narrow_text(s):
+        try:
+            add_func(row, col, s[:width], attr)
+        except curses.error:
+            pass
+        return
     x = col
     for ch in s:
-        cw = 2 if unicodedata.east_asian_width(ch) in ('W', 'F') else 1
+        cw = char_width(ch)
         if x + cw > col + width:
             break
         try:
@@ -343,11 +358,32 @@ def safe_add(row: int, col: int, text: str, width: int, add_func, attr: int = cu
 def safe_add_highlight(row: int, col: int, text: str, width: int, add_func, base_attr: int, hl_attr: int, terms: List[str]):
     if width <= 0:
         return
+    if not terms:
+        safe_add(row, col, text, width, add_func, base_attr)
+        return
+
     s = pad_to_width(text, width)
     attrs = style_mask(s, terms, base_attr, hl_attr)
+
+    # Fast path for common ASCII/narrow strings: draw contiguous runs that share
+    # the same attribute instead of crossing Python/curses per character.
+    if is_narrow_text(s):
+        run_start = 0
+        while run_start < min(len(s), width):
+            attr = attrs[run_start]
+            run_end = run_start + 1
+            while run_end < min(len(s), width) and attrs[run_end] == attr:
+                run_end += 1
+            try:
+                add_func(row, col + run_start, s[run_start:run_end], attr)
+            except curses.error:
+                pass
+            run_start = run_end
+        return
+
     x = col
     for i, ch in enumerate(s):
-        cw = 2 if unicodedata.east_asian_width(ch) in ('W', 'F') else 1
+        cw = char_width(ch)
         if x + cw > col + width:
             break
         try:
@@ -371,7 +407,7 @@ def visible_window_for_cursor(text: str, cursor_pos: int, width: int) -> Tuple[s
     end = start
     used = 0
     while end < len(text):
-        cw = 2 if unicodedata.east_asian_width(text[end]) in ('W', 'F') else 1
+        cw = char_width(text[end])
         if used + cw > width:
             break
         used += cw
@@ -382,7 +418,63 @@ def visible_window_for_cursor(text: str, cursor_pos: int, width: int) -> Tuple[s
     return visible, start, cursor_x
 
 
+
+def read_key(stdscr):
+    """Read a key and coalesce raw escape sequences for cursor keys.
+
+    Some Vim terminal/TERM combinations leak arrow-key bytes as ``ESC [ A``
+    instead of a curses KEY_* value.  If those bytes are handled one-by-one,
+    the printable tail (for example ``[A``) can be inserted into the query.
+    """
+    try:
+        key = stdscr.get_wch()
+    except KeyboardInterrupt:
+        raise
+    except curses.error:
+        return None
+
+    if key != '\x1b':
+        return key
+
+    seq = ''
+    stdscr.nodelay(True)
+    deadline = time.monotonic() + 0.05
+    try:
+        while time.monotonic() < deadline and len(seq) < 8:
+            try:
+                nxt = stdscr.get_wch()
+            except curses.error:
+                time.sleep(0.005)
+                continue
+            if isinstance(nxt, str):
+                seq += nxt
+                if seq in ('[A', 'OA'):
+                    return curses.KEY_UP
+                if seq in ('[B', 'OB'):
+                    return curses.KEY_DOWN
+                if seq in ('[C', 'OC'):
+                    return curses.KEY_RIGHT
+                if seq in ('[D', 'OD'):
+                    return curses.KEY_LEFT
+                if seq in ('[H', 'OH', '[1~'):
+                    return curses.KEY_HOME
+                if seq in ('[F', 'OF', '[4~'):
+                    return curses.KEY_END
+                if seq in ('[3~',):
+                    return curses.KEY_DC
+                if seq in ('[5~',):
+                    return curses.KEY_PPAGE
+                if seq in ('[6~',):
+                    return curses.KEY_NPAGE
+            else:
+                return nxt
+    finally:
+        stdscr.nodelay(False)
+
+    return '\x1b'
+
 def run_tui(stdscr, directory: str, all_files: List[dict], initial_query: str = ''):
+    curses.set_escdelay(25)
     curses.use_default_colors()
     stdscr.keypad(True)
     try:
@@ -556,10 +648,10 @@ def run_tui(stdscr, directory: str, all_files: List[dict], initial_query: str = 
         stdscr.refresh()
 
         try:
-            key = stdscr.get_wch()
+            key = read_key(stdscr)
         except KeyboardInterrupt:
             return None
-        except curses.error:
+        if key is None:
             continue
 
         if editing:
