@@ -1157,7 +1157,8 @@ function! s:body_link_targets_from_lines(lines, base_dir) abort
   return l:targets
 endfunction
 
-function! s:current_reciprocal_snapshot() abort
+function! s:current_reciprocal_snapshot(...) abort
+  let l:include_back = a:0 > 0 ? a:1 : get(g:, 'yurii_pkm_realtime_backlink_sync', 0)
   let l:file = expand('%:p')
   if empty(l:file)
     return {'up': [], 'down': [], 'back': []}
@@ -1167,12 +1168,16 @@ function! s:current_reciprocal_snapshot() abort
   return {
         \ 'up': s:section_link_targets_from_lines(l:lines, 'up', l:base),
         \ 'down': s:section_link_targets_from_lines(l:lines, 'down', l:base),
-        \ 'back': s:body_link_targets_from_lines(l:lines, l:base),
+        \ 'back': l:include_back ? s:body_link_targets_from_lines(l:lines, l:base) : [],
         \ }
 endfunction
 
 function! yurii_pkm#realtime_sync_snapshot() abort
   if !s:is_markdown_file(expand('%:p'))
+    return
+  endif
+  if line('$') > get(g:, 'yurii_pkm_realtime_link_sync_max_lines', 2000)
+    let b:yurii_pkm_realtime_snapshot = {'up': [], 'down': [], 'back': []}
     return
   endif
   let b:yurii_pkm_realtime_snapshot = s:current_reciprocal_snapshot()
@@ -1311,11 +1316,15 @@ function! s:realtime_sync_apply() abort
   endif
 
   let l:old = get(b:, 'yurii_pkm_realtime_snapshot', {'up': [], 'down': []})
+  if line('$') > get(g:, 'yurii_pkm_realtime_link_sync_max_lines', 2000)
+    return
+  endif
   let l:new = s:current_reciprocal_snapshot()
   let l:title = yurii_pkm#current_title()
   let l:changed = 0
-  let l:back_changed = !empty(s:list_diff(l:new.back, get(l:old, 'back', [])))
-        \ || !empty(s:list_diff(get(l:old, 'back', []), l:new.back))
+  let l:back_changed = get(g:, 'yurii_pkm_realtime_backlink_sync', 0)
+        \ && (!empty(s:list_diff(l:new.back, get(l:old, 'back', [])))
+        \ || !empty(s:list_diff(get(l:old, 'back', []), l:new.back)))
 
   let s:realtime_sync_busy = 1
   try
@@ -1359,7 +1368,7 @@ function! yurii_pkm#realtime_sync_on_text_changed() abort
     call timer_stop(b:yurii_pkm_realtime_timer)
   endif
   if has('timers')
-    let b:yurii_pkm_realtime_timer = timer_start(150, function('s:realtime_sync_timer'))
+    let b:yurii_pkm_realtime_timer = timer_start(get(g:, 'yurii_pkm_realtime_link_sync_delay', 800), function('s:realtime_sync_timer'))
   else
     call s:realtime_sync_apply()
   endif
