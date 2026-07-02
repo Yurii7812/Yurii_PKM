@@ -40,9 +40,24 @@ endif
 if !exists('g:yurii_pkm_realtime_link_sync')
   let g:yurii_pkm_realtime_link_sync = 1
 endif
+if !exists('g:yurii_pkm_realtime_link_sync_delay')
+  let g:yurii_pkm_realtime_link_sync_delay = 800
+endif
+if !exists('g:yurii_pkm_realtime_link_sync_max_lines')
+  let g:yurii_pkm_realtime_link_sync_max_lines = 2000
+endif
+if !exists('g:yurii_pkm_realtime_backlink_sync')
+  let g:yurii_pkm_realtime_backlink_sync = 0
+endif
 if !exists('g:yurii_pkm_markdown_conceal_links')
   " 既定は 1: [text](url) は text のみ表示
   let g:yurii_pkm_markdown_conceal_links = 1
+endif
+if !exists('g:yurii_pkm_markdown_conceal_max_lines')
+  let g:yurii_pkm_markdown_conceal_max_lines = 2000
+endif
+if !exists('g:yurii_pkm_markdown_conceal_max_line_length')
+  let g:yurii_pkm_markdown_conceal_max_line_length = 1000
 endif
 " リンク色は .vimrc 側で設定する想定
 
@@ -304,7 +319,10 @@ function! s:setup_conceal() abort
     return
   endif
 
-  if get(g:, 'yurii_pkm_markdown_conceal_links', 0)
+  let l:too_large_for_conceal = line('$') > get(g:, 'yurii_pkm_markdown_conceal_max_lines', 2000)
+        \ || max(map(getline(1, min([line('$'), 200])), 'strlen(v:val)')) > get(g:, 'yurii_pkm_markdown_conceal_max_line_length', 1000)
+
+  if get(g:, 'yurii_pkm_markdown_conceal_links', 0) && !l:too_large_for_conceal
     setlocal conceallevel=2
     setlocal concealcursor=n
     " conceal + linebreak の組み合わせで、隠した URL 部分を基準に不自然な折返しが
@@ -326,15 +344,15 @@ function! s:setup_conceal() abort
   silent! syntax clear yuriiCheckedBracket
 
   " リンク全体は region で保持し、見える本文だけを水色にする
-  syntax region yuriiLinkRegion start=/\[\ze[^\] \n][^\]\n]*\](\([^)\n]\+\))/ end=/\](\([^)\n]\+\))/ keepend oneline contains=yuriiLinkText,yuriiConcealOpen,yuriiConcealClose
-  syntax match yuriiLinkText /\%(\[\)\@<=[^\] \n][^\]\n]*\ze\](\([^)\n]\+\))/ contained
+  syntax region yuriiLinkRegion start=/\[\ze[^\] \n][^\]\n]*\](\([^)\n]\{1,300}\))/ end=/\](\([^)\n]\{1,300}\))/ keepend oneline contains=yuriiLinkText,yuriiConcealOpen,yuriiConcealClose
+  syntax match yuriiLinkText /\%(\[\)\@<=[^\] \n][^\]\n]*\ze\](\([^)\n]\{1,300}\))/ contained
   let l:link_color_gui = get(g:, 'yurii_pkm_link_color_gui', '#66CCFF')
   let l:link_color_cterm = get(g:, 'yurii_pkm_link_color_cterm', '81')
   execute 'highlight yuriiLinkText term=underline cterm=underline gui=underline ctermfg=' . l:link_color_cterm . ' guifg=' . l:link_color_gui
 
   " [ と ](xxx) を隠して、リンク本文だけ見せる
   syntax match yuriiConcealOpen /\[/ contained conceal
-  syntax match yuriiConcealClose /\](\([^)\n]\+\))/ contained conceal
+  syntax match yuriiConcealClose /\](\([^)\n]\{1,300}\))/ contained conceal
   syntax match yuriiEmptyBracket /\[\]/ containedin=ALL
   syntax match yuriiCheckboxBracket /\[ \]/ containedin=ALL
   syntax match yuriiCheckedBracket /\[[xX]\]/ containedin=ALL

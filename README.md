@@ -56,6 +56,16 @@ let g:yurii_pkm_autosync = 1
 
 " Parent/Child リンクのリアルタイム双方向同期（既定: 1）
 let g:yurii_pkm_realtime_link_sync = 1
+" TextChanged 後に同期を走らせるまでの待ち時間 ms（既定: 800）
+let g:yurii_pkm_realtime_link_sync_delay = 800
+" 大きいノートでは TextChanged 直後の同期をスキップ（保存時 AutoSync は有効）
+let g:yurii_pkm_realtime_link_sync_max_lines = 2000
+" 本文リンクから BackLink をリアルタイム同期する重い処理（既定: 0 / 保存時に同期）
+let g:yurii_pkm_realtime_backlink_sync = 0
+
+" 長い PDF リンクなどで conceal が重い場合の自動抑止しきい値
+let g:yurii_pkm_markdown_conceal_max_lines = 2000
+let g:yurii_pkm_markdown_conceal_max_line_length = 1000
 
 " コマンド実行前に自動保存（既定: 1）
 let g:yurii_pkm_auto_save_on_command = 1
