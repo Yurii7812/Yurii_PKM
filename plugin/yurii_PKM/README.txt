@@ -178,6 +178,9 @@ VimでこのMarkdownファイル内のどこかに画像リンクがある状態
 |------|-----------|------|
 | `g:yurii_pkm_root` | `''` | PKM ルートディレクトリ（未設定なら保存済み値→選択） |
 | `g:yurii_pkm_autosync` | `1` | 保存時に自動同期するか |
+| `g:yurii_pkm_realtime_link_sync` | `0` | 入力中に Parent/Child の相互リンクを同期するか（重い場合があるため既定OFF） |
+| `g:yurii_pkm_auto_save_on_command` | `0` | `:` コマンド実行時に自動保存するか（コマンドごとの遅延を避けるため既定OFF） |
+| `g:yurii_pkm_markdown_conceal_links` | `0` | Markdownリンクを本文だけ表示する conceal を有効にするか（画面乱れ回避のため既定OFF） |
 | `g:yurii_pkm_history_max` | `200` | 履歴の最大件数 |
 | `g:yurii_pkm_persistent_undo` | `1` | Persistent undo を有効にするか |
 | `g:yurii_pkm_link_color_gui` | `#66CCFF` | リンクテキストの色（GUI） |
@@ -186,6 +189,8 @@ VimでこのMarkdownファイル内のどこかに画像リンクがある状態
 | `g:yurii_pkm_expand_s_python` | `{plugin}/python/expand_s.py` | S→A 展開スクリプトのパス |
 | `g:yurii_pkm_gallery_python` | `{plugin}/python/gallery.py` | 画像ギャラリー用ローカルサーバースクリプトのパス |
 | `g:yurii_pkm_gallery_port` | `8765` | 画像ギャラリー用ローカルサーバーのポート |
+| `g:yurii_pkm_open_index_on_startup` | `0` | Vim起動時に `YuriiIndex` を自動で開くか |
+| `g:yurii_force_redraw_after_shell` | `0` | `:!` コマンド後に `redraw` するか |
 
 ---
 
