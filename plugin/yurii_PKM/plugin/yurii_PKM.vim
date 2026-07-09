@@ -35,10 +35,12 @@ if !exists('g:yurii_pkm_autosync')
   let g:yurii_pkm_autosync = 1
 endif
 if !exists('g:yurii_pkm_auto_save_on_command')
-  let g:yurii_pkm_auto_save_on_command = 1
+  " Heavy: saving on every :command causes CmdlineLeave lag and accidental redraw/reload.
+  let g:yurii_pkm_auto_save_on_command = 0
 endif
 if !exists('g:yurii_pkm_realtime_link_sync')
-  let g:yurii_pkm_realtime_link_sync = 1
+  " Heavy: TextChanged scans and may write linked notes; keep save-time sync as default.
+  let g:yurii_pkm_realtime_link_sync = 0
 endif
 if !exists('g:yurii_pkm_realtime_link_sync_delay')
   let g:yurii_pkm_realtime_link_sync_delay = 800
@@ -50,8 +52,8 @@ if !exists('g:yurii_pkm_realtime_backlink_sync')
   let g:yurii_pkm_realtime_backlink_sync = 0
 endif
 if !exists('g:yurii_pkm_markdown_conceal_links')
-  " 既定は 1: [text](url) は text のみ表示
-  let g:yurii_pkm_markdown_conceal_links = 1
+  " Heavy/fragile: conceal rewrites screen columns and can cause wrap/cursor glitches.
+  let g:yurii_pkm_markdown_conceal_links = 0
 endif
 if !exists('g:yurii_pkm_markdown_conceal_max_lines')
   let g:yurii_pkm_markdown_conceal_max_lines = 2000
@@ -388,8 +390,10 @@ endif
 augroup yurii_pkm_autosync
   autocmd!
   autocmd BufWritePost *.md call s:on_write_post()
-  autocmd BufReadPost,BufEnter *.md call yurii_pkm#realtime_sync_snapshot()
-  autocmd TextChanged,TextChangedI *.md call yurii_pkm#realtime_sync_on_text_changed()
+  if get(g:, 'yurii_pkm_realtime_link_sync', 0)
+    autocmd BufReadPost,BufEnter *.md call yurii_pkm#realtime_sync_snapshot()
+    autocmd TextChanged,TextChangedI *.md call yurii_pkm#realtime_sync_on_text_changed()
+  endif
   autocmd FileChangedShell *.md let v:fcs_choice = 'reload'
 augroup END
 
