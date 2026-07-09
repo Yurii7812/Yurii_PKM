@@ -2914,8 +2914,9 @@ function! s:new_note_no_title(prefix) abort
   call writefile(l:content, l:file)
 
   " 通常モード: 新ノート作成前はリンク先が未存在のため、作成後に親の本文リンクを同期する
+  " mm/nf/nk の体感速度を優先し、重い update_one は非同期で走らせる。
   if !l:no_parent_link && !l:reverse_link
-    call s:run_update_one_for_sync(expand('%:p'))
+    call s:run_update_one_for(expand('%:p'))
   endif
 
   " bモード: 新ノートの Child を元に Parent/BackLink を同期
@@ -3339,8 +3340,9 @@ function! yurii_pkm#new_quick(args) abort
   call writefile(l:content, l:file)
 
   " 通常モード: 新ノート作成前はリンク先が未存在のため、作成後に親の本文リンクを同期する
+  " mm/nf/nk の体感速度を優先し、重い update_one は非同期で走らせる。
   if !l:no_parent_link && !l:reverse_link
-    call s:run_update_one_for_sync(expand('%:p'))
+    call s:run_update_one_for(expand('%:p'))
   endif
 
   " bモード: 親ファイルの Back セクション直後に新ノートへのリンクを追記してsync
