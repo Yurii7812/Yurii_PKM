@@ -14,11 +14,12 @@ function! yurii_search#run(...)
             \ . ' ' . shellescape(l:dir)
             \ . ' ' . shellescape(l:tmpfile)
 
-  " 端末ウィンドウとして起動、終了したら結果を読む
+  " 端末ウィンドウとして起動、終了したら結果を読む。
+  " term_rows を固定すると curses 側の画面サイズと実ウィンドウがずれて
+  " 表示崩れが起きやすいため、サイズは Vim の terminal に任せる。
   let l:buf = term_start(['/bin/bash', '-c', l:cmd], {
     \ 'term_finish': 'close',
     \ 'exit_cb':     function('s:OnExit', [l:tmpfile]),
-    \ 'term_rows':   40,
     \ })
 endfunction
 

@@ -37,17 +37,22 @@ colorscheme kalisi
 " ---------------------------------------------------------
 " Insert モードを抜けるときは常に fcitx を OFF にして、
 " Normal モードでは英語入力へ戻します。
-" Insert を抜ける直前に日本語入力だった場合だけ、
-" 次に Insert モードへ入ると fcitx を再度 ON にします。
+" 体感速度を優先し、既定では状態確認を行わず InsertLeave で OFF だけを
+" 非同期実行します（fcitx5-remote の system() 待ちを避ける）。
 "
 " 無効化したい場合:
 "   let g:yurii_fcitx_auto_switch = 0
+" InsertLeave 前に日本語入力だった場合だけ InsertEnter で復元したい場合:
+"   let g:yurii_fcitx_restore_previous_state = 1
 " fcitx コマンドを明示したい場合:
 "   let g:yurii_fcitx_remote_cmd = 'fcitx5-remote'
 " =========================================================
 
 if !exists('g:yurii_fcitx_auto_switch')
   let g:yurii_fcitx_auto_switch = 1
+endif
+if !exists('g:yurii_fcitx_restore_previous_state')
+  let g:yurii_fcitx_restore_previous_state = 0
 endif
 
 let g:yurii_fcitx_restore_on_insert = 0
@@ -88,17 +93,25 @@ function! s:YuriiFcitxRun(arg) abort
   if empty(l:cmd)
     return
   endif
-  silent call system(l:cmd . ' ' . a:arg)
+  if has('job')
+    silent! call job_start([l:cmd, a:arg], {'out_io': 'null', 'err_io': 'null'})
+  else
+    silent call system(l:cmd . ' ' . a:arg)
+  endif
 endfunction
 
 function! s:YuriiFcitxInsertLeave() abort
   if !get(g:, 'yurii_fcitx_auto_switch', 1)
     return
   endif
-  let l:state = s:YuriiFcitxState()
-  let g:yurii_fcitx_restore_on_insert = (l:state ==# '2')
+  if get(g:, 'yurii_fcitx_restore_previous_state', 0)
+    let l:state = s:YuriiFcitxState()
+    let g:yurii_fcitx_restore_on_insert = (l:state ==# '2')
+  else
+    let g:yurii_fcitx_restore_on_insert = 0
+  endif
 
-  " Normal モードでは必ず英語入力にしたいので、状態取得に失敗しても OFF は実行します。
+  " Normal モードでは必ず英語入力にしたいので OFF を非同期実行します。
   call s:YuriiFcitxRun('-c')
 endfunction
 

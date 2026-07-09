@@ -139,8 +139,13 @@ set autowriteall
 set nobackup
 set nowritebackup
 
-" indexを最初から開く
-autocmd VimEnter * call timer_start(0, {-> execute('YuriiIndex')}) | autocmd VimEnter * call timer_start(50, {-> execute('redraw!')})
+" indexを最初から開く（不要なら let g:yurii_pkm_open_index_on_startup = 0）
+if get(g:, 'yurii_pkm_open_index_on_startup', 1)
+  augroup yurii_pkm_other_startup_index
+    autocmd!
+    autocmd VimEnter * call timer_start(0, {-> execute('YuriiIndex')})
+  augroup END
+endif
 
 " エラーを表示しない
 autocmd FileType markdown highlight markdownError cterm=NONE gui=NONE
@@ -162,5 +167,10 @@ colorscheme kalisi
 
 " !系コマンドを常にsilentで実行
 cmap <expr> <CR> getcmdtype() == ':' && getcmdline() =~ '^\s*!' ? '<C-\>e"silent " . getcmdline()<CR><CR>' : '<CR>'
-" !コマンド後に自動でredraw
-autocmd ShellCmdPost * redraw!
+" !コマンド後の強制 redraw! は画面ちらつきの原因になるため既定OFF
+if get(g:, 'yurii_force_redraw_after_shell', 0)
+  augroup yurii_shell_redraw
+    autocmd!
+    autocmd ShellCmdPost * redraw
+  augroup END
+endif

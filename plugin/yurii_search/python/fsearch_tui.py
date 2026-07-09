@@ -659,7 +659,7 @@ def run_tui(stdscr, directory: str, all_files: List[dict], initial_query: str = 
                 query_str = edit_buf
                 do_search()
                 editing = False
-            elif key == 27:
+            elif key in (27, '\x1b'):
                 edit_buf = query_str
                 edit_cursor = len(edit_buf)
                 editing = False
