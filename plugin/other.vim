@@ -139,8 +139,8 @@ set autowriteall
 set nobackup
 set nowritebackup
 
-" indexを最初から開く（重い場合があるため既定OFF。必要なら let g:yurii_pkm_open_index_on_startup = 1）
-if get(g:, 'yurii_pkm_open_index_on_startup', 0)
+" indexを最初から開く（不要なら let g:yurii_pkm_open_index_on_startup = 0）
+if get(g:, 'yurii_pkm_open_index_on_startup', 1)
   augroup yurii_pkm_other_startup_index
     autocmd!
     autocmd VimEnter * call timer_start(0, {-> execute('YuriiIndex')})

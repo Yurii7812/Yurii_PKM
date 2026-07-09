@@ -52,8 +52,8 @@ if !exists('g:yurii_pkm_realtime_backlink_sync')
   let g:yurii_pkm_realtime_backlink_sync = 0
 endif
 if !exists('g:yurii_pkm_markdown_conceal_links')
-  " Heavy/fragile: conceal rewrites screen columns and can cause wrap/cursor glitches.
-  let g:yurii_pkm_markdown_conceal_links = 0
+  " Keep link URLs hidden by default; large/long-link buffers are guarded below.
+  let g:yurii_pkm_markdown_conceal_links = 1
 endif
 if !exists('g:yurii_pkm_markdown_conceal_max_lines')
   let g:yurii_pkm_markdown_conceal_max_lines = 2000
@@ -108,6 +108,7 @@ command!          SortYomi   call yurii_pkm#sort_yomi()
 command! -range=0 -bang SortTime call yurii_pkm#sort_time(<bang>0, <line1>, <line2>, <range>)
 command!          YuriiIndex call yurii_pkm#open_index()
 command!          YuriiChooseIndexDir call yurii_pkm#choose_index_root()
+command!          YuriiChooseIndex call yurii_pkm#choose_index_root()
 command! -nargs=? ExpandLinks call yurii_pkm#expand_s_under_cursor(<q-args>)
 command!          JumpLastLinkBeforeParent call yurii_pkm#jump_last_link_before_up()
 command!          JumpParent call yurii_pkm#jump_up()
