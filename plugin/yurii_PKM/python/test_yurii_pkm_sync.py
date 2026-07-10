@@ -49,3 +49,32 @@ def test_update_one_prunes_child_when_parent_link_is_deleted(tmp_path: Path) -> 
     assert update_one(child, root) == "yurii_PKM: updated pruned:1"
 
     assert "[B](sub/B.md)" not in parent.read_text(encoding="utf-8")
+
+
+def test_update_one_does_not_create_parent_section_when_missing(tmp_path: Path) -> None:
+    root = tmp_path
+    parent = root / "A.md"
+    child = root / "sub" / "B.md"
+    write_note(parent, "A", child="[B](sub/B.md)\n")
+    child.parent.mkdir(parents=True, exist_ok=True)
+    child.write_text("# B\n\n本文だけ\n", encoding="utf-8")
+
+    assert update_one(parent, root) == "yurii_PKM: no changes"
+
+    child_text = child.read_text(encoding="utf-8")
+    assert "Parent:" not in child_text
+    assert "Child:" not in child_text
+
+
+def test_update_one_does_not_create_child_section_when_missing(tmp_path: Path) -> None:
+    root = tmp_path
+    parent = root / "A.md"
+    child = root / "sub" / "B.md"
+    parent.write_text("# A\n\n本文だけ\n", encoding="utf-8")
+    write_note(child, "B", parent="[A](../A.md)\n")
+
+    assert update_one(child, root) == "yurii_PKM: no changes"
+
+    parent_text = parent.read_text(encoding="utf-8")
+    assert "Child:" not in parent_text
+    assert "Parent:" not in parent_text
