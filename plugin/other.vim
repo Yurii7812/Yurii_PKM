@@ -167,8 +167,22 @@ colorscheme kalisi
 
 " !系コマンドを常にsilentで実行
 cmap <expr> <CR> getcmdtype() == ':' && getcmdline() =~ '^\s*!' ? '<C-\>e"silent " . getcmdline()<CR><CR>' : '<CR>'
-" !コマンド後の強制 redraw! は画面ちらつきの原因になるため既定OFF
-if get(g:, 'yurii_force_redraw_after_shell', 0)
+
+function! s:RedrawAfterShell() abort
+  redrawstatus
+  redraw
+endfunction
+
+" :! 系コマンドは silent 実行後に画面が再描画されないことがあるため、
+" 通常の redraw を既定で行います。特に :!rm % のように現在のファイルを
+" 外部コマンドで削除した場合、端末の内容が黒いまま残るのを防ぎます。
+" ちらつきが気になる場合は g:yurii_redraw_after_silent_shell = 0 で無効化できます。
+if get(g:, 'yurii_redraw_after_silent_shell', 1)
+  augroup yurii_shell_redraw
+    autocmd!
+    autocmd ShellCmdPost * call s:RedrawAfterShell()
+  augroup END
+elseif get(g:, 'yurii_force_redraw_after_shell', 0)
   augroup yurii_shell_redraw
     autocmd!
     autocmd ShellCmdPost * redraw
