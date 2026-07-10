@@ -682,6 +682,31 @@ def update_titles_in_file(path: Path) -> bool:
     return modified
 
 
+
+@dataclass(frozen=True)
+class NotesIndex:
+    paths: list[Path]
+    by_name: dict[str, list[Path]]
+    path_set: set[Path]
+
+
+def build_notes_index(root: Path, extra_paths: Iterable[Path] = ()) -> NotesIndex:
+    """Build the managed-note index once for a sync operation."""
+
+    root = root.resolve()
+    paths: list[Path] = [p.resolve() for p in iter_notes(root)]
+    path_set = set(paths)
+    for extra in extra_paths:
+        resolved = extra.resolve()
+        if resolved not in path_set and is_markdown_file(resolved) and resolved.is_file() and ".undo" not in resolved.parts:
+            paths.append(resolved)
+            path_set.add(resolved)
+
+    by_name: dict[str, list[Path]] = {}
+    for path in paths:
+        by_name.setdefault(path.name, []).append(path)
+    return NotesIndex(paths=paths, by_name=by_name, path_set=path_set)
+
 # ---------------------------------------------------------------------------
 # update_up_sections (full scan: Child -> Parent propagation)
 # ---------------------------------------------------------------------------
@@ -851,17 +876,16 @@ def remove_down_links_to_target(
     return lines[: down_start + 1] + new_section + lines[down_end:], True
 
 
-def remove_reciprocal_down_links_for_missing_up(file_path: Path, root: Path) -> int:
+def remove_reciprocal_down_links_for_missing_up(file_path: Path, root: Path, index: NotesIndex | None = None) -> int:
     """Prune stale reciprocal Child links after Parent links are manually removed."""
 
     file_path = file_path.resolve()
     root = root.resolve()
-    all_paths = list(iter_notes(root))
-    notes_by_name: dict[str, list[Path]] = {}
-    for path in all_paths:
-        notes_by_name.setdefault(path.name, []).append(path.resolve())
+    index = index or build_notes_index(root)
+    all_paths = index.paths
+    notes_by_name = index.by_name
 
-    if file_path not in {p.resolve() for p in all_paths}:
+    if file_path not in index.path_set:
         return 0
 
     current_lines = read_lines(file_path)
@@ -902,17 +926,16 @@ def remove_reciprocal_down_links_for_missing_up(file_path: Path, root: Path) -> 
 
 
 
-def remove_reciprocal_up_links_for_missing_down(file_path: Path, root: Path) -> int:
+def remove_reciprocal_up_links_for_missing_down(file_path: Path, root: Path, index: NotesIndex | None = None) -> int:
     """Prune stale reciprocal Parent links after Child links are manually removed."""
 
     file_path = file_path.resolve()
     root = root.resolve()
-    all_paths = list(iter_notes(root))
-    notes_by_name: dict[str, list[Path]] = {}
-    for path in all_paths:
-        notes_by_name.setdefault(path.name, []).append(path.resolve())
+    index = index or build_notes_index(root)
+    all_paths = index.paths
+    notes_by_name = index.by_name
 
-    if file_path not in {p.resolve() for p in all_paths}:
+    if file_path not in index.path_set:
         return 0
 
     current_lines = read_lines(file_path)
@@ -1049,7 +1072,8 @@ def add_link_to_section_lines(
     links.
     """
 
-    lines = ensure_sections(lines)
+    if find_section(lines, name)[0] < 0:
+        return list(lines), False
     content = section_content(lines, name)
     content, deduped = dedupe_exact_link_lines(content)
     if link in content or section_has_resolved_link(content, target_path, from_dir, root, notes_by_name):
@@ -1179,7 +1203,7 @@ def reparent_down_children(new_parent_path: Path, old_parent_path: Path, root: P
 
     return changed
 
-def sync_reciprocal_links_for_file(file_path: Path, root: Path) -> int:
+def sync_reciprocal_links_for_file(file_path: Path, root: Path, index: NotesIndex | None = None) -> int:
     """Lightweight one-hop Parent/Child sync for one edited note.
 
     This intentionally avoids a full root rebuild: it reads the current note's
@@ -1193,10 +1217,8 @@ def sync_reciprocal_links_for_file(file_path: Path, root: Path) -> int:
     if not file_path.exists() or not is_markdown_file(file_path):
         return 0
 
-    all_paths = list(iter_notes(root))
-    notes_by_name: dict[str, list[Path]] = {}
-    for path in all_paths:
-        notes_by_name.setdefault(path.name, []).append(path.resolve())
+    index = index or build_notes_index(root, [file_path])
+    notes_by_name = index.by_name
 
     lines = read_lines(file_path)
     current_title = note_title(lines, file_path)
@@ -1260,7 +1282,7 @@ def backlink_targets(
     return targets
 
 
-def sync_backlinks_for_file(file_path: Path, root: Path) -> int:
+def sync_backlinks_for_file(file_path: Path, root: Path, index: NotesIndex | None = None) -> int:
     """Update BackLink sections for notes referenced from one note's body.
 
     This is the save-time counterpart to the full BackLink rebuild in
@@ -1276,19 +1298,9 @@ def sync_backlinks_for_file(file_path: Path, root: Path) -> int:
     if not file_path.exists() or not is_markdown_file(file_path):
         return 0
 
-    all_paths = list(iter_notes(root))
-    known_paths = {p.resolve() for p in all_paths}
-    for path in sorted(root.rglob("*.md")):
-        resolved = path.resolve()
-        if path.is_file() and ".undo" not in path.parts and resolved not in known_paths:
-            all_paths.append(resolved)
-            known_paths.add(resolved)
-    if file_path not in known_paths:
-        all_paths.append(file_path)
-
-    notes_by_name: dict[str, list[Path]] = {}
-    for path in all_paths:
-        notes_by_name.setdefault(path.name, []).append(path.resolve())
+    index = index or build_notes_index(root, [file_path])
+    all_paths = index.paths
+    notes_by_name = index.by_name
 
     source_lines = read_lines(file_path)
     changed = 0
@@ -1491,17 +1503,19 @@ def update_one(file_path: Path, root: Path) -> str:
     if is_managed_note(file_path, root) and update_titles_in_file(file_path):
         changed_files.append(file_path.name)
 
-    pruned_up_changed = remove_reciprocal_down_links_for_missing_up(file_path, root)
-    pruned_down_changed = remove_reciprocal_up_links_for_missing_down(file_path, root)
+    index = build_notes_index(root, [file_path])
+
+    pruned_up_changed = remove_reciprocal_down_links_for_missing_up(file_path, root, index)
+    pruned_down_changed = remove_reciprocal_up_links_for_missing_down(file_path, root, index)
     pruned_changed = pruned_up_changed + pruned_down_changed
     if pruned_changed:
         changed_files.append(f"pruned:{pruned_changed}")
 
-    reciprocal_changed = sync_reciprocal_links_for_file(file_path, root)
+    reciprocal_changed = sync_reciprocal_links_for_file(file_path, root, index)
     if reciprocal_changed:
         changed_files.append(f"reciprocal:{reciprocal_changed}")
 
-    backlink_changed = sync_backlinks_for_file(file_path, root)
+    backlink_changed = sync_backlinks_for_file(file_path, root, index)
     if backlink_changed:
         changed_files.append(f"backlink:{backlink_changed}")
 
