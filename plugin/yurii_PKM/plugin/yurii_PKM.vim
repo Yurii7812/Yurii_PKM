@@ -38,6 +38,10 @@ if !exists('g:yurii_pkm_auto_save_on_command')
   " Heavy: saving on every :command causes CmdlineLeave lag and accidental redraw/reload.
   let g:yurii_pkm_auto_save_on_command = 0
 endif
+if !exists('g:yurii_pkm_sync_before_link_navigation')
+  " Link jumps must stay instant; save-time AutoSync keeps links consistent.
+  let g:yurii_pkm_sync_before_link_navigation = 0
+endif
 if !exists('g:yurii_pkm_realtime_link_sync')
   " Heavy: TextChanged scans and may write linked notes; keep save-time sync as default.
   let g:yurii_pkm_realtime_link_sync = 0

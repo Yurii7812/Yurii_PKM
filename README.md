@@ -274,7 +274,8 @@ Normal モードへ戻ったときの英語入力化は、状態取得に失敗�
 | `g:yurii_pkm_default_atomic_prefix` | `'C'` | Atomic 作成既定プレフィクス |
 | `g:yurii_pkm_history_max` | `200` | 履歴最大件数 |
 | `g:yurii_pkm_autosync` | `1` | 保存時 AutoSync 有効/無効 |
-| `g:yurii_pkm_auto_save_on_command` | `1` | コマンド前自動保存 |
+| `g:yurii_pkm_auto_save_on_command` | `0` | コマンド前自動保存 |
+| `g:yurii_pkm_sync_before_link_navigation` | `0` | `<CR>` / `<BS>` のリンク移動直前に同期まで実行するか（既定OFFで移動優先） |
 | `g:yurii_pkm_python` | `{plugin}/python/yurii_pkm_sync.py` | 同期スクリプト |
 | `g:yurii_pkm_expand_s_python` | `{plugin}/python/expand_s.py` | S展開スクリプト |
 

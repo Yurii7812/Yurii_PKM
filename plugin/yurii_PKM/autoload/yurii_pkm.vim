@@ -46,9 +46,11 @@ endfunction
 " ---------------------------------------------------------------------------
 
 let s:title_cache = {}
+let s:filename_resolve_cache = {}
 
 function! yurii_pkm#clear_title_cache() abort
   let s:title_cache = {}
+  let s:filename_resolve_cache = {}
 endfunction
 
 function! s:get_title(filepath) abort
@@ -1725,6 +1727,14 @@ function! s:ancestor_dirs_until_root(base) abort
 endfunction
 
 function! s:find_unique_file_near_current_tree(base, name) abort
+  let l:root = s:get_pkm_root()
+  let l:search_base = !empty(l:root) ? fnamemodify(l:root, ':p') : fnamemodify(a:base, ':p')
+  let l:cache_key = fnamemodify(a:base, ':p') . '|' . l:search_base . '|' . a:name
+  if has_key(s:filename_resolve_cache, l:cache_key)
+    let l:cached = s:filename_resolve_cache[l:cache_key]
+    return empty(l:cached) || filereadable(l:cached) ? l:cached : ''
+  endif
+
   let l:files = []
   let l:seen = {}
 
@@ -1736,16 +1746,11 @@ function! s:find_unique_file_near_current_tree(base, name) abort
     endif
   endfor
   if len(l:files) == 1
+    let s:filename_resolve_cache[l:cache_key] = l:files[0]
     return l:files[0]
   elseif len(l:files) > 1
+    let s:filename_resolve_cache[l:cache_key] = ''
     return ''
-  endif
-
-  let l:root = s:get_pkm_root()
-  if !empty(l:root)
-    let l:search_base = fnamemodify(l:root, ':p')
-  else
-    let l:search_base = fnamemodify(a:base, ':p')
   endif
 
   for l:m in globpath(l:search_base, '**/' . a:name, 0, 1)
@@ -1759,7 +1764,9 @@ function! s:find_unique_file_near_current_tree(base, name) abort
     endif
   endfor
 
-  return len(l:files) == 1 ? l:files[0] : ''
+  let l:resolved = len(l:files) == 1 ? l:files[0] : ''
+  let s:filename_resolve_cache[l:cache_key] = l:resolved
+  return l:resolved
 endfunction
 
 function! s:resolve_existing_link_target(target, ...) abort
@@ -2069,7 +2076,11 @@ function! yurii_pkm#open_link_under_cursor() abort
   let l:source_name = expand('%:t')
   let l:from_back = s:in_back_section(line('.'))
   let l:from_up = s:in_up_section(line('.'))
-  call s:write_current_and_sync_now()
+  if get(g:, 'yurii_pkm_sync_before_link_navigation', 0)
+    call s:write_current_and_sync_now()
+  elseif &modified && &buftype ==# '' && &modifiable
+    silent update
+  endif
   call yurii_pkm#push_history()
   silent! execute 'edit ' . fnameescape(l:path)
   if l:from_back || l:from_up
@@ -2087,7 +2098,11 @@ function! yurii_pkm#go_back() abort
     return
   endif
   let l:item = remove(g:yurii_pkm_history, -1)
-  call s:write_current_and_sync_now()
+  if get(g:, 'yurii_pkm_sync_before_link_navigation', 0)
+    call s:write_current_and_sync_now()
+  elseif &modified && &buftype ==# '' && &modifiable
+    silent update
+  endif
   silent! execute 'edit ' . fnameescape(l:item.file)
   call setpos('.', l:item.pos)
 endfunction
