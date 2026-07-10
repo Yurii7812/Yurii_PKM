@@ -276,6 +276,8 @@ Normal モードへ戻ったときの英語入力化は、状態取得に失敗�
 | `g:yurii_pkm_autosync` | `1` | 保存時 AutoSync 有効/無効 |
 | `g:yurii_pkm_auto_save_on_command` | `0` | コマンド前自動保存 |
 | `g:yurii_pkm_sync_before_link_navigation` | `0` | `<CR>` / `<BS>` のリンク移動直前に同期まで実行するか（既定OFFで移動優先） |
+| `g:yurii_pkm_save_before_link_navigation` | `0` | `<CR>` / `<BS>` のリンク移動直前に保存するか（既定OFFでEnter移動優先） |
+| `g:yurii_pkm_global_bare_link_navigation` | `0` | ファイル名だけのリンクをEnter移動時にPKMルート全体から一意検索するか |
 | `g:yurii_pkm_python` | `{plugin}/python/yurii_pkm_sync.py` | 同期スクリプト |
 | `g:yurii_pkm_expand_s_python` | `{plugin}/python/expand_s.py` | S展開スクリプト |
 

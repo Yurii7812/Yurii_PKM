@@ -180,7 +180,9 @@ VimでこのMarkdownファイル内のどこかに画像リンクがある状態
 | `g:yurii_pkm_autosync` | `1` | 保存時に自動同期するか |
 | `g:yurii_pkm_realtime_link_sync` | `0` | 入力中に Parent/Child の相互リンクを同期するか（重い場合があるため既定OFF） |
 | `g:yurii_pkm_auto_save_on_command` | `0` | `:` コマンド実行時に自動保存するか（コマンドごとの遅延を避けるため既定OFF） |
-| `g:yurii_pkm_sync_before_link_navigation` | `0` | `<CR>` / `<BS>` のリンク移動直前に同期まで実行するか（移動を軽くするため既定OFF。保存自体と保存時AutoSyncは維持） |
+| `g:yurii_pkm_sync_before_link_navigation` | `0` | `<CR>` / `<BS>` のリンク移動直前に同期まで実行するか（移動を軽くするため既定OFF） |
+| `g:yurii_pkm_save_before_link_navigation` | `0` | `<CR>` / `<BS>` のリンク移動直前に保存するか（Enter移動を軽くするため既定OFF。未保存バッファは hidden で保持） |
+| `g:yurii_pkm_global_bare_link_navigation` | `0` | ファイル名だけのリンクをEnter移動時にPKMルート全体から一意検索するか（再帰検索を避けるため既定OFF） |
 | `g:yurii_pkm_markdown_conceal_links` | `1` | Markdownリンクを本文だけ表示する conceal を有効にするか（大きい/長い行のファイルでは自動抑制） |
 | `g:yurii_pkm_history_max` | `200` | 履歴の最大件数 |
 | `g:yurii_pkm_persistent_undo` | `1` | Persistent undo を有効にするか |

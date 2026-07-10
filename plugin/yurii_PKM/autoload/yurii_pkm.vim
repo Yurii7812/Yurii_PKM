@@ -1832,6 +1832,44 @@ function! yurii_pkm#resolve_link(target, ...) abort
   return fnamemodify(l:base . '/' . l:target, ':p')
 endfunction
 
+function! s:resolve_link_for_navigation(target, ...) abort
+  let l:base = a:0 ? a:1 : expand('%:p:h')
+  let l:target = s:expand_user_path(a:target)
+  if empty(l:target) || l:target =~# '\v^\w+://'
+    return ''
+  endif
+  if s:is_absolute_path(l:target)
+    return fnamemodify(l:target, ':p')
+  endif
+
+  let l:direct = fnamemodify(l:base . '/' . l:target, ':p')
+  if filereadable(l:direct) || isdirectory(l:direct)
+    return l:direct
+  endif
+
+  if s:path_has_directory(l:target)
+    let l:root = s:get_pkm_root()
+    if !empty(l:root)
+      let l:root_candidate = fnamemodify(l:root . '/' . l:target, ':p')
+      if filereadable(l:root_candidate) || isdirectory(l:root_candidate)
+        return l:root_candidate
+      endif
+    endif
+
+    let l:cwd_candidate = fnamemodify(getcwd() . '/' . l:target, ':p')
+    if filereadable(l:cwd_candidate) || isdirectory(l:cwd_candidate)
+      return l:cwd_candidate
+    endif
+  elseif get(g:, 'yurii_pkm_global_bare_link_navigation', 0)
+    let l:global = s:find_unique_file_near_current_tree(l:base, l:target)
+    if !empty(l:global)
+      return l:global
+    endif
+  endif
+
+  return l:direct
+endfunction
+
 function! s:clipboard_text() abort
   let l:cb = @+
   if empty(l:cb)
@@ -2068,7 +2106,7 @@ function! yurii_pkm#open_link_under_cursor() abort
     echo 'No link under cursor'
     return
   endif
-  let l:path = yurii_pkm#resolve_link(l:link.target)
+  let l:path = s:resolve_link_for_navigation(l:link.target)
   if !filereadable(l:path) && !isdirectory(l:path)
     echo 'Link target not found: ' . l:path
     return
@@ -2078,11 +2116,11 @@ function! yurii_pkm#open_link_under_cursor() abort
   let l:from_up = s:in_up_section(line('.'))
   if get(g:, 'yurii_pkm_sync_before_link_navigation', 0)
     call s:write_current_and_sync_now()
-  elseif &modified && &buftype ==# '' && &modifiable
+  elseif get(g:, 'yurii_pkm_save_before_link_navigation', 0) && &modified && &buftype ==# '' && &modifiable
     silent update
   endif
   call yurii_pkm#push_history()
-  silent! execute 'edit ' . fnameescape(l:path)
+  silent! execute 'hide edit ' . fnameescape(l:path)
   if l:from_back || l:from_up
     let l:pos = s:find_reciprocal_link_pos(l:path, l:source_name)
     if get(l:pos, 0, 0) > 0
@@ -2100,10 +2138,10 @@ function! yurii_pkm#go_back() abort
   let l:item = remove(g:yurii_pkm_history, -1)
   if get(g:, 'yurii_pkm_sync_before_link_navigation', 0)
     call s:write_current_and_sync_now()
-  elseif &modified && &buftype ==# '' && &modifiable
+  elseif get(g:, 'yurii_pkm_save_before_link_navigation', 0) && &modified && &buftype ==# '' && &modifiable
     silent update
   endif
-  silent! execute 'edit ' . fnameescape(l:item.file)
+  silent! execute 'hide edit ' . fnameescape(l:item.file)
   call setpos('.', l:item.pos)
 endfunction
 
