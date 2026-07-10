@@ -193,7 +193,8 @@ VimでこのMarkdownファイル内のどこかに画像リンクがある状態
 | `g:yurii_pkm_gallery_python` | `{plugin}/python/gallery.py` | 画像ギャラリー用ローカルサーバースクリプトのパス |
 | `g:yurii_pkm_gallery_port` | `8765` | 画像ギャラリー用ローカルサーバーのポート |
 | `g:yurii_pkm_open_index_on_startup` | `1` | Vim起動時に `YuriiIndex` を自動で開くか |
-| `g:yurii_force_redraw_after_shell` | `0` | `:!` コマンド後に `redraw` するか |
+| `g:yurii_redraw_after_silent_shell` | `1` | silent 化した `:!` コマンド後に `redrawstatus` と `redraw` を実行し、`:!rm %` などの後に画面が黒く残るのを防ぐか |
+| `g:yurii_force_redraw_after_shell` | `0` | `g:yurii_redraw_after_silent_shell` が `0` の場合に、従来互換の `:!` コマンド後 `redraw` を行うか |
 
 ---
 
