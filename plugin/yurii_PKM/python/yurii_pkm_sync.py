@@ -1233,6 +1233,8 @@ def sync_reciprocal_links_for_file(file_path: Path, root: Path, index: NotesInde
         target_path = resolve_existing_note_link(target, file_path.parent, root, notes_by_name)
         if target_path is None or target_path.resolve() == file_path:
             continue
+        if target_path.name == "index.md":
+            continue
         target_lines = read_lines(target_path)
         reciprocal = make_link_line(file_path, current_title, target_path.parent)
         new_lines, modified = add_link_to_section_lines(

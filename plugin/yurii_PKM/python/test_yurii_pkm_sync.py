@@ -78,3 +78,17 @@ def test_update_one_does_not_create_child_section_when_missing(tmp_path: Path) -
     parent_text = parent.read_text(encoding="utf-8")
     assert "Child:" not in parent_text
     assert "Parent:" not in parent_text
+
+
+def test_update_one_does_not_write_parent_to_index(tmp_path: Path) -> None:
+    root = tmp_path
+    note = root / "A.md"
+    index = root / "index.md"
+    write_note(note, "A", child="[Index](index.md)\n")
+    write_note(index, "Index")
+
+    assert update_one(note, root) == "yurii_PKM: no changes"
+
+    index_text = index.read_text(encoding="utf-8")
+    assert "[A](A.md)" not in index_text
+    assert "Parent:\nChild:" in index_text
