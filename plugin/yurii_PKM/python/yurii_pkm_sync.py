@@ -475,10 +475,11 @@ def build_back(
     note_path: Path,
     existing_lines: list[str],
     category_parents: set[Path] | None = None,
+    suppress_default_index: bool = False,
 ) -> list[str]:
     """Build Back section content from parent paths."""
     from_dir = note_path.parent
-    include_index = note_path.name != 'index.md'
+    include_index = note_path.name != 'index.md' and not suppress_default_index
 
     existing_index = ''
     for line in existing_lines:
@@ -1451,9 +1452,7 @@ def update_up_sections(
     changed = 0
     for p in all_paths:
         lines = lines_map[p]
-        if p.name == 'index.md':
-            new_lines = remove_section(remove_section(remove_section(lines, 'down'), 'back'), 'backlink')
-        elif is_expand_generated_t_note(p, lines):
+        if is_expand_generated_t_note(p, lines):
             new_lines = lines
         else:
             new_lines = lines
@@ -1482,6 +1481,9 @@ def update_up_sections(
                     backlinks_parents,
                     p,
                     existing_back,
+                    suppress_default_index=any(
+                        target.name == 'index.md' for target in structural_link_targets
+                    ),
                 )
                 new_lines = replace_section(new_lines, "backlink", new_back)
 
