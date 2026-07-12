@@ -2161,6 +2161,7 @@ function! s:k_note_template(title) abort
   return [
         \ '---',
         \ 'time: ' . yurii_pkm#timestamp_yaml(),
+        \ 'filetype: K',
         \ 'title: ' . a:title,
         \ '---',
         \ '',
