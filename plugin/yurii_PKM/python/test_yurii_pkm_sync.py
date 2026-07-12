@@ -111,7 +111,7 @@ def test_update_all_preserves_index_child_links_and_creates_index_parent(tmp_pat
     assert "[Index](index.md)" in child_text.split("Child:", 1)[0]
 
 
-def test_update_all_moves_default_index_link_out_of_backlink_when_index_is_parent(tmp_path: Path) -> None:
+def test_update_all_preserves_default_index_backlink_when_index_is_parent(tmp_path: Path) -> None:
     from yurii_pkm_sync import update_up_sections
 
     root = tmp_path
@@ -119,13 +119,8 @@ def test_update_all_moves_default_index_link_out_of_backlink_when_index_is_paren
     child = root / "260612224331.md"
     write_note(index, "Index", child="[サイト集](260612224331.md)\n")
     write_note(child, "サイト集", parent="[Index](index.md)\n")
-    child.write_text(
-        child.read_text(encoding="utf-8") + "[Index](index.md)\n",
-        encoding="utf-8",
-    )
-
     assert update_up_sections(root) == 1
 
     child_text = child.read_text(encoding="utf-8")
     assert "Parent:\n[Index](index.md)\nChild:" in child_text
-    assert "BackLink:\n[Index](index.md)" not in child_text
+    assert "BackLink:\n[Index](index.md)" in child_text
