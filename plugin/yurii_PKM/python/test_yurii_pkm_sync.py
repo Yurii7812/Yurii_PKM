@@ -124,3 +124,25 @@ def test_update_all_preserves_default_index_backlink_when_index_is_parent(tmp_pa
     child_text = child.read_text(encoding="utf-8")
     assert "Parent:\n[Index](index.md)\nChild:" in child_text
     assert "BackLink:\n[Index](index.md)" in child_text
+
+
+def test_k_note_with_filetype_is_kept_as_backlink_category(tmp_path: Path) -> None:
+    from yurii_pkm_sync import sync_backlinks_for_file
+
+    root = tmp_path
+    category = root / "260612224331.md"
+    note = root / "N_note.md"
+    target = root / "T_target.md"
+
+    category.write_text(
+        "---\nfiletype: K\ntitle: Category\n---\n\n# Category\n\n[Target](T_target.md)\n\nParent:\nChild:\nBackLink:\n",
+        encoding="utf-8",
+    )
+    write_note(note, "Note", child="[Target](T_target.md)\n")
+    write_note(target, "Target")
+
+    assert sync_backlinks_for_file(category, root) == 1
+
+    target_text = target.read_text(encoding="utf-8")
+    assert "BackLink:\nCategory:\n[Category](260612224331.md)" in target_text
+    assert "\nNote:\n[Note](N_note.md)" not in target_text
