@@ -1245,23 +1245,56 @@ def sync_reciprocal_links_for_file(file_path: Path, root: Path, index: NotesInde
             write_lines(target_path, new_lines)
             changed += 1
 
-    for _, target in parse_links(section_content(lines, "up")):
-        target_path = resolve_existing_note_link(target, file_path.parent, root, notes_by_name)
-        if target_path is None or target_path.resolve() == file_path:
-            continue
-        if target_path.name == "index.md":
-            continue
-        target_lines = read_lines(target_path)
-        reciprocal = make_link_line(file_path, current_title, target_path.parent)
-        new_lines, modified = add_link_to_section_lines(
-            target_lines, "down", reciprocal, file_path, target_path.parent, root, notes_by_name
-        )
-        if modified:
-            write_lines(target_path, new_lines)
-            changed += 1
-
     return changed
 
+
+
+def sync_parent_section_for_file(file_path: Path, root: Path, index: NotesIndex | None = None) -> int:
+    """Rebuild one note's Parent section from other notes' Child links.
+
+    Parent is derived data: a note lists B as Parent only when B's Child
+    section links to the note.  Editing Parent itself must not create or remove
+    Child links.
+    """
+
+    file_path = file_path.resolve()
+    root = root.resolve()
+    if not file_path.exists() or not is_markdown_file(file_path):
+        return 0
+
+    index = index or build_notes_index(root, [file_path])
+    if file_path not in index.path_set:
+        return 0
+
+    lines = read_lines(file_path)
+    if find_section(lines, "up")[0] < 0:
+        return 0
+
+    parent_paths: list[Path] = []
+    seen: set[Path] = set()
+    for possible_parent in index.paths:
+        possible_parent = possible_parent.resolve()
+        if possible_parent == file_path:
+            continue
+        parent_lines = read_lines(possible_parent)
+        structural_links = (
+            outbound_links_from_index(parent_lines)
+            if possible_parent.name == "index.md"
+            else outbound_links_from_down(parent_lines)
+        )
+        for _, target in structural_links:
+            resolved = resolve_existing_note_link(target, possible_parent.parent, root, index.by_name)
+            if resolved is not None and resolved.resolve() == file_path and possible_parent not in seen:
+                seen.add(possible_parent)
+                parent_paths.append(possible_parent)
+                break
+
+    new_up = build_multi_up(parent_paths, file_path, exact=True)
+    new_lines = replace_section(lines, "up", new_up)
+    if new_lines == lines:
+        return 0
+    write_lines(file_path, new_lines)
+    return 1
 
 def backlink_targets(
     lines: list[str],
@@ -1291,9 +1324,8 @@ def sync_backlinks_for_file(file_path: Path, root: Path, index: NotesIndex | Non
     This is the save-time counterpart to the full BackLink rebuild in
     ``update_up_sections``.  It adds the edited note to current body-link
     targets and removes it from stale BackLink sections when a body link was
-    deleted.  Structural Child/Parent relationships take precedence over
-    BackLink display, so a note already shown as Child/Parent is not duplicated
-    in BackLink.
+    deleted.  Body links are always reflected in BackLink, even when the same
+    notes also have Parent/Child structural relationships.
     """
 
     file_path = file_path.resolve()
@@ -1322,12 +1354,6 @@ def sync_backlinks_for_file(file_path: Path, root: Path, index: NotesIndex | Non
 
         target_lines = read_lines(target_path)
         if find_section(target_lines, "backlink")[0] < 0:
-            continue
-
-        target_up_targets = up_targets(target_lines, target_path, root, notes_by_name)
-        target_down_targets = down_targets(target_lines, target_path, root, notes_by_name)
-        structural_targets = {p.resolve() for p in target_up_targets | target_down_targets}
-        if file_path in structural_targets:
             continue
 
         existing_backlink_targets = backlink_targets(
@@ -1359,10 +1385,7 @@ def sync_backlinks_for_file(file_path: Path, root: Path, index: NotesIndex | Non
         if find_section(target_lines, "backlink")[0] < 0:
             continue
 
-        target_up_targets = up_targets(target_lines, target_path, root, notes_by_name)
-        target_down_targets = down_targets(target_lines, target_path, root, notes_by_name)
-        structural_targets = {p.resolve() for p in target_up_targets | target_down_targets}
-        should_remove = target_path not in desired_targets or file_path in structural_targets
+        should_remove = target_path not in desired_targets
         if not should_remove:
             continue
 
@@ -1464,18 +1487,12 @@ def update_up_sections(
                     p,
                     current_up_targets=current_up_targets,
                     prune_targets=prune_up_targets,
-                    exact=exact_up,
+                    exact=True,
                 )
                 new_lines = replace_section(new_lines, "up", new_up)
 
             if find_section(new_lines, "backlink")[0] >= 0:
-                up_link_targets = up_targets(new_lines, p, root, notes_by_name)
-                down_link_targets = down_targets(new_lines, p, root, notes_by_name)
-                structural_link_targets = up_link_targets | down_link_targets
-                backlinks_parents = sorted(
-                    parent for parent in set(backlinks_parents_of.get(p, []))
-                    if parent not in structural_link_targets
-                )
+                backlinks_parents = sorted(set(backlinks_parents_of.get(p, [])))
                 existing_back = section_content(new_lines, "backlink")
                 new_back = build_back(
                     backlinks_parents,
@@ -1506,9 +1523,12 @@ def update_one(file_path: Path, root: Path) -> str:
 
     index = build_notes_index(root, [file_path])
 
-    pruned_up_changed = remove_reciprocal_down_links_for_missing_up(file_path, root, index)
+    parent_section_changed = sync_parent_section_for_file(file_path, root, index)
+    if parent_section_changed:
+        changed_files.append(f"parent:{parent_section_changed}")
+
     pruned_down_changed = remove_reciprocal_up_links_for_missing_down(file_path, root, index)
-    pruned_changed = pruned_up_changed + pruned_down_changed
+    pruned_changed = pruned_down_changed
     if pruned_changed:
         changed_files.append(f"pruned:{pruned_changed}")
 
