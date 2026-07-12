@@ -1481,9 +1481,6 @@ def update_up_sections(
                     backlinks_parents,
                     p,
                     existing_back,
-                    suppress_default_index=any(
-                        target.name == 'index.md' for target in structural_link_targets
-                    ),
                 )
                 new_lines = replace_section(new_lines, "backlink", new_back)
 
