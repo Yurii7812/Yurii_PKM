@@ -127,8 +127,8 @@ endfunction
 
 nnoremap <silent> gm :<C-u>call <SID>open_with_default_app(expand('%:p'))<CR>
 
-" 保存のショートカット
-nnoremap \w :w<CR>
+" すべての変更済みバッファを保存するショートカット
+nnoremap \w :wa<CR>
 " UpdateAllのショート
 nnoremap \ua :UpdateAll<CR>
 
