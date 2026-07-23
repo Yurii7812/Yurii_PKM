@@ -226,8 +226,8 @@ nnoremap <nowait> <silent> yn  <Cmd>call yurii_pkm#yank_name()<CR>
 nnoremap <silent> p  "+p
 " gp: 以前の独自貼り付け（改行末尾を落として行下に追加）
 nnoremap <silent> gp <Cmd>call yurii_pkm#paste_charwise()<CR>
-" .: 直前の変更の繰り返し（貼り付けを含む）を無効化
-nnoremap <silent> . <Nop>
+" .: 標準の「直前の変更を繰り返す」動作を明示的に使用する
+nnoremap <silent> . .
 nnoremap <silent> \l        <Cmd>call yurii_pkm#linkify_filename_under_cursor()<CR>
 xnoremap <silent> \l        :<C-u>call yurii_pkm#linkify_selection_new_note()<CR>
 nnoremap <nowait> <silent> mx  <Cmd>ToggleCheckbox<CR>
