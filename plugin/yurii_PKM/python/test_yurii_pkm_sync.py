@@ -114,7 +114,7 @@ def test_update_all_preserves_index_child_links_and_creates_index_parent(tmp_pat
     assert "[Index](index.md)" in child_text.split("Child:", 1)[0]
 
 
-def test_update_all_preserves_default_index_backlink_when_index_is_parent(tmp_path: Path) -> None:
+def test_update_all_hides_default_index_backlink_when_index_is_parent(tmp_path: Path) -> None:
     from yurii_pkm_sync import update_up_sections
 
     root = tmp_path
@@ -122,25 +122,29 @@ def test_update_all_preserves_default_index_backlink_when_index_is_parent(tmp_pa
     child = root / "260612224331.md"
     write_note(index, "Index", child="[サイト集](260612224331.md)\n")
     write_note(child, "サイト集", parent="[Index](index.md)\n")
-    assert update_up_sections(root) >= 1
+    assert update_up_sections(root) == 0
 
     child_text = child.read_text(encoding="utf-8")
     assert "Parent:\n[Index](index.md)\nChild:" in child_text
-    assert "BackLink:\n[Index](index.md)" in child_text
+    assert "BackLink:\n[Index](index.md)" not in child_text
 
 
-def test_update_one_adds_backlink_even_when_link_is_also_parent(tmp_path: Path) -> None:
+def test_update_one_hides_backlink_when_link_is_also_parent(tmp_path: Path) -> None:
     root = tmp_path
     source = root / "A.md"
     target = root / "B.md"
     source.write_text("# A\n\n本文 [B](B.md) です。\n\nParent:\nChild:\n[B](B.md)\nBackLink:\n", encoding="utf-8")
     write_note(target, "B", parent="[A](A.md)\n")
+    target.write_text(
+        target.read_text(encoding="utf-8").replace("BackLink:\n", "BackLink:\n[A](A.md)\n"),
+        encoding="utf-8",
+    )
 
     assert update_one(source, root) == "yurii_PKM: updated backlink:1"
 
     target_text = target.read_text(encoding="utf-8")
     assert "Parent:\n[A](A.md)\nChild:" in target_text
-    assert "BackLink:\n[A](A.md)" in target_text
+    assert "[A](A.md)" not in target_text.split("BackLink:", 1)[1]
 
 
 def test_update_all_rebuilds_parent_exactly_from_child_links(tmp_path: Path) -> None:
