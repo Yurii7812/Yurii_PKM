@@ -41,6 +41,10 @@ let g:yurii_pkm_root = expand('~/memo')
 3. `<Tab>` / `<S-Tab>` でリンク移動、`<Enter>` でリンクを開く。
 4. `nt` でタイトル編集、`bc` / `at` でリンク操作を行う。
 
+### 現在のファイルをブラウザで開く
+
+Normal モードで `gm` を押すと、現在のファイルを開きます。Linux では `xdg-open`、WSL では Windows 側の既定ブラウザを使用します。WSL で `wslview` があればそれを優先し、無い場合は Windows 標準の `cmd.exe` に `file://` URI を渡します。
+
 ---
 
 ## 推奨設定

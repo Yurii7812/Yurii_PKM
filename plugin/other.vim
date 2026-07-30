@@ -103,7 +103,31 @@ let g:yurii_pkm_link_color_cterm = '81'
 set backspace=indent,eol,start
 
 
-" 既定アプリで開く
+" WSL かどうかを Vim/Neovim のビルドに依存せず判定する。
+" has('wsl') を持たない Vim でも WSL_DISTRO_NAME / /proc から判定できる。
+function! s:is_wsl() abort
+  if has('wsl') || exists('$WSL_DISTRO_NAME') || exists('$WSL_INTEROP')
+    return 1
+  endif
+  if filereadable('/proc/sys/kernel/osrelease')
+    return join(readfile('/proc/sys/kernel/osrelease'), '') =~? 'microsoft\|wsl'
+  endif
+  return 0
+endfunction
+
+" Windows 側のブラウザに渡す file URI を作る。cmd.exe のメタ文字も
+" URI エンコードし、空白や & を含むパスでも start の解釈を壊さない。
+function! s:windows_file_uri(path) abort
+  let l:uri = substitute(a:path, '\\', '/', 'g')
+  let l:uri = substitute(l:uri, '%', '%25', 'g')
+  let l:uri = substitute(l:uri, ' ', '%20', 'g')
+  let l:uri = substitute(l:uri, '#', '%23', 'g')
+  let l:uri = substitute(l:uri, '&', '%26', 'g')
+  let l:uri = substitute(l:uri, '?', '%3F', 'g')
+  return 'file:///' . l:uri
+endfunction
+
+" 既定アプリで開く。WSL では Windows 側の既定ブラウザを使う。
 function! s:open_with_default_app(path) abort
   let l:path = empty(a:path) ? expand('%:p') : a:path
   if empty(l:path)
@@ -111,15 +135,24 @@ function! s:open_with_default_app(path) abort
     return
   endif
 
-  if has('wsl')
-    let l:winpath = substitute(system('wslpath -w ' . shellescape(l:path)), '\n\+$', '', '')
+  if s:is_wsl()
     if executable('wslview')
       call system('wslview ' . shellescape(l:path) . ' >/dev/null 2>&1 &')
-    elseif !empty(l:winpath)
-      call system('cmd.exe /C start "" ' . shellescape(l:winpath) . ' >NUL 2>&1')
-    else
-      echohl WarningMsg | echom 'open-default: failed to convert WSL path' | echohl None
+      return
     endif
+
+    if !executable('wslpath') || !executable('cmd.exe')
+      echohl WarningMsg | echom 'open-default: wslview or Windows interop is required' | echohl None
+      return
+    endif
+
+    let l:winpath = trim(system('wslpath -w ' . shellescape(l:path)))
+    if v:shell_error != 0 || empty(l:winpath)
+      echohl WarningMsg | echom 'open-default: failed to convert WSL path' | echohl None
+      return
+    endif
+    let l:uri = s:windows_file_uri(l:winpath)
+    call system('cmd.exe /C start "" ' . shellescape(l:uri) . ' >/dev/null 2>&1')
   else
     call system('xdg-open ' . shellescape(l:path) . ' >/dev/null 2>&1 &')
   endif
