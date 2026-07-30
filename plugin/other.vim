@@ -168,19 +168,30 @@ colorscheme kalisi
 " !系コマンドを常にsilentで実行
 cmap <expr> <CR> getcmdtype() == ':' && getcmdline() =~ '^\s*!' ? '<C-\>e"silent " . getcmdline()<CR><CR>' : '<CR>'
 
-function! s:RedrawAfterShell() abort
+function! s:RedrawAfterShell(...) abort
   redrawstatus
-  redraw
+  redraw!
+endfunction
+
+function! s:ScheduleRedrawAfterShell() abort
+  " ShellCmdPost can run before Vim has restored the terminal after :silent !.
+  " Deferring the forced redraw prevents the shell's cleared screen from being
+  " left visible, including when the command removes the current file.
+  if exists('*timer_start')
+    call timer_start(0, function('s:RedrawAfterShell'))
+  else
+    call s:RedrawAfterShell()
+  endif
 endfunction
 
 " :! 系コマンドは silent 実行後に画面が再描画されないことがあるため、
-" 通常の redraw を既定で行います。特に :!rm % のように現在のファイルを
-" 外部コマンドで削除した場合、端末の内容が黒いまま残るのを防ぎます。
+" 端末復帰後に強制 redraw を既定で行います。特に :!rm % のように現在の
+" ファイルを外部コマンドで削除した場合、端末の内容が黒いまま残るのを防ぎます。
 " ちらつきが気になる場合は g:yurii_redraw_after_silent_shell = 0 で無効化できます。
 if get(g:, 'yurii_redraw_after_silent_shell', 1)
   augroup yurii_shell_redraw
     autocmd!
-    autocmd ShellCmdPost * call s:RedrawAfterShell()
+    autocmd ShellCmdPost * call s:ScheduleRedrawAfterShell()
   augroup END
 elseif get(g:, 'yurii_force_redraw_after_shell', 0)
   augroup yurii_shell_redraw
