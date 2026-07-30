@@ -475,11 +475,10 @@ def build_back(
     note_path: Path,
     existing_lines: list[str],
     category_parents: set[Path] | None = None,
-    suppress_default_index: bool = False,
 ) -> list[str]:
     """Build Back section content from parent paths."""
     from_dir = note_path.parent
-    include_index = note_path.name != 'index.md' and not suppress_default_index
+    include_index = note_path.name != 'index.md'
 
     existing_index = ''
     for line in existing_lines:
@@ -1377,7 +1376,6 @@ def sync_backlinks_for_file(file_path: Path, root: Path, index: NotesIndex | Non
             target_path,
             section_content(target_lines, "backlink"),
             category_parents={file_path} if get_filetype(file_path) == "K" else set(),
-            suppress_default_index=(root / "index.md").resolve() in parent_targets,
         )
         new_lines = replace_section(target_lines, "backlink", new_back)
         if new_lines != target_lines:
@@ -1420,7 +1418,6 @@ def sync_backlinks_for_file(file_path: Path, root: Path, index: NotesIndex | Non
             new_backlink_targets,
             target_path,
             section_content(target_lines, "backlink"),
-            suppress_default_index=(root / "index.md").resolve() in parent_targets,
         )
         new_lines = replace_section(target_lines, "backlink", new_back)
         if new_lines != target_lines:
@@ -1518,7 +1515,6 @@ def update_up_sections(
                     backlinks_parents,
                     p,
                     existing_back,
-                    suppress_default_index=(root / "index.md").resolve() in structural_parents,
                 )
                 new_lines = replace_section(new_lines, "backlink", new_back)
 
