@@ -30,7 +30,7 @@ from typing import Iterable
 
 HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
-GALLERY_PROTOCOL_VERSION = "5"
+GALLERY_PROTOCOL_VERSION = "6"
 IMAGE_EXTENSIONS = {".avif", ".bmp", ".gif", ".jpeg", ".jpg", ".png", ".svg", ".webp"}
 MARKDOWN_IMAGE_RE = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
 HTML_IMAGE_RE = re.compile(r"<img\b[^>]*\bsrc\s*=\s*(?:[\"']([^\"']+)[\"']|([^\s>]+))[^>]*>", re.IGNORECASE)
@@ -38,6 +38,7 @@ WIKI_IMAGE_RE = re.compile(r"!?\[\[([^\]|]+)(?:\|([^\]]+))?\]\]")
 MARKDOWN_LOCAL_LINK_RE = re.compile(r"(?<!!)\[([^\]]*)\]\(([^)]+)\)")
 MARKDOWN_LINK_RE = re.compile(r"\[([^\]]+)\]\((https?://[^)]+)\)")
 URL_RE = re.compile(r"https?://[^\s<>)\"]+")
+WINDOWS_DRIVE_PATH_RE = re.compile(r"^[A-Za-z]:[\\/]")
 
 
 def normalize_port(port: int | str | None) -> int:
@@ -98,6 +99,10 @@ def markdown_url_to_path(note_path: Path, raw_url: str) -> Path | None:
     value = strip_wrapping(raw_url)
     if not value or is_remote_url(value):
         return None
+    # urlparse treats ``C:\images\photo.jpg`` as a URL with scheme "c".
+    # Drive-letter paths are ordinary local paths on Windows, not URLs.
+    if WINDOWS_DRIVE_PATH_RE.match(value):
+        return Path(urllib.parse.unquote(value)).resolve()
     parsed = urllib.parse.urlparse(value)
     if parsed.scheme and parsed.scheme != "file":
         return None
@@ -112,6 +117,8 @@ def is_potential_local_image_url(raw_url: str) -> bool:
     value = strip_wrapping(raw_url)
     if not value or is_remote_url(value):
         return False
+    if WINDOWS_DRIVE_PATH_RE.match(value):
+        return Path(urllib.parse.unquote(value)).suffix.lower() in IMAGE_EXTENSIONS
     parsed = urllib.parse.urlparse(value)
     if parsed.scheme and parsed.scheme != "file":
         return False
@@ -620,13 +627,29 @@ def choose_gallery_port(preferred_port: int) -> int | None:
 
 def start_server(port: int) -> None:
     script = Path(__file__).resolve()
-    subprocess.Popen(
-        [sys.executable, str(script), "--serve", "--port", str(port)],
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-    )
+    kwargs: dict[str, object] = {
+        "stdin": subprocess.DEVNULL,
+        "stdout": subprocess.DEVNULL,
+        "stderr": subprocess.DEVNULL,
+    }
+    if os.name == "nt":
+        # Keep the localhost server alive after Vim (or a terminal Vim job)
+        # releases the short-lived launcher process on Windows.
+        kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
+    else:
+        kwargs["start_new_session"] = True
+    subprocess.Popen([sys.executable, str(script), "--serve", "--port", str(port)], **kwargs)
+
+
+def open_browser(url: str) -> bool:
+    """Open *url*, using the Windows shell association when available."""
+    if os.name == "nt" and hasattr(os, "startfile"):
+        try:
+            os.startfile(url)  # type: ignore[attr-defined]
+            return True
+        except OSError:
+            pass
+    return bool(webbrowser.open(url))
 
 
 def ensure_server(port: int) -> int | None:
@@ -652,7 +675,7 @@ def open_gallery(note_file: str, port: int, root: str | None = None) -> int:
         root_path = Path(root).expanduser().resolve()
         if root_path.is_dir():
             url += f"&root={urllib.parse.quote(str(root_path))}"
-    webbrowser.open(url)
+    open_browser(url)
     print(url)
     return 0
 
@@ -663,7 +686,7 @@ def open_folder_gallery(folder: str, port: int) -> int:
         return 1
     folder_path = Path(folder).expanduser().resolve()
     url = f"http://{HOST}:{selected_port}/folder?dir={urllib.parse.quote(str(folder_path))}&v={GALLERY_PROTOCOL_VERSION}"
-    webbrowser.open(url)
+    open_browser(url)
     print(url)
     return 0
 
