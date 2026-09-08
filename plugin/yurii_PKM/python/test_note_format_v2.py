@@ -239,6 +239,35 @@ def test_typed_link_suppresses_backlink() -> None:
         check("バックリンク" not in dn, "バックリンク: A は出さない（型で表示済み）")
 
 
+
+def test_foreign_file_untouched() -> None:
+    print("integrate: 見張り無しの外部ファイル（日記）は書き換えない")
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        diary = root / "diary" / "2024-05-01.md"
+        diary.parent.mkdir(parents=True)
+        raw = ("# 2024-05-01\n\n今日は晴れ。\n\n---\n\n"
+               "考えごと。ワード: これも本文。詳しくは [瞑想メモ](../20250104.md)。\n")
+        diary.write_text(raw, encoding="utf-8")
+        note(root / "20250104.md", "瞑想メモ")
+        v2.sync_vault(root)
+        check(diary.read_text(encoding="utf-8") == raw, "日記ファイルはバイト単位で不変")
+        _up, dn = regions((root / "20250104.md").read_text(encoding="utf-8"))
+        check("バックリンク: [2024-05-01](diary/2024-05-01.md)" in dn,
+              "日記からの本文リンクは PKM 側に バックリンク として出る")
+
+
+def test_pkm_raw_optout() -> None:
+    print("integrate: front matter の pkm: raw で除外")
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        raw = "---\ntitle: 生ログ\npkm: raw\n---\n\n# 生ログ\n\nカテゴリー: [x](x.md)\n"
+        p = root / "raw.md"
+        p.write_text(raw, encoding="utf-8")
+        v2.sync_vault(root)
+        check(p.read_text(encoding="utf-8") == raw, "pkm: raw のファイルは不変（カテゴリー: も解釈しない）")
+
+
 def main() -> int:
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

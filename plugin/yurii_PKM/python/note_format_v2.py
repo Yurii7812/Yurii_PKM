@@ -50,13 +50,15 @@ _RESERVED = {_EXTRA, BACKLINK}
 
 
 class Note:
-    __slots__ = ("path", "fm", "title", "body", "up", "down")
+    __slots__ = ("path", "fm", "title", "body", "up", "down", "managed")
 
-    def __init__(self, path, fm, title, body, up, down):
+    def __init__(self, path, fm, title, body, up, down, managed=True):
         self.path: Path = Path(path)
         self.fm: list[str] = fm
         self.title: str = title
         self.body: list[str] = body
+        # managed=False: PKM 形式でない外部ファイル（日記など）。sync は書き換えない。
+        self.managed: bool = managed
         self.up: dict[str, list[tuple[str, str, str | None]]] = up
         self.down: dict[str, list[tuple[str, str, str | None]]] = down
 
@@ -205,19 +207,29 @@ def parse_note(path, text: str | None = None) -> Note:
 
     stripped = [ln.strip() for ln in rest]
 
+    # front matter で明示的に除外（pkm: raw / sync: false）
+    if re.search(r"^\s*(pkm\s*:\s*raw|sync\s*:\s*(?:false|off|no))\s*$", "\n".join(fm), re.I | re.M):
+        body = list(rest)
+        while body and body[-1].strip() == "":
+            body.pop()
+        return Note(p, fm, title, body, {}, {}, managed=False)
+
     # 見張り行: HTML コメント。レンダラで不可視・見出し化しない・本文と衝突しない。
     if UP_MARK in stripped and DOWN_MARK in stripped:
         u = len(stripped) - 1 - stripped[::-1].index(UP_MARK)
         d = len(stripped) - 1 - stripped[::-1].index(DOWN_MARK)
-        if u > d:  # 順序が壊れていたら後勝ち
+        if u > d:
             u = stripped.index(UP_MARK)
         body_lines = rest[:u]
         up_lines = rest[u + 1: d]
         down_lines: list[str] = rest[d + 1:]
     else:
-        # --- 旧形式からの移行 ---
+        # --- 旧形式からの移行。関係らしい中身がある時だけ構造扱いする ---
         div_idx = [i for i, s in enumerate(stripped) if DIVIDER_RE.match(s)]
-        if len(div_idx) >= 2:  # 旧 v2: `---` 2 本
+        if len(div_idx) >= 2 and (
+            _has_relation_header(rest[div_idx[-2] + 1:])
+            or all(x == "" for x in stripped[div_idx[-2] + 1:])
+        ):  # 旧 v2: `---` 2 本
             body_lines = rest[:div_idx[-2]]
             up_lines = rest[div_idx[-2] + 1: div_idx[-1]]
             down_lines = rest[div_idx[-1] + 1:]
@@ -232,7 +244,11 @@ def parse_note(path, text: str | None = None) -> Note:
             body, up, down = _migrate_legacy(rest)
             return Note(p, fm, title, body, up, down)
         else:
-            body_lines, up_lines, down_lines = rest, [], []
+            # PKM 形式でない外部ファイル（日記など）。読むだけ、書き換えない。
+            body = list(rest)
+            while body and body[-1].strip() == "":
+                body.pop()
+            return Note(p, fm, title, body, {}, {}, managed=False)
 
     body = list(body_lines)
     while body and body[-1].strip() == "":
@@ -525,6 +541,8 @@ def sync_vault(root) -> int:
 
     changed = 0
     for n in notes:
+        if not n.managed:  # 外部ファイル（日記など）は絶対に書き換えない
+            continue
         new_text = render_note(n)
         if new_text != n.path.read_text(encoding="utf-8"):
             n.path.write_text(new_text, encoding="utf-8")
