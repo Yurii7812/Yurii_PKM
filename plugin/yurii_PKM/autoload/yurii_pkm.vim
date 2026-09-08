@@ -2241,12 +2241,17 @@ function! s:body_top_insert_line() abort
   return 1
 endfunction
 
+" a:1 = prefix（v1 用）/ v2 では a:1 を attribute として扱う（空なら付けない）
 function! yurii_pkm#note_template(title, ...) abort
+  let l:attr = (a:0 > 0 && s:pkm_format() ==# 'v2') ? a:1 : ''
   let l:header = [
         \ '---',
         \ 'time: ' . yurii_pkm#timestamp_yaml(),
         \ 'title: ' . a:title,
         \ ]
+  if l:attr !=# ''
+    call add(l:header, 'attribute: ' . l:attr)
+  endif
   call add(l:header, '---')
   if s:pkm_format() ==# 'v2'
     return l:header + [
@@ -2277,21 +2282,21 @@ endfunction
 " 逆側は書かない。sync が相方ノートの下側に生成する。
 " ---------------------------------------------------------------------------
 
-let s:v2_relations = ['所属', '前提', '論点', '見解', 'ワード', '関連']
+let s:v2_relations = ['所属', '前提', 'ワード', '関連']
+let s:v2_attrs     = ['論点', '見解', 'カテゴリー', '日記']
 
-" 数字で関係(relation)を選ぶ。末尾は「入力」= 自由に関係名を打つ。空文字 = キャンセル。
-function! s:v2_pick_relation() abort
+" 数字で 1 項目選ぶ共通ピッカー。末尾は「入力」= 自由入力。'' = キャンセル（Esc/q）。
+function! s:v2_pick(label, items) abort
   let l:menu = []
   let l:i = 1
-  for l:t in s:v2_relations
+  for l:t in a:items
     call add(l:menu, l:i . ' ' . l:t)
     let l:i += 1
   endfor
   call add(l:menu, l:i . ' 入力')
-  echo 'relation  ' . join(l:menu, '   ') . '    (Esc / q: キャンセル)'
+  echo a:label . '  ' . join(l:menu, '   ') . '    (Esc / q: キャンセル)'
   let l:c = getchar()
   redraw
-  " Esc(27) / Ctrl-C(3) / q でキャンセル
   if type(l:c) == v:t_number && (l:c == 27 || l:c == 3)
     return ''
   endif
@@ -2300,18 +2305,35 @@ function! s:v2_pick_relation() abort
     return ''
   endif
   let l:n = str2nr(l:ch)
-  if l:n >= 1 && l:n <= len(s:v2_relations)
-    return s:v2_relations[l:n - 1]
+  if l:n >= 1 && l:n <= len(a:items)
+    return a:items[l:n - 1]
   endif
-  if l:n == len(s:v2_relations) + 1
-    let l:custom = ''
+  if l:n == len(a:items) + 1
     try
-      let l:custom = trim(input('関係（空でキャンセル）: '))
+      return trim(input(a:label . '（空でキャンセル）: '))
     catch /^Vim:Interrupt$/
       return ''
     endtry
-    return l:custom
   endif
+  return ''
+endfunction
+
+function! s:v2_pick_relation() abort
+  return s:v2_pick('relation', s:v2_relations)
+endfunction
+
+function! s:v2_pick_attr() abort
+  return s:v2_pick('attribute', s:v2_attrs)
+endfunction
+
+" 現在バッファの front matter から attribute: を読む（無ければ ''）
+function! s:v2_current_attr() abort
+  if getline(1) !~# '^---\s*$' | return '' | endif
+  for l:i in range(2, min([20, line('$')]))
+    if getline(l:i) =~# '^---\s*$' | break | endif
+    let l:m = matchstr(getline(l:i), '^\s*\%(attribute\|属性\)\s*:\s*\zs.\{-}\ze\s*$')
+    if l:m !=# '' | return trim(l:m, "\"'") | endif
+  endfor
   return ''
 endfunction
 
@@ -2439,13 +2461,12 @@ function! s:v2_new_related(below, ...) abort
     echohl WarningMsg | echo 'yurii_PKM: 名前付きバッファで実行して' | echohl NONE
     return
   endif
-  " 関係を先に決める。キャンセルならファイルを作らずに終了。
+  " ① 新ノートの属性 → ② 関係。どちらもキャンセルでファイルを作らず終了。
+  let l:attr = s:v2_pick_attr()
+  if l:attr ==# '' | echo 'yurii_PKM: キャンセル' | return | endif
   let l:rel = (a:0 > 0 && a:1 !=# '') ? a:1 : s:v2_pick_relation()
-  if l:rel ==# ''
-    echo 'yurii_PKM: キャンセル'
-    return
-  endif
-  " 関連 は対称関係なので必ず下側（されている）へ
+  if l:rel ==# '' | echo 'yurii_PKM: キャンセル' | return | endif
+  " 関連 は対称なので必ず下側（されている）へ
   let l:below = (l:rel ==# '関連') ? 1 : a:below
 
   let l:dir = expand('%:p:h')
@@ -2460,7 +2481,7 @@ function! s:v2_new_related(below, ...) abort
     return  " 現ノートが v2 形式でない（見張りなし）
   endif
 
-  call writefile(yurii_pkm#note_template(l:ts), l:file)
+  call writefile(yurii_pkm#note_template(l:ts, l:attr), l:file)
   silent noautocmd write
   call s:run_update_one_for(l:cur)
   execute 'edit ' . fnameescape(l:file)
@@ -2487,10 +2508,12 @@ function! yurii_pkm#v2_new_here() abort
     echohl WarningMsg | echo 'yurii_PKM: 名前付きバッファで実行して' | echohl NONE
     return
   endif
+  let l:attr = s:v2_pick_attr()
+  if l:attr ==# '' | echo 'yurii_PKM: キャンセル' | return | endif
   let l:dir = expand('%:p:h')
   let l:ts  = yurii_pkm#timestamp_filename()
   let l:file = s:join_path(l:dir, l:ts . '.md')
-  call writefile(yurii_pkm#note_template(l:ts), l:file)
+  call writefile(yurii_pkm#note_template(l:ts, l:attr), l:file)
   let l:save_ai = &autoindent | let l:save_si = &smartindent
   setlocal noautoindent nosmartindent
   call append(line('.'), '[' . l:ts . '](' . l:ts . '.md)')
@@ -2498,6 +2521,41 @@ function! yurii_pkm#v2_new_here() abort
   silent noautocmd write
   call s:run_update_one_for(l:cur)
   execute 'edit ' . fnameescape(l:file)
+endfunction
+
+" 現在ノートの属性を変更する（:V2Attr / \pa）。引数なしならピッカー。
+function! yurii_pkm#v2_set_attr(...) abort
+  if s:pkm_format() !=# 'v2'
+    echo 'yurii_PKM: v2 専用' | return
+  endif
+  if getline(1) !~# '^---\s*$'
+    echohl WarningMsg | echo 'yurii_PKM: front matter が無い' | echohl NONE | return
+  endif
+  let l:val = (a:0 > 0 && a:1 !=# '') ? a:1 : s:v2_pick_attr()
+  if l:val ==# '' | echo 'yurii_PKM: キャンセル' | return | endif
+  " front matter 内の attribute:/属性: 行を探す
+  let l:fm_end = 0
+  for l:i in range(2, min([40, line('$')]))
+    if getline(l:i) =~# '^---\s*$' | let l:fm_end = l:i | break | endif
+  endfor
+  if l:fm_end == 0 | echohl WarningMsg | echo 'yurii_PKM: front matter が閉じてない' | echohl NONE | return | endif
+  let l:done = 0
+  for l:i in range(2, l:fm_end - 1)
+    if getline(l:i) =~# '^\s*\%(attribute\|属性\)\s*:'
+      call setline(l:i, 'attribute: ' . l:val)
+      let l:done = 1 | break
+    endif
+  endfor
+  if !l:done
+    " title: の直後、無ければ fm 末尾直前に挿入
+    let l:at = l:fm_end - 1
+    for l:i in range(2, l:fm_end - 1)
+      if getline(l:i) =~# '^\s*title\s*:' | let l:at = l:i | break | endif
+    endfor
+    call append(l:at, 'attribute: ' . l:val)
+  endif
+  silent! write
+  echo 'yurii_PKM: attribute = ' . l:val
 endfunction
 
 " 旧形式（v1 の Parent:/Child: / 旧 `---`）を v2 へ明示変換。
