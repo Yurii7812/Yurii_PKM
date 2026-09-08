@@ -1,0 +1,181 @@
+#!/usr/bin/env python3
+"""note_format_v2 の自己完結テスト（pytest 非依存）。
+
+    python3 test_note_format_v2.py
+"""
+from __future__ import annotations
+
+import sys
+import tempfile
+from pathlib import Path
+
+import note_format_v2 as v2
+
+_FAILED: list[str] = []
+
+
+def check(cond: bool, msg: str) -> None:
+    if cond:
+        print(f"  ok   {msg}")
+    else:
+        print(f"  FAIL {msg}")
+        _FAILED.append(msg)
+
+
+def regions(text: str) -> tuple[str, str]:
+    """(上側リージョン, 下側リージョン) を返す。上側は本文 + している、下側は されている。"""
+    parts = text.split("\n---\n")
+    up = parts[1] if len(parts) > 1 else ""
+    down = parts[2] if len(parts) > 2 else ""
+    return up, down
+
+
+def note(path: Path, title: str, up: str = "", down: str = "") -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    txt = f"---\ntime: 2026-01-01 00:00:00\ntitle: {title}\n---\n\n# {title}\n\n本文。\n"
+    if up:
+        txt += "\n" + up.strip("\n") + "\n"
+    txt += "\n---\n"
+    if down:
+        txt += down.strip("\n") + "\n"
+    path.write_text(txt, encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------
+
+def test_parse_inline_and_block_roundtrip() -> None:
+    print("parse: インライン / ブロックの往復")
+    src = (
+        "---\ntime: 2026-01-01 00:00:00\ntitle: A\n---\n\n# A\n\n散文。\n\n"
+        "カテゴリー: [瞑想](20250101.md)\n"
+        "論点:\n[問い](20250111.md) — メモ\n[別の問い](20250112.md)\n\n"
+        "---\n関連: [呼吸法](20250107.md)\n"
+    )
+    n = v2.parse_note(Path("/x/A.md"), src)
+    check(n.title == "A", "title を front matter から取得")
+    check(n.up["カテゴリー"] == [("瞑想", "20250101.md", None)], "インライン 1 本")
+    check(len(n.up["論点"]) == 2, "ブロック 2 本")
+    check(n.up["論点"][0][2] == "メモ", "注釈を保持")
+    check(n.down["関連"] == [("呼吸法", "20250107.md", None)], "下側インライン")
+    out = v2.render_note(n)
+    check("カテゴリー: [瞑想](20250101.md)" in out, "1 本はインラインで出力")
+    check("論点:\n[問い](20250111.md) — メモ" in out, "2 本はブロックで出力")
+    lines = out.split("\n")
+    after_fm = lines[lines.index("---", 1) + 1:]
+    check(after_fm.count("---") == 1, "本文以降の境界 --- は 1 つだけ")
+
+
+def test_normalize_counts() -> None:
+    print("normalize: 本数に応じた整形")
+    src = (
+        "---\ntitle: A\n---\n\n# A\n\n"
+        "論点: [x](20250101.md)\n[y](20250102.md)\n"  # インライン記法だが 2 本
+        "前提:\n[z](20250103.md)\n"                     # ブロック記法だが 1 本
+        "\n---\n"
+    )
+    n = v2.parse_note(Path("/x/A.md"), src)
+    out = v2.render_note(n)
+    check("論点:\n[x](20250101.md)\n[y](20250102.md)" in out, "2 本 → ブロックへ")
+    check("前提: [z](20250103.md)" in out, "1 本 → インラインへ")
+
+
+def test_sync_generates_down() -> None:
+    print("sync: 上側 → 相方の下側 生成")
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        note(root / "20250104.md", "集中と気づき", up="論点: [問い](20250111.md)")
+        note(root / "20250111.md", "瞑想のコツがわからない")
+        v2.sync_vault(root)
+        _u, dn = regions((root / "20250111.md").read_text(encoding="utf-8"))
+        check("論点: [集中と気づき](20250104.md)" in dn, "B の下側に『論点: A』が入る")
+
+
+def test_sync_symmetric_down_edit() -> None:
+    print("sync: 下側の手編集 → 相方の上側へ反映")
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        note(root / "20250104.md", "A")
+        note(root / "20250120.md", "C", down="関連: [A](20250104.md)")
+        v2.sync_vault(root)
+        up, _dn = regions((root / "20250104.md").read_text(encoding="utf-8"))
+        check("関連: [C](20250120.md)" in up, "A の上側に『関連: C』が入る")
+
+
+def test_sync_delete_from_down_removes_up() -> None:
+    print("sync: 下側から削除 → 相方の上側からも消える")
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        note(root / "20250104.md", "A", up="論点: [B](20250111.md)")
+        note(root / "20250111.md", "B")
+        v2.sync_vault(root)
+        b_path = root / "20250111.md"
+        check("論点: [A](20250104.md)" in regions(b_path.read_text(encoding="utf-8"))[1], "まず下側に生成")
+        # ユーザが B の下側から論点行を削除
+        b_path.write_text(
+            "---\ntitle: B\n---\n\n# B\n\n本文。\n\n---\n", encoding="utf-8"
+        )
+        v2.sync_vault(root)
+        up, _dn = regions((root / "20250104.md").read_text(encoding="utf-8"))
+        check("20250111.md" not in up, "A の上側から論点リンクが消える")
+
+
+def test_mutual_link_not_shown_in_down() -> None:
+    print("sync: 相互リンクは下側に出さない")
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        note(root / "20250104.md", "A", up="関連: [B](20250111.md)")
+        note(root / "20250111.md", "B", up="関連: [A](20250104.md)")
+        v2.sync_vault(root)
+        a_down = regions((root / "20250104.md").read_text(encoding="utf-8"))[1]
+        b_down = regions((root / "20250111.md").read_text(encoding="utf-8"))[1]
+        check("20250111.md" not in a_down, "A の下側に B は出ない")
+        check("20250104.md" not in b_down, "B の下側に A は出ない")
+
+
+def test_title_refresh() -> None:
+    print("sync: リンク表示名を相手の現タイトルへ更新")
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        note(root / "20250104.md", "A", up="論点: [ふるいタイトル](20250111.md)")
+        note(root / "20250111.md", "新しいタイトル")
+        v2.sync_vault(root)
+        a = (root / "20250104.md").read_text(encoding="utf-8")
+        check("[新しいタイトル](20250111.md)" in a, "表示名が front matter の title に揃う")
+
+
+def test_subdir_relative_path() -> None:
+    print("sync: サブフォルダ間は相対パス")
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        note(root / "20250104.md", "A", up="関連: [B](sub/20250111.md)")
+        note(root / "sub" / "20250111.md", "B")
+        v2.sync_vault(root)
+        b = (root / "sub" / "20250111.md").read_text(encoding="utf-8")
+        check("[A](../20250104.md)" in b, "B から見て ../ 付きで生成")
+
+
+def test_new_skeleton() -> None:
+    print("new: 骨組み生成")
+    with tempfile.TemporaryDirectory() as d:
+        p = Path(d) / "20260909120000.md"
+        v2.make_new(p, "テスト")
+        txt = p.read_text(encoding="utf-8")
+        check(txt.startswith("---\ntime: "), "front matter で始まる")
+        check("# テスト" in txt, "H1 を含む")
+        check(txt.rstrip().endswith("---"), "末尾に境界 --- ")
+
+
+def main() -> int:
+    tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
+    for t in tests:
+        t()
+    print()
+    if _FAILED:
+        print(f"{len(_FAILED)} FAILED")
+        return 1
+    print("all passed")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

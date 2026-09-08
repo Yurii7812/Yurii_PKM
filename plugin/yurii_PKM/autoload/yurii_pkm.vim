@@ -363,8 +363,12 @@ function! s:is_root_note_path(path) abort
         \ && index(split(l:path, s:sep()), '.undo') < 0
 endfunction
 
+function! s:pkm_format() abort
+  return get(g:, 'yurii_pkm_format', 'v1')
+endfunction
+
 function! s:index_template() abort
-  return [
+  let l:head = [
         \ '---',
         \ 'time: ' . yurii_pkm#timestamp_yaml(),
         \ 'title: Index',
@@ -373,6 +377,10 @@ function! s:index_template() abort
         \ '# Index',
         \ '',
         \ ]
+  if s:pkm_format() ==# 'v2'
+    return l:head + ['---']
+  endif
+  return l:head
 endfunction
 
 function! s:setup_persistent_undo_for_root(root) abort
@@ -2158,6 +2166,18 @@ function! yurii_pkm#timestamp_yaml() abort
 endfunction
 
 function! s:k_note_template(title) abort
+  if s:pkm_format() ==# 'v2'
+    return [
+          \ '---',
+          \ 'time: ' . yurii_pkm#timestamp_yaml(),
+          \ 'title: ' . a:title,
+          \ '---',
+          \ '',
+          \ '# ' . a:title,
+          \ '',
+          \ '',
+          \ '---' ]
+  endif
   return [
         \ '---',
         \ 'time: ' . yurii_pkm#timestamp_yaml(),
@@ -2227,6 +2247,15 @@ function! yurii_pkm#note_template(title, ...) abort
         \ 'title: ' . a:title,
         \ ]
   call add(l:header, '---')
+  if s:pkm_format() ==# 'v2'
+    return l:header + [
+          \ '',
+          \ '# ' . a:title,
+          \ '',
+          \ '',
+          \ '---',
+          \ ]
+  endif
   return l:header + [
         \ '',
         \ '# ' . a:title,
@@ -2238,6 +2267,125 @@ function! yurii_pkm#note_template(title, ...) abort
         \ s:canonical_section_title('backlink'),
         \ '[Index](index.md)',
         \ ]
+endfunction
+
+
+" ---------------------------------------------------------------------------
+" v2: 型付きリンク追加（--- より上の「している」側へ 1 行だけ挿入）
+" 逆側は書かない。sync が相方ノートの下側に生成する。
+" ---------------------------------------------------------------------------
+
+let s:v2_type_keys = {'c': 'カテゴリー', 'z': '前提', 'r': '論点', 'w': 'ワード', 'k': '関連'}
+
+function! s:v2_pick_type() abort
+  echo 'type  [c]カテゴリー  [z]前提  [r]論点  [w]ワード  [k]関連'
+  let l:ch = tolower(nr2char(getchar()))
+  redraw
+  return get(s:v2_type_keys, l:ch, '')
+endfunction
+
+" front matter 終端行と、その後ろ最初の単独 --- （上下境界）を返す。
+" 境界が無ければ EOF に追加して行番号を返す。
+function! s:v2_boundaries() abort
+  let l:last = line('$')
+  let l:fm = 0
+  if getline(1) =~# '^---\s*$'
+    for l:i in range(2, l:last)
+      if getline(l:i) =~# '^---\s*$' | let l:fm = l:i | break | endif
+    endfor
+  endif
+  let l:bound = 0
+  for l:i in range(l:fm + 1, l:last)
+    if getline(l:i) =~# '^-\{3,}\s*$' | let l:bound = l:i | break | endif
+  endfor
+  if l:bound == 0
+    call append(l:last, ['', '---'])
+    let l:bound = line('$')
+  endif
+  return [l:fm, l:bound]
+endfunction
+
+function! s:v2_insert_link(type, linktext) abort
+  let [l:fm, l:bound] = s:v2_boundaries()
+
+  " 既存の `型:` ヘッダを上側から探す
+  let l:hdr = 0
+  for l:i in range(l:fm + 1, l:bound - 1)
+    if getline(l:i) =~# '^' . a:type . '\s*:'
+      let l:hdr = l:i | break
+    endif
+  endfor
+
+  if l:hdr == 0
+    " 新規セクションを境界直前（末尾空行の手前）へインラインで挿入
+    let l:ins = l:bound - 1
+    while l:ins > l:fm && getline(l:ins) =~# '^\s*$'
+      let l:ins -= 1
+    endwhile
+    call append(l:ins, a:type . ': ' . a:linktext)
+    return
+  endif
+
+  let l:inline = matchstr(getline(l:hdr), '^' . a:type . '\s*:\s*\zs.*$')
+  if l:inline =~# '\S'
+    " 現在インライン（1 本）→ ブロック化して追記
+    call setline(l:hdr, a:type . ':')
+    call append(l:hdr, [l:inline, a:linktext])
+    return
+  endif
+
+  " 既にブロック → リンク行の末尾を探して追記
+  let l:end = l:hdr
+  for l:i in range(l:hdr + 1, l:bound - 1)
+    if getline(l:i) =~# '^\s*\[[^]]*\]([^)]*)'
+      let l:end = l:i
+    else
+      break
+    endif
+  endfor
+  call append(l:end, a:linktext)
+endfunction
+
+" クリップボード / 無名レジスタの `.md` ファイル名 or `[t](x.md)` を取り込む。
+"   a:1 … 取り込む対象（空ならレジスタから）
+"   a:2 … 型（'カテゴリー' 等 / 'c'z'r'w'k'）。省略時は 1 キーで選択
+function! yurii_pkm#v2_add_link(...) abort
+  let l:raw = a:0 > 0 && a:1 !=# '' ? a:1 : trim(getreg('+'))
+  if l:raw ==# '' | let l:raw = trim(getreg('"')) | endif
+  let l:tgt = matchstr(l:raw, '](\zs[^)]\+\ze)')
+  if l:tgt ==# '' | let l:tgt = l:raw | endif
+  let l:tgt = trim(l:tgt)
+  if l:tgt !~# '\.md$'
+    echohl WarningMsg | echo 'yurii_PKM: .md のファイル名 / リンクが見つからない' | echohl NONE
+    return
+  endif
+  if a:0 > 1 && a:2 !=# ''
+    let l:type = get(s:v2_type_keys, tolower(a:2), a:2)
+  else
+    let l:type = s:v2_pick_type()
+  endif
+  if index(values(s:v2_type_keys), l:type) < 0
+    echo 'yurii_PKM: cancel' | return
+  endif
+
+  let l:root = s:get_pkm_root()
+  let l:title = ''
+  if !empty(l:root)
+    let l:title = s:get_yaml_title(s:join_path(l:root, l:tgt))
+  endif
+  if l:title ==# '' | let l:title = fnamemodify(l:tgt, ':t:r') | endif
+
+  call s:v2_insert_link(l:type, '[' . l:title . '](' . l:tgt . ')')
+  silent! write
+  echo 'yurii_PKM: ' . l:type . ' += ' . l:title
+endfunction
+
+function! s:v2_link_dispatch() abort
+  if s:pkm_format() ==# 'v2'
+    call yurii_pkm#v2_add_link()
+    return 1
+  endif
+  return 0
 endfunction
 
 
@@ -3468,6 +3616,10 @@ endfunction
 " ---------------------------------------------------------------------------
 
 function! yurii_pkm#add_from_clipboard(...) abort
+  if s:pkm_format() ==# 'v2'
+    call yurii_pkm#v2_add_link(a:0 > 0 ? a:1 : '')
+    return
+  endif
   let l:clipboard = s:clipboard_text()
   if empty(l:clipboard)
     echo 'Error: clipboard is empty'
@@ -3564,6 +3716,10 @@ function! yurii_pkm#paste_clipboard_link_here() abort
 endfunction
 
 function! yurii_pkm#add_clipboard_to_branch() abort
+  if s:pkm_format() ==# 'v2'
+    call yurii_pkm#v2_add_link()
+    return
+  endif
   let l:clipboard = s:clipboard_text()
   if empty(l:clipboard)
     echo 'Error: clipboard is empty'
@@ -3605,6 +3761,10 @@ endfunction
 
 
 function! yurii_pkm#add_clipboard_before_up() abort
+  if s:pkm_format() ==# 'v2'
+    call yurii_pkm#v2_add_link()
+    return
+  endif
   let l:current_file = expand('%:p')
   let l:current_title = yurii_pkm#current_title()
 
@@ -3957,6 +4117,11 @@ endfunction
 " ---------------------------------------------------------------------------
 
 function! yurii_pkm#at_add() abort
+  if s:pkm_format() ==# 'v2'
+    " v2: 相方への書き込みは sync に任せる。現ノートの上側へ 1 本足すだけ。
+    call yurii_pkm#v2_add_link()
+    return
+  endif
   let l:current_file  = expand('%:p')
   let l:current_title = yurii_pkm#current_title()
 
