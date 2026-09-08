@@ -174,7 +174,7 @@ def _route_legacy_link(up: dict, ti: str, tg: str, ann: str | None) -> None:
 def _migrate_legacy(lines: list[str]):
     """旧 v1（Parent:/Child:/BackLink:）を v2 の形へ寄せる。
 
-    Parent/Child/Branch のリンク -> ``関連:``、``[Index](index.md)`` -> ``カテゴリー:``。
+    Parent/Child/Branch のリンク -> ``関連:``、``[Index](index.md)`` -> ``所属:``。
     BackLink は捨てる（sync が下側に再生成する）。リンクは失わない。
     """
     body: list[str] = []
