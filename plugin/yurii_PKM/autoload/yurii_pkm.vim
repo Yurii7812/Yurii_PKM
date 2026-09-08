@@ -363,8 +363,12 @@ function! s:is_root_note_path(path) abort
         \ && index(split(l:path, s:sep()), '.undo') < 0
 endfunction
 
+function! s:pkm_format() abort
+  return get(g:, 'yurii_pkm_format', 'v1')
+endfunction
+
 function! s:index_template() abort
-  return [
+  let l:head = [
         \ '---',
         \ 'time: ' . yurii_pkm#timestamp_yaml(),
         \ 'title: Index',
@@ -373,6 +377,10 @@ function! s:index_template() abort
         \ '# Index',
         \ '',
         \ ]
+  if s:pkm_format() ==# 'v2'
+    return l:head + ['---']
+  endif
+  return l:head
 endfunction
 
 function! s:setup_persistent_undo_for_root(root) abort
@@ -2158,6 +2166,18 @@ function! yurii_pkm#timestamp_yaml() abort
 endfunction
 
 function! s:k_note_template(title) abort
+  if s:pkm_format() ==# 'v2'
+    return [
+          \ '---',
+          \ 'time: ' . yurii_pkm#timestamp_yaml(),
+          \ 'title: ' . a:title,
+          \ '---',
+          \ '',
+          \ '# ' . a:title,
+          \ '',
+          \ '',
+          \ '---' ]
+  endif
   return [
         \ '---',
         \ 'time: ' . yurii_pkm#timestamp_yaml(),
@@ -2227,6 +2247,15 @@ function! yurii_pkm#note_template(title, ...) abort
         \ 'title: ' . a:title,
         \ ]
   call add(l:header, '---')
+  if s:pkm_format() ==# 'v2'
+    return l:header + [
+          \ '',
+          \ '# ' . a:title,
+          \ '',
+          \ '',
+          \ '---',
+          \ ]
+  endif
   return l:header + [
         \ '',
         \ '# ' . a:title,

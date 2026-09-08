@@ -447,6 +447,17 @@ def main(argv: list[str]) -> int:
         sync_vault(argv[3])
         print(str(p))
         return 0
+    if mode == "retitle_links":
+        # v1 互換: FILE ROOT OLD NEW。v2 は sync が表示名を現タイトルへ揃えるので
+        # ROOT 全体を回すだけでよい。
+        if len(argv) >= 4:
+            sync_vault(argv[3])
+        print("yurii_PKM: v2 retitle via sync")
+        return 0
+    if mode in {"update_titles", "rename_prefix", "reparent_down_children", "nf"}:
+        # v2 では不要 / 非対応。呼ばれても壊さないよう no-op で返す。
+        print(f"yurii_PKM: v2 ignores mode '{mode}'", file=sys.stderr)
+        return 0
     print(f"unsupported mode: {mode}", file=sys.stderr)
     return 2
 
