@@ -378,7 +378,7 @@ function! s:index_template() abort
         \ '',
         \ ]
   if s:pkm_format() ==# 'v2'
-    return l:head + ['---']
+    return l:head + ['---', '---']
   endif
   return l:head
 endfunction
@@ -2176,6 +2176,7 @@ function! s:k_note_template(title) abort
           \ '# ' . a:title,
           \ '',
           \ '',
+          \ '---',
           \ '---' ]
   endif
   return [
@@ -2254,6 +2255,7 @@ function! yurii_pkm#note_template(title, ...) abort
           \ '',
           \ '',
           \ '---',
+          \ '---',
           \ ]
   endif
   return l:header + [
@@ -2302,37 +2304,39 @@ function! s:v2_pick_type() abort
   return ''
 endfunction
 
-" front matter 終端行と、その後ろ最初の単独 --- （上下境界）を返す。
-" 境界が無ければ EOF に追加して行番号を返す。
+" front matter 終端行と、本文側で末尾寄りの --- 2 本（上側開始 / 下側開始）を返す。
+" 2 本無ければ EOF に補って返す。本文中の --- は末尾 2 本にならないので無視される。
 function! s:v2_boundaries() abort
-  let l:last = line('$')
   let l:fm = 0
   if getline(1) =~# '^---\s*$'
-    for l:i in range(2, l:last)
+    for l:i in range(2, line('$'))
       if getline(l:i) =~# '^---\s*$' | let l:fm = l:i | break | endif
     endfor
   endif
-  let l:bound = 0
-  for l:i in range(l:fm + 1, l:last)
-    if getline(l:i) =~# '^-\{3,}\s*$' | let l:bound = l:i | break | endif
+  let l:marks = []
+  for l:i in range(l:fm + 1, line('$'))
+    if getline(l:i) =~# '^-\{3,}\s*$' | call add(l:marks, l:i) | endif
   endfor
-  if l:bound == 0
-    call append(l:last, ['', '---'])
-    let l:bound = line('$')
+  if len(l:marks) == 0
+    call append(line('$'), ['---', '---'])
+    let l:marks = [line('$') - 1, line('$')]
+  elseif len(l:marks) == 1
+    call append(line('$'), '---')
+    call add(l:marks, line('$'))
   endif
-  return [l:fm, l:bound]
+  return [l:fm, l:marks[-2], l:marks[-1]]
 endfunction
 
-" a:below … 0 = --- より上（している）、1 = --- より下（されている）へ挿入
+" a:below … 0 = 上側（している、2 本の間）、1 = 下側（されている、最後の --- 以降）
 function! s:v2_insert_link(type, linktext, ...) abort
   let l:below = a:0 > 0 ? a:1 : 0
-  let [l:fm, l:bound] = s:v2_boundaries()
+  let [l:fm, l:up_m, l:dn_m] = s:v2_boundaries()
   if l:below
-    let l:lo = l:bound
+    let l:lo = l:dn_m
     let l:hi = line('$') + 1
   else
-    let l:lo = l:fm
-    let l:hi = l:bound
+    let l:lo = l:up_m
+    let l:hi = l:dn_m
   endif
 
   " 該当区間の `型:` ヘッダを探す
@@ -2347,11 +2351,7 @@ function! s:v2_insert_link(type, linktext, ...) abort
     if l:below
       call append(line('$'), a:type . ': ' . a:linktext)
     else
-      let l:ins = l:bound - 1
-      while l:ins > l:fm && getline(l:ins) =~# '^\s*$'
-        let l:ins -= 1
-      endwhile
-      call append(l:ins, a:type . ': ' . a:linktext)
+      call append(l:hi - 1, a:type . ': ' . a:linktext)
     endif
     return
   endif

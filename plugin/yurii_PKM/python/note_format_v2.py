@@ -117,15 +117,22 @@ def _parse_sections(lines: list[str], allow_body: bool):
         if s == "":
             if allow_body and not seen_header:
                 body.append(ln)
+        elif allow_body and not seen_header:
+            body.append(ln)
         else:
-            if allow_body and not seen_header:
-                body.append(ln)
-            else:
-                sections.setdefault(_EXTRA, []).append(ln)
+            sections.setdefault(_EXTRA, []).append(ln)
         i += 1
     while body and body[-1].strip() == "":
         body.pop()
     return body, sections
+
+
+def _has_typed_header(lines: list[str]) -> bool:
+    for j, l in enumerate(lines):
+        m = HEADER_RE.match(l.strip())
+        if m and _looks_like_header(m, lines, j):
+            return True
+    return False
 
 
 def _route_legacy_link(up: dict, ti: str, tg: str, ann: str | None) -> None:
@@ -192,20 +199,37 @@ def parse_note(path, text: str | None = None) -> Note:
     fm, rest = _split_front_matter(raw)
     title = _fm_title(fm) or p.stem
 
-    div = -1
-    for i, ln in enumerate(rest):
-        if DIVIDER_RE.match(ln.strip()):
-            div = i
-            break
+    # front matter を除いた本文側で、末尾寄りの `---` 2 本を構造マーカーにする。
+    #   最後から 2 本目 = 上側（している）の開始 / 最後 = 下側（されている）の開始
+    #   本文中の `---`（水平線）は末尾 2 本にならないので無視される。
+    div_idx = [i for i, ln in enumerate(rest) if DIVIDER_RE.match(ln.strip())]
 
-    if div < 0 and any(LEGACY_HDR_RE.match(l.strip()) for l in rest):
+    if len(div_idx) >= 2:
+        up_start, down_start = div_idx[-2], div_idx[-1]
+        body_lines = rest[:up_start]
+        up_lines = rest[up_start + 1: down_start]
+        down_lines: list[str] = rest[down_start + 1:]
+    elif len(div_idx) == 1 and (
+        _has_typed_header(rest[div_idx[0] + 1:])
+        or all(x.strip() == "" for x in rest[div_idx[0] + 1:])
+    ):
+        # 旧 v2（単一 `---`）を昇格。`---` 以降を上側、下側は空。
+        up_start = div_idx[0]
+        body_lines = rest[:up_start]
+        up_lines = rest[up_start + 1:]
+        down_lines = []
+    elif any(LEGACY_HDR_RE.match(l.strip()) for l in rest):
         body, up, down = _migrate_legacy(rest)
         return Note(p, fm, title, body, up, down)
+    else:
+        body_lines = rest
+        up_lines = []
+        down_lines = []
 
-    up_lines = rest if div < 0 else rest[:div]
-    down_lines: list[str] = [] if div < 0 else rest[div + 1:]
-
-    body, up = _parse_sections(up_lines, allow_body=True)
+    body = list(body_lines)
+    while body and body[-1].strip() == "":
+        body.pop()
+    _, up = _parse_sections(up_lines, allow_body=False)
     _, down = _parse_sections(down_lines, allow_body=False)
     return Note(p, fm, title, body, up, down)
 
@@ -274,12 +298,10 @@ def render_note(note: Note) -> str:
     out.append("")
     out += note.body
 
-    up = _render_group(note.up)
-    if up:
-        out.append("")
-        out += up
-
+    # 本文 → (空行) --- → 上側 → --- → 下側
     out.append("")
+    out.append("---")
+    out += _render_group(note.up)
     out.append("---")
     out += _render_group(note.down, is_down=True)
 
@@ -516,7 +538,7 @@ def make_new(path, title: str = "") -> Path:
     ts = _dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     t = title.strip() or p.stem
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(f"---\ntime: {ts}\ntitle: {t}\n---\n\n# {t}\n\n\n---\n", encoding="utf-8")
+    p.write_text(f"---\ntime: {ts}\ntitle: {t}\n---\n\n# {t}\n\n\n---\n---\n", encoding="utf-8")
     return p
 
 
