@@ -2309,7 +2309,9 @@ endfunction
 let s:v2_up_mark   = '<!-- している -->'
 let s:v2_down_mark = '<!-- されている -->'
 
-" している / されている の見張り行の行番号を返す。無ければ EOF に補う。
+" している / されている の見張り行の行番号を返す。
+" 見張りはノート作成時（テンプレート）にだけ入る。無ければ [0, 0] を返し、
+" 呼び出し側が処理を中止する（後から見張りを追加することは決してしない）。
 function! s:v2_boundaries() abort
   let l:up_m = 0 | let l:dn_m = 0
   for l:i in range(1, line('$'))
@@ -2320,21 +2322,20 @@ function! s:v2_boundaries() abort
   if l:up_m > 0 && l:dn_m > l:up_m
     return [l:up_m, l:dn_m]
   endif
-  if l:dn_m > 0 && l:up_m == 0
-    call append(l:dn_m - 1, s:v2_up_mark)
-    return [l:dn_m, l:dn_m + 1]
-  elseif l:up_m > 0 && l:dn_m == 0
-    call append(l:up_m, s:v2_down_mark)
-    return [l:up_m, l:up_m + 1]
-  endif
-  call append(line('$'), [s:v2_up_mark, s:v2_down_mark])
-  return [line('$') - 1, line('$')]
+  return [0, 0]
 endfunction
 
 " a:below … 0 = 上側（している、見張りの間）、1 = 下側（されている、最後の見張り以降）
 function! s:v2_insert_link(rel, linktext, ...) abort
   let l:below = a:0 > 0 ? a:1 : 0
   let [l:up_m, l:dn_m] = s:v2_boundaries()
+  if l:up_m == 0
+    echohl WarningMsg
+    echo 'yurii_PKM: このノートは v2 形式じゃない（見張りコメントなし）。:V2Migrate で変換して'
+    echohl NONE
+    return 0
+  endif
+  " 以降は必ず 1 を返す（末尾で return 1）
   if l:below
     let l:lo = l:dn_m
     let l:hi = line('$') + 1
@@ -2357,14 +2358,14 @@ function! s:v2_insert_link(rel, linktext, ...) abort
     else
       call append(l:hi - 1, a:rel . ': ' . a:linktext)
     endif
-    return
+    return 1
   endif
 
   let l:inline = matchstr(getline(l:hdr), ':\s*\zs.*$')
   if l:inline =~# '\S'
     call setline(l:hdr, a:rel . ':')
     call append(l:hdr, [l:inline, a:linktext])
-    return
+    return 1
   endif
 
   let l:end = l:hdr
@@ -2376,6 +2377,7 @@ function! s:v2_insert_link(rel, linktext, ...) abort
     endif
   endfor
   call append(l:end, a:linktext)
+  return 1
 endfunction
 
 function! s:v2_title_for(tgt) abort
@@ -2406,9 +2408,10 @@ function! yurii_pkm#v2_add_link(...) abort
   let l:below = a:0 > 2 ? a:3 : 0
 
   let l:title = s:v2_title_for(l:tgt)
-  call s:v2_insert_link(l:rel, '[' . l:title . '](' . l:tgt . ')', l:below)
-  silent! write
-  echo 'yurii_PKM: ' . l:rel . (l:below ? ' ↓ ' : ' ') . '+= ' . l:title
+  if s:v2_insert_link(l:rel, '[' . l:title . '](' . l:tgt . ')', l:below)
+    silent! write
+    echo 'yurii_PKM: ' . l:rel . (l:below ? ' ↓ ' : ' ') . '+= ' . l:title
+  endif
 endfunction
 
 " --- ページを開きながら関連ノートを新規作成。
@@ -2434,10 +2437,12 @@ function! s:v2_new_related(below, ...) abort
   if l:rel !=# ''
     let l:save_ai = &autoindent | let l:save_si = &smartindent
     setlocal noautoindent nosmartindent
-    call s:v2_insert_link(l:rel, '[' . l:ts . '](' . l:ts . '.md)', a:below)
+    let l:ok = s:v2_insert_link(l:rel, '[' . l:ts . '](' . l:ts . '.md)', a:below)
     let &autoindent = l:save_ai | let &smartindent = l:save_si
-    silent noautocmd write
-    call s:run_update_one_for(l:cur)
+    if l:ok
+      silent noautocmd write
+      call s:run_update_one_for(l:cur)
+    endif
   endif
 
   execute 'edit ' . fnameescape(l:file)
@@ -2451,6 +2456,23 @@ endfunction
 " 親ノート: リンクは現ノートの --- より上（新ノートは sync で下側に現ノートを載せる）
 function! yurii_pkm#v2_new_parent(...) abort
   call call('s:v2_new_related', [0] + a:000)
+endfunction
+
+" 旧形式（v1 の Parent:/Child: / 旧 `---`）を v2 へ明示変換。
+"   :V2Migrate       … PKM ルート全体
+"   :V2Migrate %     … 現在のファイルだけ
+function! yurii_pkm#v2_migrate(...) abort
+  if s:pkm_format() !=# 'v2'
+    echo 'yurii_PKM: v2 のみ' | return
+  endif
+  let l:root = s:get_pkm_root()
+  if empty(l:root) | echoerr 'yurii_PKM: PKM ルート未設定' | return | endif
+  let l:args = [s:python_cmd(), g:yurii_pkm_python, 'migrate', l:root]
+  if a:0 > 0 && a:1 !=# ''
+    call add(l:args, a:1 ==# '%' ? expand('%:p') : a:1)
+  endif
+  echo system(join(map(copy(l:args), 'shellescape(v:val)'), ' '))
+  silent! edit
 endfunction
 
 function! s:v2_link_dispatch() abort

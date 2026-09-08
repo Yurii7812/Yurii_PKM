@@ -190,6 +190,9 @@ def test_migrate_legacy_v1_note() -> None:
         p = root / "260909061521.md"
         p.write_text(legacy, encoding="utf-8")
         v2.sync_vault(root)
+        check(p.read_text(encoding="utf-8") == legacy, "sync 単体では旧 v1 を触らない")
+        p.write_text(v2.migrate_note(legacy, str(p)), encoding="utf-8")
+        v2.sync_vault(root)
         txt = p.read_text(encoding="utf-8")
         up, dn = regions(txt)
         check("Parent:" not in txt and "Child:" not in txt and "BackLink:" not in txt,
@@ -261,19 +264,20 @@ def test_pkm_raw_optout() -> None:
     print("integrate: front matter の pkm: raw で除外")
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
-        raw = "---\ntitle: 生ログ\npkm: raw\n---\n\n# 生ログ\n\nカテゴリー: [x](x.md)\n"
-        p = root / "raw.md"
+        raw = ("---\ntitle: 生ログ\npkm: raw\n---\n\n# 生ログ\n\n"
+               "<!-- している -->\nカテゴリー: [x](20250104.md)\n<!-- されている -->\n")
+        p = root / "20250101.md"
         p.write_text(raw, encoding="utf-8")
+        note(root / "20250104.md", "X")
         v2.sync_vault(root)
-        check(p.read_text(encoding="utf-8") == raw, "pkm: raw のファイルは不変（カテゴリー: も解釈しない）")
+        check(p.read_text(encoding="utf-8") == raw, "見張りがあっても pkm: raw なら不変")
 
 
 
-def test_pkmignore_freezes_folder() -> None:
-    print("integrate: .pkmignore のフォルダは完全に凍結（v1 形式でも書き換えない）")
+def test_unmarked_notes_frozen_by_sync() -> None:
+    print("integrate: 見張り無し（v1 形式含む）は sync では絶対に触らない")
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
-        (root / ".pkmignore").write_text("diary/\narchive/\n", encoding="utf-8")
         old = root / "diary" / "20200101120000.md"
         old.parent.mkdir(parents=True)
         v1raw = ("# 2020-01-01\n\n昔のメモ。\n\nParent:\n[何か](20200102120000.md)\n"
@@ -281,11 +285,12 @@ def test_pkmignore_freezes_folder() -> None:
         old.write_text(v1raw, encoding="utf-8")
         note(root / "20250104.md", "現ノート", up="関連: [昔のメモ](diary/20200101120000.md)")
         v2.sync_vault(root)
-        check(old.read_text(encoding="utf-8") == v1raw,
-              "v1 形式の凍結ノートも 1 バイト不変（移行されない）")
+        check(old.read_text(encoding="utf-8") == v1raw, "v1 形式ノートは sync で 1 バイト不変")
         up, _dn = regions((root / "20250104.md").read_text(encoding="utf-8"))
-        check("関連: [昔のメモ](diary/20200101120000.md)" in up,
-              "凍結ノートへのリンクは打った通りに残る（解決も同期もしない）")
+        check("関連: [昔のメモ](diary/20200101120000.md)" in up, "リンクは打った通りに残る")
+        # migrate を明示的に呼ぶと変換される
+        conv = v2.migrate_note(v1raw, str(old))
+        check(conv is not None and "<!-- している -->" in conv, "migrate は v2 化する")
 
 
 def main() -> int:

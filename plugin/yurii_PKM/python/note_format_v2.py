@@ -15,10 +15,15 @@
 - 本文（散文）中のリンクは、明示の関係が無ければ相手の下側に
   ``バックリンク:`` として現れる。
 
+sync が書き換えるのは見張りコメント 2 行を持つノートだけ。旧 v1 / 旧 `---` /
+日記 / 素の散文は触らない。旧形式の一括変換は `migrate` で明示的に行う。
+
 CLI:
     note_format_v2.py update      ROOT
     note_format_v2.py update_one  FILE ROOT
     note_format_v2.py new         FILE ROOT [TITLE]
+    note_format_v2.py migrate     ROOT [FILE]
+    note_format_v2.py dupcheck    DIR_A DIR_B
 """
 from __future__ import annotations
 
@@ -207,55 +212,67 @@ def parse_note(path, text: str | None = None) -> Note:
 
     stripped = [ln.strip() for ln in rest]
 
-    # front matter で明示的に除外（pkm: raw / sync: false）
-    if re.search(r"^\s*(pkm\s*:\s*raw|sync\s*:\s*(?:false|off|no))\s*$", "\n".join(fm), re.I | re.M):
+    # sync が触るのは見張りコメント 2 行を持つファイルだけ。
+    # それ以外（旧 v1 / 旧 --- / 日記 / 素の散文）は managed=False で読むだけ。
+    marked = UP_MARK in stripped and DOWN_MARK in stripped
+    frozen = bool(re.search(
+        r"^\s*(pkm\s*:\s*raw|sync\s*:\s*(?:false|off|no))\s*$",
+        "\n".join(fm), re.I | re.M))
+
+    if not marked or frozen:
         body = list(rest)
         while body and body[-1].strip() == "":
             body.pop()
         return Note(p, fm, title, body, {}, {}, managed=False)
 
-    # 見張り行: HTML コメント。レンダラで不可視・見出し化しない・本文と衝突しない。
+    u = len(stripped) - 1 - stripped[::-1].index(UP_MARK)
+    d = len(stripped) - 1 - stripped[::-1].index(DOWN_MARK)
+    if u > d:
+        u = stripped.index(UP_MARK)
+    body = list(rest[:u])
+    while body and body[-1].strip() == "":
+        body.pop()
+    _, up = _parse_sections(rest[u + 1: d], allow_body=False)
+    _, down = _parse_sections(rest[d + 1:], allow_body=False)
+    return Note(p, fm, title, body, up, down)
+
+
+def migrate_note(text: str, path: str = "note.md") -> str | None:
+    """旧形式（v1 の Parent:/Child:/BackLink: / 旧 `---` v2）を v2 テキストへ変換。
+
+    既に見張りコメントがある / 旧形式と認識できない場合は None。
+    """
+    raw = text.split("\n")
+    fm, rest = _split_front_matter(raw)
+    stripped = [ln.strip() for ln in rest]
     if UP_MARK in stripped and DOWN_MARK in stripped:
-        u = len(stripped) - 1 - stripped[::-1].index(UP_MARK)
-        d = len(stripped) - 1 - stripped[::-1].index(DOWN_MARK)
-        if u > d:
-            u = stripped.index(UP_MARK)
-        body_lines = rest[:u]
-        up_lines = rest[u + 1: d]
-        down_lines: list[str] = rest[d + 1:]
+        return None
+    title = _fm_title(fm) or Path(path).stem
+    div_idx = [i for i, s in enumerate(stripped) if DIVIDER_RE.match(s)]
+
+    if len(div_idx) >= 2 and (
+        _has_relation_header(rest[div_idx[-2] + 1:])
+        or all(x == "" for x in stripped[div_idx[-2] + 1:])
+    ):
+        body_lines = rest[:div_idx[-2]]
+        _, up = _parse_sections(rest[div_idx[-2] + 1: div_idx[-1]], allow_body=False)
+        _, down = _parse_sections(rest[div_idx[-1] + 1:], allow_body=False)
+    elif len(div_idx) == 1 and (
+        _has_relation_header(rest[div_idx[0] + 1:])
+        or all(x == "" for x in stripped[div_idx[0] + 1:])
+    ):
+        body_lines = rest[:div_idx[0]]
+        _, up = _parse_sections(rest[div_idx[0] + 1:], allow_body=False)
+        down = {}
+    elif any(LEGACY_HDR_RE.match(s) for s in stripped):
+        body_lines, up, down = _migrate_legacy(rest)
     else:
-        # --- 旧形式からの移行。関係らしい中身がある時だけ構造扱いする ---
-        div_idx = [i for i, s in enumerate(stripped) if DIVIDER_RE.match(s)]
-        if len(div_idx) >= 2 and (
-            _has_relation_header(rest[div_idx[-2] + 1:])
-            or all(x == "" for x in stripped[div_idx[-2] + 1:])
-        ):  # 旧 v2: `---` 2 本
-            body_lines = rest[:div_idx[-2]]
-            up_lines = rest[div_idx[-2] + 1: div_idx[-1]]
-            down_lines = rest[div_idx[-1] + 1:]
-        elif len(div_idx) == 1 and (
-            _has_relation_header(rest[div_idx[0] + 1:])
-            or all(x == "" for x in stripped[div_idx[0] + 1:])
-        ):  # 旧 v2: 単一 `---`
-            body_lines = rest[:div_idx[0]]
-            up_lines = rest[div_idx[0] + 1:]
-            down_lines = []
-        elif any(LEGACY_HDR_RE.match(s) for s in stripped):  # v1
-            body, up, down = _migrate_legacy(rest)
-            return Note(p, fm, title, body, up, down)
-        else:
-            # PKM 形式でない外部ファイル（日記など）。読むだけ、書き換えない。
-            body = list(rest)
-            while body and body[-1].strip() == "":
-                body.pop()
-            return Note(p, fm, title, body, {}, {}, managed=False)
+        return None
 
     body = list(body_lines)
     while body and body[-1].strip() == "":
         body.pop()
-    _, up = _parse_sections(up_lines, allow_body=False)
-    _, down = _parse_sections(down_lines, allow_body=False)
-    return Note(p, fm, title, body, up, down)
+    return render_note(Note(Path(path), fm, title, body, up, down))
 
 
 def _links_in(lines: list[str]) -> list[str]:
@@ -339,46 +356,16 @@ def render_note(note: Note) -> str:
 # resolution helpers
 # ---------------------------------------------------------------------------
 
-import fnmatch as _fnmatch
-
-
-def load_ignore(root: Path) -> list[str]:
-    """ルート直下 `.pkmignore`（gitignore 風、1 行 1 パターン）を読む。"""
-    fp = root / ".pkmignore"
-    if not fp.exists():
-        return []
-    pats: list[str] = []
-    for ln in fp.read_text(encoding="utf-8").splitlines():
-        ln = ln.strip()
-        if ln and not ln.startswith("#"):
-            pats.append(ln.rstrip("/"))
-    return pats
-
-
-def _is_ignored(rel: str, patterns: list[str]) -> bool:
-    base = rel.rsplit("/", 1)[-1]
-    for pat in patterns:
-        if rel == pat or rel.startswith(pat + "/"):
-            return True  # ディレクトリ丸ごと
-        if _fnmatch.fnmatch(rel, pat) or _fnmatch.fnmatch(base, pat):
-            return True
-    return False
-
-
-def _iter_md(root: Path, ignore: list[str] | None = None):
-    ignore = ignore or []
+def _iter_md(root: Path):
     for p in sorted(root.rglob("*.md")):
-        rel = p.relative_to(root).as_posix()
-        if any(part.startswith(".") for part in rel.split("/")):
-            continue
-        if ignore and _is_ignored(rel, ignore):
+        if any(part.startswith(".") for part in p.relative_to(root).parts):
             continue
         yield p
 
 
-def _index(root: Path, ignore: list[str] | None = None) -> dict[str, list[Path]]:
+def _index(root: Path) -> dict[str, list[Path]]:
     by_name: dict[str, list[Path]] = {}
-    for p in _iter_md(root, ignore):
+    for p in _iter_md(root):
         rp = p.resolve()
         by_name.setdefault(p.name, []).append(rp)
         by_name.setdefault(p.stem, []).append(rp)
@@ -442,13 +429,12 @@ def _save_state(root: Path, present: set[Rel]) -> None:
 
 
 def sync_vault(root) -> int:
-    """vault 全体を 1 パスで整合させる。`.pkmignore` のパスは完全に無視する。"""
+    """vault 全体を 1 パスで整合させる。見張りコメントを持つノートだけを書き換える。"""
     root = Path(root).resolve()
-    ignore = load_ignore(root)
-    by_name = _index(root, ignore)
+    by_name = _index(root)
 
     notes: list[Note] = []
-    for p in _iter_md(root, ignore):
+    for p in _iter_md(root):
         try:
             notes.append(parse_note(p))
         except Exception as exc:  # noqa: BLE001
@@ -525,15 +511,26 @@ def sync_vault(root) -> int:
         types_here.discard(_EXTRA)
         new_up: dict[str, list] = {}
         for t in types_here:
-            order = [rid(tg, n.path.parent) for _ti, tg, _a in n.up.get(t, [])]
-            wanted = [tid for tid in order if tid and (sid, t, tid) in present]
+            orig_title: dict[str, str] = {}
+            order: list[str] = []
+            for _ti, tg, _a in n.up.get(t, []):
+                r = rid(tg, n.path.parent)
+                if r:
+                    order.append(r)
+                    orig_title.setdefault(r, _ti)
+            wanted = [tid for tid in order if (sid, t, tid) in present]
             for (s2, t2, tgt2) in present:
                 if s2 == sid and t2 == t and tgt2 not in wanted:
                     wanted.append(tgt2)
             entries = []
             for tid in wanted:
                 tp = id_to_path[tid]
-                entries.append((by_path[tp].title, _rel(n.path.parent, tp), up_ann.get((sid, t, tid))))
+                tn = by_path.get(tp)
+                if tn is not None and tn.managed:
+                    disp = tn.title  # 管理下のノートは現タイトルへ追従
+                else:  # 外部 / 凍結ノートへのリンクは打った表示名を尊重
+                    disp = orig_title.get(tid) or (tn.title if tn else Path(tid).stem)
+                entries.append((disp, _rel(n.path.parent, tp), up_ann.get((sid, t, tid))))
             entries += up_unresolved[k].get(t, [])
             if entries:
                 new_up[t] = entries
@@ -634,6 +631,27 @@ def main(argv: list[str]) -> int:
         if len(argv) >= 4:
             sync_vault(argv[3])
         print("yurii_PKM: v2 retitle via sync")
+        return 0
+    if mode == "migrate":
+        # 明示的な変換。sync は旧形式を触らないので、これを 1 回走らせて v2 化する。
+        if len(argv) < 3:
+            print("usage: note_format_v2.py migrate ROOT [FILE]", file=sys.stderr)
+            return 2
+        root = Path(argv[2]).resolve()
+        targets = [Path(argv[3])] if len(argv) > 3 else list(_iter_md(root))
+        done = 0
+        for tp in targets:
+            try:
+                cur = tp.read_text(encoding="utf-8")
+            except OSError:
+                continue
+            new = migrate_note(cur, str(tp))
+            if new and new != cur:
+                tp.write_text(new, encoding="utf-8")
+                done += 1
+        if done:
+            sync_vault(root)
+        print(f"yurii_PKM: v2 migrated {done} file(s)")
         return 0
     if mode == "dupcheck":
         # 2 つの vault を merge する前に、同名 .md（＝タイムスタンプ衝突）を洗い出す。
