@@ -364,7 +364,7 @@ function! s:is_root_note_path(path) abort
 endfunction
 
 function! s:pkm_format() abort
-  return get(g:, 'yurii_pkm_format', 'v1')
+  return get(g:, 'yurii_pkm_format', 'v2')
 endfunction
 
 function! s:index_template() abort

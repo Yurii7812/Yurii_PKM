@@ -32,6 +32,8 @@ DIVIDER_RE = re.compile(r"^-{3,}\s*$")
 HEADER_RE = re.compile(r"^(" + "|".join(map(re.escape, TYPES)) + r")\s*:\s*(.*)$")
 # [表示]() 形式のリンク行（末尾に「 — 注釈」を許す）
 LINK_LINE_RE = re.compile(r"^\s*\[([^\]]*)\]\(([^)]+)\)\s*(?:—\s*(.*\S))?\s*$")
+# 旧 v1 の構造見出し
+LEGACY_HDR_RE = re.compile(r"^(Parent|Child|Branch|BackLink|Back)\s*:\s*(.*)$", re.I)
 
 _EXTRA = "_extra"
 
@@ -119,6 +121,61 @@ def _parse_sections(lines: list[str], allow_body: bool):
     return body, sections
 
 
+def _route_legacy_link(up: dict, ti: str, tg: str, ann: str | None) -> None:
+    base = tg.split("#", 1)[0].rsplit("/", 1)[-1].lower()
+    kind = "カテゴリー" if base in ("index.md", "index") else "関連"
+    if all(e[1] != tg for e in up[kind]):
+        up[kind].append((ti, tg, ann))
+
+
+def _migrate_legacy(lines: list[str]):
+    """旧 v1（Parent:/Child:/BackLink:）を v2 の形へ寄せる。
+
+    Parent/Child/Branch のリンク -> `関連:`、`[Index](index.md)` -> `カテゴリー:`。
+    BackLink は捨てる（sync が下側に再生成する）。リンクは失わない。
+    """
+    body: list[str] = []
+    up: dict[str, list] = {t: [] for t in TYPES}
+    down: dict[str, list] = {t: [] for t in TYPES}
+    zone: object = None  # None | "up" | "back" | ("typed", 型)
+    seen = False
+    for ln in lines:
+        s = ln.strip()
+        lm = LINK_LINE_RE.match(s)
+        if lm and lm.group(2).split("#", 1)[0].rsplit("/", 1)[-1].lower() in ("index.md", "index"):
+            _route_legacy_link(up, lm.group(1), lm.group(2), lm.group(3) or None)
+            continue
+        lg = LEGACY_HDR_RE.match(s)
+        if lg:
+            seen = True
+            name = lg.group(1).lower()
+            zone = "back" if name in ("backlink", "back") else "up"
+            inln = LINK_LINE_RE.match(lg.group(2).strip())
+            if inln and zone == "up":
+                _route_legacy_link(up, inln.group(1), inln.group(2), inln.group(3) or None)
+            continue
+        tm = HEADER_RE.match(s)
+        if tm:
+            seen = True
+            zone = ("typed", tm.group(1))
+            inln = LINK_LINE_RE.match(tm.group(2).strip())
+            if inln:
+                up[tm.group(1)].append((inln.group(1), inln.group(2), inln.group(3) or None))
+            continue
+        if lm:
+            if zone == "up":
+                _route_legacy_link(up, lm.group(1), lm.group(2), lm.group(3) or None)
+            elif isinstance(zone, tuple):
+                up[zone[1]].append((lm.group(1), lm.group(2), lm.group(3) or None))
+            # zone == "back" -> drop
+            continue
+        if not seen:
+            body.append(ln)
+    while body and body[-1].strip() == "":
+        body.pop()
+    return body, up, down
+
+
 def parse_note(path, text: str | None = None) -> Note:
     p = Path(path)
     if text is None:
@@ -132,6 +189,11 @@ def parse_note(path, text: str | None = None) -> Note:
         if DIVIDER_RE.match(ln.strip()):
             div = i
             break
+
+    if div < 0 and any(LEGACY_HDR_RE.match(l.strip()) for l in rest):
+        body, up, down = _migrate_legacy(rest)
+        return Note(p, fm, title, body, up, down)
+
     up_lines = rest if div < 0 else rest[:div]
     down_lines: list[str] = [] if div < 0 else rest[div + 1:]
 

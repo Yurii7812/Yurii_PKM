@@ -131,7 +131,7 @@ title: 集中と気づきの違い
 | 項目 | 変更 |
 |---|---|
 | `Parent:` / `Child:` / `BackLink:` | 廃止 → `---` 境界 + 型付きセクション |
-| sync エンジン | `python/note_format_v2.py`（`update` / `update_one`）。v1 の `yurii_pkm_sync.py` は温存し、`g:yurii_pkm_format` で切替 |
+| sync エンジン | `python/note_format_v2.py`。**既定でこれ**。旧 `yurii_pkm_sync.py` は `let g:yurii_pkm_format = 'v1'` を明示した時だけ |
 | `bc` / `ca` / `cu` / `at`（`:BC`/`:CA`/`:CU`/`:AT`） | v2 では `yurii_pkm#v2_add_link()` に集約。型を 1 キー選択（c/z/r/w/k）→ 上側の該当セクションへ **1 行だけ**挿入（1 本＝インライン、2 本目でブロック化）。逆側は書かない |
 | `at`（旧: 相方の Child にも書く） | v2 では現ノートの上側に足すだけ。相方側は sync が生成 |
 | AutoSync / `:UpdateMD` | `note_format_v2.py` を呼ぶ。上下を読んで整合、相互リンク除外、インライン ⇄ ブロック正規化、表示名を現タイトルへ |
@@ -140,8 +140,10 @@ title: 集中と気づきの違い
 
 ### 実装状況（ブランチ `note-format-v2`）
 
-- 済: `note_format_v2.py`（sync / template / new）+ テスト、`g:yurii_pkm_format`
-  切替、テンプレート、`v2_add_link`（`bc`/`ca`/`cu`/`at` から）
+- 済: `note_format_v2.py`（sync / template / new / **旧 v1 の自動移行**）+ テスト、
+  既定を v2 化、テンプレート、`v2_add_link`（`bc`/`ca`/`cu`/`at` から）
+- 旧 v1 ノートは初回 sync で自動変換: Parent/Child/Branch のリンク -> `関連:`、
+  `[Index](index.md)` -> `カテゴリー:`、BackLink は破棄（下側に再生成）。リンクは失わない
 - 未: 移動コマンドの `---` 読み替え、`nc`/`nq` の対話フロー細部、v1 テストの移行
 
 ## 7. 最小の一手（まず入れる分）

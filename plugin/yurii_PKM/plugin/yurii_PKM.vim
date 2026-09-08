@@ -78,16 +78,17 @@ endif
 " Python スクリプトのパス
 let s:plugin_root = fnamemodify(expand('<sfile>:p'), ':h:h')
 
-" ノート形式。'v1' = Parent:/Child:/BackLink:（既定）、'v2' = --- 境界 + 型付きセクション。
-" 詳細は repo の NOTE_FORMAT.md。v2 では sync が note_format_v2.py に切り替わる。
+" ノート形式。既定 'v2' = --- 境界 + 型付きセクション（詳細は repo の NOTE_FORMAT.md）。
+" 旧 Parent:/Child:/BackLink: 形式に固定したい場合のみ 'v1' を明示する。
+" v1 のノートは v2 sync で初回に自動変換される（Parent/Child リンク -> 関連:、Index -> カテゴリー:）。
 if !exists('g:yurii_pkm_format')
-  let g:yurii_pkm_format = 'v1'
+  let g:yurii_pkm_format = 'v2'
 endif
 if !exists('g:yurii_pkm_python')
-  if g:yurii_pkm_format ==# 'v2'
-    let g:yurii_pkm_python = s:plugin_root . '/python/note_format_v2.py'
-  else
+  if g:yurii_pkm_format ==# 'v1'
     let g:yurii_pkm_python = s:plugin_root . '/python/yurii_pkm_sync.py'
+  else
+    let g:yurii_pkm_python = s:plugin_root . '/python/note_format_v2.py'
   endif
 endif
 if !exists('g:yurii_pkm_expand_s_python')

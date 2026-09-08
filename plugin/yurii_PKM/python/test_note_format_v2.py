@@ -165,6 +165,31 @@ def test_new_skeleton() -> None:
         check(txt.rstrip().endswith("---"), "末尾に境界 --- ")
 
 
+
+def test_migrate_legacy_v1_note() -> None:
+    print("migrate: 旧 v1 (Parent/Child/BackLink) を v2 へ寄せる")
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        (root / "260909061513.md").write_text(
+            "---\ntitle: parent-note\n---\n\n# parent-note\n\n---\n", encoding="utf-8")
+        legacy = (
+            "---\ntime: 2026-09-09 06:15:21\ntitle: 260909061521\n---\n\n"
+            "# 260909061521\n\n\n\nParent:\n[260909061513](260909061513.md)\n"
+            "Child:\nBackLink:\n[Index](index.md)\n"
+        )
+        p = root / "260909061521.md"
+        p.write_text(legacy, encoding="utf-8")
+        v2.sync_vault(root)
+        txt = p.read_text(encoding="utf-8")
+        up, dn = regions(txt)
+        check("Parent:" not in txt and "Child:" not in txt and "BackLink:" not in txt,
+              "旧見出しが消える")
+        check("関連: [parent-note](260909061513.md)" in up, "Parent リンク -> 関連: (表示名は現タイトルへ)")
+        check("カテゴリー: [Index](index.md)" in up, "[Index] -> カテゴリー:")
+        ls = txt.split("\n"); af = ls[ls.index("---", 1) + 1:]
+        check(af.count("---") == 1, "本文以降の境界 --- は 1 本")
+
+
 def main() -> int:
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:
