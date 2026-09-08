@@ -268,6 +268,26 @@ def test_pkm_raw_optout() -> None:
         check(p.read_text(encoding="utf-8") == raw, "pkm: raw のファイルは不変（カテゴリー: も解釈しない）")
 
 
+
+def test_pkmignore_freezes_folder() -> None:
+    print("integrate: .pkmignore のフォルダは完全に凍結（v1 形式でも書き換えない）")
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        (root / ".pkmignore").write_text("diary/\narchive/\n", encoding="utf-8")
+        old = root / "diary" / "20200101120000.md"
+        old.parent.mkdir(parents=True)
+        v1raw = ("# 2020-01-01\n\n昔のメモ。\n\nParent:\n[何か](20200102120000.md)\n"
+                 "Child:\nBackLink:\n[Index](index.md)\n")
+        old.write_text(v1raw, encoding="utf-8")
+        note(root / "20250104.md", "現ノート", up="関連: [昔のメモ](diary/20200101120000.md)")
+        v2.sync_vault(root)
+        check(old.read_text(encoding="utf-8") == v1raw,
+              "v1 形式の凍結ノートも 1 バイト不変（移行されない）")
+        up, _dn = regions((root / "20250104.md").read_text(encoding="utf-8"))
+        check("関連: [昔のメモ](diary/20200101120000.md)" in up,
+              "凍結ノートへのリンクは打った通りに残る（解決も同期もしない）")
+
+
 def main() -> int:
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

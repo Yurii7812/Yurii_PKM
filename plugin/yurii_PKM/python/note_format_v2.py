@@ -339,16 +339,46 @@ def render_note(note: Note) -> str:
 # resolution helpers
 # ---------------------------------------------------------------------------
 
-def _iter_md(root: Path):
+import fnmatch as _fnmatch
+
+
+def load_ignore(root: Path) -> list[str]:
+    """ルート直下 `.pkmignore`（gitignore 風、1 行 1 パターン）を読む。"""
+    fp = root / ".pkmignore"
+    if not fp.exists():
+        return []
+    pats: list[str] = []
+    for ln in fp.read_text(encoding="utf-8").splitlines():
+        ln = ln.strip()
+        if ln and not ln.startswith("#"):
+            pats.append(ln.rstrip("/"))
+    return pats
+
+
+def _is_ignored(rel: str, patterns: list[str]) -> bool:
+    base = rel.rsplit("/", 1)[-1]
+    for pat in patterns:
+        if rel == pat or rel.startswith(pat + "/"):
+            return True  # ディレクトリ丸ごと
+        if _fnmatch.fnmatch(rel, pat) or _fnmatch.fnmatch(base, pat):
+            return True
+    return False
+
+
+def _iter_md(root: Path, ignore: list[str] | None = None):
+    ignore = ignore or []
     for p in sorted(root.rglob("*.md")):
-        if any(part.startswith(".") for part in p.relative_to(root).parts):
+        rel = p.relative_to(root).as_posix()
+        if any(part.startswith(".") for part in rel.split("/")):
+            continue
+        if ignore and _is_ignored(rel, ignore):
             continue
         yield p
 
 
-def _index(root: Path) -> dict[str, list[Path]]:
+def _index(root: Path, ignore: list[str] | None = None) -> dict[str, list[Path]]:
     by_name: dict[str, list[Path]] = {}
-    for p in _iter_md(root):
+    for p in _iter_md(root, ignore):
         rp = p.resolve()
         by_name.setdefault(p.name, []).append(rp)
         by_name.setdefault(p.stem, []).append(rp)
@@ -412,12 +442,13 @@ def _save_state(root: Path, present: set[Rel]) -> None:
 
 
 def sync_vault(root) -> int:
-    """vault 全体を 1 パスで整合させる。"""
+    """vault 全体を 1 パスで整合させる。`.pkmignore` のパスは完全に無視する。"""
     root = Path(root).resolve()
-    by_name = _index(root)
+    ignore = load_ignore(root)
+    by_name = _index(root, ignore)
 
     notes: list[Note] = []
-    for p in _iter_md(root):
+    for p in _iter_md(root, ignore):
         try:
             notes.append(parse_note(p))
         except Exception as exc:  # noqa: BLE001
