@@ -22,26 +22,26 @@ def check(cond: bool, msg: str) -> None:
         _FAILED.append(msg)
 
 
+UP_MARK = "<!-- している -->"
+DOWN_MARK = "<!-- されている -->"
+
+
 def regions(text: str) -> tuple[str, str]:
-    """(上側リージョン, 下側リージョン) を返す。末尾側の --- 2 本で区切る。"""
+    """(上側リージョン, 下側リージョン) を返す。見張りコメント行で区切る。"""
     lines = text.split("\n")
-    try:
-        fm_end = lines.index("---", 1)
-    except ValueError:
-        fm_end = -1
-    idx = [i for i in range(fm_end + 1, len(lines)) if lines[i].strip() == "---"]
-    if len(idx) < 2:
+    sl = [l.strip() for l in lines]
+    if UP_MARK not in sl or DOWN_MARK not in sl:
         return "", ""
-    a, b = idx[-2], idx[-1]
-    return "\n".join(lines[a + 1:b]), "\n".join(lines[b + 1:])
+    u, d = sl.index(UP_MARK), sl.index(DOWN_MARK)
+    return "\n".join(lines[u + 1:d]), "\n".join(lines[d + 1:])
 
 
 def note(path: Path, title: str, up: str = "", down: str = "") -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    txt = f"---\ntime: 2026-01-01 00:00:00\ntitle: {title}\n---\n\n# {title}\n\n本文。\n\n---\n"
+    txt = f"---\ntime: 2026-01-01 00:00:00\ntitle: {title}\n---\n\n# {title}\n\n本文。\n\n{UP_MARK}\n"
     if up:
         txt += up.strip("\n") + "\n"
-    txt += "---\n"
+    txt += DOWN_MARK + "\n"
     if down:
         txt += down.strip("\n") + "\n"
     path.write_text(txt, encoding="utf-8")
@@ -53,11 +53,11 @@ def test_parse_inline_and_block_roundtrip() -> None:
     print("parse: インライン / ブロックの往復")
     src = (
         "---\ntime: 2026-01-01 00:00:00\ntitle: A\n---\n\n# A\n\n"
-        "散文。ここに ワード: と書いても本文。\n\n"
-        "---\n"
+        "散文。ここに ワード: と書いても本文。ここに --- も書ける。\n\n"
+        "<!-- している -->\n"
         "カテゴリー: [瞑想](20250101.md)\n"
         "論点:\n[問い](20250111.md) — メモ\n[別の問い](20250112.md)\n"
-        "---\n"
+        "<!-- されている -->\n"
         "関連: [呼吸法](20250107.md)\n"
     )
     n = v2.parse_note(Path("/x/A.md"), src)
@@ -70,19 +70,18 @@ def test_parse_inline_and_block_roundtrip() -> None:
     out = v2.render_note(n)
     check("カテゴリー: [瞑想](20250101.md)" in out, "1 本はインラインで出力")
     check("論点:\n[問い](20250111.md) — メモ" in out, "2 本はブロックで出力")
-    lines = out.split("\n")
-    after_fm = lines[lines.index("---", 1) + 1:]
-    check(after_fm.count("---") == 2, "本文以降の構造マーカー --- は 2 本")
+    check(UP_MARK in out and DOWN_MARK in out, "見張りコメントが両方ある")
+    check(out.count("\n---\n") == 1, "--- は front matter の 1 箇所だけ（本文の --- は保持）")
 
 
 def test_normalize_counts() -> None:
     print("normalize: 本数に応じた整形")
     src = (
         "---\ntitle: A\n---\n\n# A\n\n"
-        "---\n"
+        "<!-- している -->\n"
         "論点: [x](20250101.md)\n[y](20250102.md)\n"  # インライン記法だが 2 本
         "前提:\n[z](20250103.md)\n"                     # ブロック記法だが 1 本
-        "---\n"
+        "<!-- されている -->\n"
     )
     n = v2.parse_note(Path("/x/A.md"), src)
     out = v2.render_note(n)
@@ -173,7 +172,7 @@ def test_new_skeleton() -> None:
         txt = p.read_text(encoding="utf-8")
         check(txt.startswith("---\ntime: "), "front matter で始まる")
         check("# テスト" in txt, "H1 を含む")
-        check(txt.rstrip().endswith("---\n---"), "末尾に --- が 2 本")
+        check(txt.rstrip().endswith(UP_MARK + "\n" + DOWN_MARK), "末尾に見張りコメント 2 行")
 
 
 
@@ -182,7 +181,7 @@ def test_migrate_legacy_v1_note() -> None:
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
         (root / "260909061513.md").write_text(
-            "---\ntitle: parent-note\n---\n\n# parent-note\n\n---\n---\n", encoding="utf-8")
+            "---\ntitle: parent-note\n---\n\n# parent-note\n\n<!-- している -->\n<!-- されている -->\n", encoding="utf-8")
         legacy = (
             "---\ntime: 2026-09-09 06:15:21\ntitle: 260909061521\n---\n\n"
             "# 260909061521\n\n\n\nParent:\n[260909061513](260909061513.md)\n"
@@ -197,15 +196,14 @@ def test_migrate_legacy_v1_note() -> None:
               "旧見出しが消える")
         check("関連: [parent-note](260909061513.md)" in up, "Parent リンク -> 関連: (表示名は現タイトルへ)")
         check("カテゴリー: [Index](index.md)" in up, "[Index] -> カテゴリー:")
-        ls = txt.split("\n"); af = ls[ls.index("---", 1) + 1:]
-        check(af.count("---") == 2, "本文以降の構造マーカー --- は 2 本")
+        check(UP_MARK in txt and DOWN_MARK in txt, "見張りコメント形式に変換される")
 
 
 
 def test_kenkai_and_custom_type() -> None:
     print("type: 見解 と自由入力の型")
-    src = ("---\ntitle: A\n---\n\n# A\n\n本文。\n\n---\n"
-           "見解: [x](20250101.md)\n補足: [y](20250102.md)\n---\n")
+    src = ("---\ntitle: A\n---\n\n# A\n\n本文。\n\n<!-- している -->\n"
+           "見解: [x](20250101.md)\n補足: [y](20250102.md)\n<!-- されている -->\n")
     n = v2.parse_note(Path("/x/A.md"), src)
     check(n.up.get("見解") == [("x", "20250101.md", None)], "見解: を型として認識")
     check(n.up.get("補足") == [("y", "20250102.md", None)], "自由な語:( 補足 ) も型として保持")
@@ -218,7 +216,7 @@ def test_body_link_becomes_backlink() -> None:
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
         (root / "20250104.md").write_text(
-            "---\ntitle: A\n---\n\n# A\n\n詳しくは [B の話](20250111.md) を参照。\n\n---\n---\n",
+            "---\ntitle: A\n---\n\n# A\n\n詳しくは [B の話](20250111.md) を参照。\n\n<!-- している -->\n<!-- されている -->\n",
             encoding="utf-8")
         note(root / "20250111.md", "B")
         v2.sync_vault(root)
@@ -232,8 +230,8 @@ def test_typed_link_suppresses_backlink() -> None:
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
         (root / "20250104.md").write_text(
-            "---\ntitle: A\n---\n\n# A\n\n本文で [B](20250111.md) に触れる。\n\n---\n"
-            "論点: [B](20250111.md)\n---\n", encoding="utf-8")
+            "---\ntitle: A\n---\n\n# A\n\n本文で [B](20250111.md) に触れる。\n\n<!-- している -->\n"
+            "論点: [B](20250111.md)\n<!-- されている -->\n", encoding="utf-8")
         note(root / "20250111.md", "B")
         v2.sync_vault(root)
         _up, dn = regions((root / "20250111.md").read_text(encoding="utf-8"))

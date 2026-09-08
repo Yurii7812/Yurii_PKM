@@ -4,14 +4,15 @@
 詳細仕様は repo ルートの NOTE_FORMAT.md。要点:
 
 - ファイル名 = タイムスタンプのみ。front matter は time / title。
-- 本文の後に型付きセクション（上側 = このノートが「している」こと）。
-- 単独行 ``---`` が上下の境界。その後ろが下側（「されている」こと）。
-- 既知の型: カテゴリー / 前提 / 論点 / 見解 / ワード / 関連。
-  それ以外の ``語:`` 見出しも型として扱う（自由入力）。
-- リンク 1 本は ``型: [t](x.md)`` のインライン、2 本以上は ``型:`` 改行のブロック。
+- 本文の後、``<!-- している -->`` 見張り行から上側（このノートが「している」こと）。
+- ``<!-- されている -->`` 見張り行から下側（「されている」こと）。
+  HTML コメントなのでレンダラで不可視・見出し化しない・本文と衝突しない。
+- 既知の関係: カテゴリー / 前提 / 論点 / 見解 / ワード / 関連。
+  それ以外の ``語:`` 見出しも関係として扱う（自由入力）。
+- リンク 1 本は ``関係: [t](x.md)`` のインライン、2 本以上は ``関係:`` 改行のブロック。
 - 上側が真実。下側は他ノートの上側から導出。上下どちらも編集でき、
   片面の追加 / 削除はもう片面へ反映される（``.pkm_sync_state_v2.json`` で判定）。
-- 本文（散文）中のリンクは、型付きの関係が無ければ相手の下側に
+- 本文（散文）中のリンクは、明示の関係が無ければ相手の下側に
   ``バックリンク:`` として現れる。
 
 CLI:
@@ -28,8 +29,11 @@ import re
 import sys
 from pathlib import Path
 
-KNOWN_TYPES: tuple[str, ...] = ("カテゴリー", "前提", "論点", "見解", "ワード", "関連")
+RELATIONS: tuple[str, ...] = ("カテゴリー", "前提", "論点", "見解", "ワード", "関連")
 BACKLINK = "バックリンク"
+
+UP_MARK = "<!-- している -->"
+DOWN_MARK = "<!-- されている -->"
 
 DIVIDER_RE = re.compile(r"^-{3,}\s*$")
 # 任意の `語:` 見出し（先頭が空白 / # / : でない）。散文除けは _looks_like_header で行う。
@@ -127,7 +131,7 @@ def _parse_sections(lines: list[str], allow_body: bool):
     return body, sections
 
 
-def _has_typed_header(lines: list[str]) -> bool:
+def _has_relation_header(lines: list[str]) -> bool:
     for j, l in enumerate(lines):
         m = HEADER_RE.match(l.strip())
         if m and _looks_like_header(m, lines, j):
@@ -152,7 +156,7 @@ def _migrate_legacy(lines: list[str]):
     body: list[str] = []
     up: dict[str, list] = {}
     down: dict[str, list] = {}
-    zone: object = None  # None | "up" | "back" | ("typed", 型)
+    zone: object = None  # None | "up" | "back" | ("rel", 関係)
     seen = False
     for idx, ln in enumerate(lines):
         s = ln.strip()
@@ -172,7 +176,7 @@ def _migrate_legacy(lines: list[str]):
         tm = HEADER_RE.match(s)
         if tm and _looks_like_header(tm, lines, idx):
             seen = True
-            zone = ("typed", tm.group(1).strip())
+            zone = ("rel", tm.group(1).strip())
             up.setdefault(zone[1], [])
             inln = LINK_LINE_RE.match(tm.group(2).strip())
             if inln:
@@ -199,32 +203,36 @@ def parse_note(path, text: str | None = None) -> Note:
     fm, rest = _split_front_matter(raw)
     title = _fm_title(fm) or p.stem
 
-    # front matter を除いた本文側で、末尾寄りの `---` 2 本を構造マーカーにする。
-    #   最後から 2 本目 = 上側（している）の開始 / 最後 = 下側（されている）の開始
-    #   本文中の `---`（水平線）は末尾 2 本にならないので無視される。
-    div_idx = [i for i, ln in enumerate(rest) if DIVIDER_RE.match(ln.strip())]
+    stripped = [ln.strip() for ln in rest]
 
-    if len(div_idx) >= 2:
-        up_start, down_start = div_idx[-2], div_idx[-1]
-        body_lines = rest[:up_start]
-        up_lines = rest[up_start + 1: down_start]
-        down_lines: list[str] = rest[down_start + 1:]
-    elif len(div_idx) == 1 and (
-        _has_typed_header(rest[div_idx[0] + 1:])
-        or all(x.strip() == "" for x in rest[div_idx[0] + 1:])
-    ):
-        # 旧 v2（単一 `---`）を昇格。`---` 以降を上側、下側は空。
-        up_start = div_idx[0]
-        body_lines = rest[:up_start]
-        up_lines = rest[up_start + 1:]
-        down_lines = []
-    elif any(LEGACY_HDR_RE.match(l.strip()) for l in rest):
-        body, up, down = _migrate_legacy(rest)
-        return Note(p, fm, title, body, up, down)
+    # 見張り行: HTML コメント。レンダラで不可視・見出し化しない・本文と衝突しない。
+    if UP_MARK in stripped and DOWN_MARK in stripped:
+        u = len(stripped) - 1 - stripped[::-1].index(UP_MARK)
+        d = len(stripped) - 1 - stripped[::-1].index(DOWN_MARK)
+        if u > d:  # 順序が壊れていたら後勝ち
+            u = stripped.index(UP_MARK)
+        body_lines = rest[:u]
+        up_lines = rest[u + 1: d]
+        down_lines: list[str] = rest[d + 1:]
     else:
-        body_lines = rest
-        up_lines = []
-        down_lines = []
+        # --- 旧形式からの移行 ---
+        div_idx = [i for i, s in enumerate(stripped) if DIVIDER_RE.match(s)]
+        if len(div_idx) >= 2:  # 旧 v2: `---` 2 本
+            body_lines = rest[:div_idx[-2]]
+            up_lines = rest[div_idx[-2] + 1: div_idx[-1]]
+            down_lines = rest[div_idx[-1] + 1:]
+        elif len(div_idx) == 1 and (
+            _has_relation_header(rest[div_idx[0] + 1:])
+            or all(x == "" for x in stripped[div_idx[0] + 1:])
+        ):  # 旧 v2: 単一 `---`
+            body_lines = rest[:div_idx[0]]
+            up_lines = rest[div_idx[0] + 1:]
+            down_lines = []
+        elif any(LEGACY_HDR_RE.match(s) for s in stripped):  # v1
+            body, up, down = _migrate_legacy(rest)
+            return Note(p, fm, title, body, up, down)
+        else:
+            body_lines, up_lines, down_lines = rest, [], []
 
     body = list(body_lines)
     while body and body[-1].strip() == "":
@@ -265,7 +273,7 @@ def _render_section(t: str, entries: list[tuple[str, str, str | None]]) -> list[
 def _render_group(d: dict[str, list], is_down: bool = False) -> list[str]:
     out: list[str] = []
     done: set[str] = set()
-    for t in KNOWN_TYPES:
+    for t in RELATIONS:
         if d.get(t):
             out += _render_section(t, d[t])
             done.add(t)
@@ -298,11 +306,11 @@ def render_note(note: Note) -> str:
     out.append("")
     out += note.body
 
-    # 本文 → (空行) --- → 上側 → --- → 下側
+    # 本文 → (空行) している見張り → 上側 → されている見張り → 下側
     out.append("")
-    out.append("---")
+    out.append(UP_MARK)
     out += _render_group(note.up)
-    out.append("---")
+    out.append(DOWN_MARK)
     out += _render_group(note.down, is_down=True)
 
     out = _squeeze_blanks(out)
@@ -459,14 +467,14 @@ def sync_vault(root) -> int:
             present.add(r)  # 片面だけ & 前回に無い = 今追加した
     present = {r for r in present if r[0] in id_to_path and r[2] in id_to_path}
 
-    directed = {(s, tt) for (s, _ty, tt) in present}  # 型を問わない src->tgt
+    directed = {(s, tt) for (s, _ty, tt) in present}  # 関係を問わない src->tgt
 
     # --- 上側を present から再構築 ---
     for k, n in by_path.items():
         sid = ids.get(k)
         if sid is None:
             continue
-        types_here = set(KNOWN_TYPES) | set(n.up) | {ty for (s, ty, _t) in present if s == sid}
+        types_here = set(RELATIONS) | set(n.up) | {ty for (s, ty, _t) in present if s == sid}
         types_here.discard(_EXTRA)
         new_up: dict[str, list] = {}
         for t in types_here:
@@ -486,7 +494,7 @@ def sync_vault(root) -> int:
             new_up[_EXTRA] = n.up[_EXTRA]
         n.up = new_up
 
-    # --- 下側を再構築（型付き + バックリンク） ---
+    # --- 下側を再構築（関係 + バックリンク） ---
     for k, n in by_path.items():
         nid = ids.get(k)
         new_down: dict[str, list] = {}
@@ -538,7 +546,10 @@ def make_new(path, title: str = "") -> Path:
     ts = _dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     t = title.strip() or p.stem
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(f"---\ntime: {ts}\ntitle: {t}\n---\n\n# {t}\n\n\n---\n---\n", encoding="utf-8")
+    p.write_text(
+        f"---\ntime: {ts}\ntitle: {t}\n---\n\n# {t}\n\n\n{UP_MARK}\n{DOWN_MARK}\n",
+        encoding="utf-8",
+    )
     return p
 
 

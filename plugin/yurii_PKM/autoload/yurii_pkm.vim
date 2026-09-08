@@ -378,7 +378,7 @@ function! s:index_template() abort
         \ '',
         \ ]
   if s:pkm_format() ==# 'v2'
-    return l:head + ['---', '---']
+    return l:head + ['<!-- している -->', '<!-- されている -->']
   endif
   return l:head
 endfunction
@@ -2176,8 +2176,8 @@ function! s:k_note_template(title) abort
           \ '# ' . a:title,
           \ '',
           \ '',
-          \ '---',
-          \ '---' ]
+          \ '<!-- している -->',
+          \ '<!-- されている -->' ]
   endif
   return [
         \ '---',
@@ -2254,8 +2254,8 @@ function! yurii_pkm#note_template(title, ...) abort
           \ '# ' . a:title,
           \ '',
           \ '',
-          \ '---',
-          \ '---',
+          \ '<!-- している -->',
+          \ '<!-- されている -->',
           \ ]
   endif
   return l:header + [
@@ -2273,64 +2273,68 @@ endfunction
 
 
 " ---------------------------------------------------------------------------
-" v2: 型付きリンク追加（--- より上の「している」側へ 1 行だけ挿入）
+" v2: 関係(relation)付きリンク追加（--- より上の「している」側へ 1 行だけ挿入）
 " 逆側は書かない。sync が相方ノートの下側に生成する。
 " ---------------------------------------------------------------------------
 
-let s:v2_types = ['カテゴリー', '前提', '論点', '見解', 'ワード', '関連']
+let s:v2_relations = ['カテゴリー', '前提', '論点', '見解', 'ワード', '関連']
 
-" 数字で型を選ぶ。末尾は「入力」= 自由に型名を打つ。空文字 = キャンセル。
-function! s:v2_pick_type() abort
+" 数字で関係(relation)を選ぶ。末尾は「入力」= 自由に関係名を打つ。空文字 = キャンセル。
+function! s:v2_pick_relation() abort
   let l:menu = []
   let l:i = 1
-  for l:t in s:v2_types
+  for l:t in s:v2_relations
     call add(l:menu, l:i . ' ' . l:t)
     let l:i += 1
   endfor
   call add(l:menu, l:i . ' 入力')
-  echo 'type  ' . join(l:menu, '   ')
+  echo 'relation  ' . join(l:menu, '   ')
   let l:ch = nr2char(getchar())
   redraw
   if l:ch !~# '^[0-9]$'
     return ''
   endif
   let l:n = str2nr(l:ch)
-  if l:n >= 1 && l:n <= len(s:v2_types)
-    return s:v2_types[l:n - 1]
+  if l:n >= 1 && l:n <= len(s:v2_relations)
+    return s:v2_relations[l:n - 1]
   endif
-  if l:n == len(s:v2_types) + 1
-    return trim(input('型: '))
+  if l:n == len(s:v2_relations) + 1
+    return trim(input('関係: '))
   endif
   return ''
 endfunction
 
 " front matter 終端行と、本文側で末尾寄りの --- 2 本（上側開始 / 下側開始）を返す。
 " 2 本無ければ EOF に補って返す。本文中の --- は末尾 2 本にならないので無視される。
+let s:v2_up_mark   = '<!-- している -->'
+let s:v2_down_mark = '<!-- されている -->'
+
+" している / されている の見張り行の行番号を返す。無ければ EOF に補う。
 function! s:v2_boundaries() abort
-  let l:fm = 0
-  if getline(1) =~# '^---\s*$'
-    for l:i in range(2, line('$'))
-      if getline(l:i) =~# '^---\s*$' | let l:fm = l:i | break | endif
-    endfor
-  endif
-  let l:marks = []
-  for l:i in range(l:fm + 1, line('$'))
-    if getline(l:i) =~# '^-\{3,}\s*$' | call add(l:marks, l:i) | endif
+  let l:up_m = 0 | let l:dn_m = 0
+  for l:i in range(1, line('$'))
+    let l:s = trim(getline(l:i))
+    if l:s ==# s:v2_up_mark   | let l:up_m = l:i | endif
+    if l:s ==# s:v2_down_mark | let l:dn_m = l:i | endif
   endfor
-  if len(l:marks) == 0
-    call append(line('$'), ['---', '---'])
-    let l:marks = [line('$') - 1, line('$')]
-  elseif len(l:marks) == 1
-    call append(line('$'), '---')
-    call add(l:marks, line('$'))
+  if l:up_m > 0 && l:dn_m > l:up_m
+    return [l:up_m, l:dn_m]
   endif
-  return [l:fm, l:marks[-2], l:marks[-1]]
+  if l:dn_m > 0 && l:up_m == 0
+    call append(l:dn_m - 1, s:v2_up_mark)
+    return [l:dn_m, l:dn_m + 1]
+  elseif l:up_m > 0 && l:dn_m == 0
+    call append(l:up_m, s:v2_down_mark)
+    return [l:up_m, l:up_m + 1]
+  endif
+  call append(line('$'), [s:v2_up_mark, s:v2_down_mark])
+  return [line('$') - 1, line('$')]
 endfunction
 
-" a:below … 0 = 上側（している、2 本の間）、1 = 下側（されている、最後の --- 以降）
-function! s:v2_insert_link(type, linktext, ...) abort
+" a:below … 0 = 上側（している、見張りの間）、1 = 下側（されている、最後の見張り以降）
+function! s:v2_insert_link(rel, linktext, ...) abort
   let l:below = a:0 > 0 ? a:1 : 0
-  let [l:fm, l:up_m, l:dn_m] = s:v2_boundaries()
+  let [l:up_m, l:dn_m] = s:v2_boundaries()
   if l:below
     let l:lo = l:dn_m
     let l:hi = line('$') + 1
@@ -2339,26 +2343,26 @@ function! s:v2_insert_link(type, linktext, ...) abort
     let l:hi = l:dn_m
   endif
 
-  " 該当区間の `型:` ヘッダを探す
+  " 該当区間の `関係:` ヘッダを探す
   let l:hdr = 0
   for l:i in range(l:lo + 1, l:hi - 1)
-    if getline(l:i) =~# '^\V' . escape(a:type, '\') . '\m\s*:'
+    if getline(l:i) =~# '^\V' . escape(a:rel, '\') . '\m\s*:'
       let l:hdr = l:i | break
     endif
   endfor
 
   if l:hdr == 0
     if l:below
-      call append(line('$'), a:type . ': ' . a:linktext)
+      call append(line('$'), a:rel . ': ' . a:linktext)
     else
-      call append(l:hi - 1, a:type . ': ' . a:linktext)
+      call append(l:hi - 1, a:rel . ': ' . a:linktext)
     endif
     return
   endif
 
   let l:inline = matchstr(getline(l:hdr), ':\s*\zs.*$')
   if l:inline =~# '\S'
-    call setline(l:hdr, a:type . ':')
+    call setline(l:hdr, a:rel . ':')
     call append(l:hdr, [l:inline, a:linktext])
     return
   endif
@@ -2383,9 +2387,9 @@ function! s:v2_title_for(tgt) abort
   return l:t !=# '' ? l:t : fnamemodify(a:tgt, ':t:r')
 endfunction
 
-" クリップボード / 無名レジスタの `.md` ファイル名 or `[t](x.md)` を型付きで取り込む。
+" クリップボード / 無名レジスタの `.md` ファイル名 or `[t](x.md)` を関係付きで取り込む。
 "   a:1 … 取り込む対象（空ならレジスタから）
-"   a:2 … 型（省略時は数字で選択）
+"   a:2 … 関係(relation)（省略時は数字で選択）
 "   a:3 … 1 なら --- より下（されている）へ。既定は上
 function! yurii_pkm#v2_add_link(...) abort
   let l:raw = a:0 > 0 && a:1 !=# '' ? a:1 : trim(getreg('+'))
@@ -2397,20 +2401,20 @@ function! yurii_pkm#v2_add_link(...) abort
     echohl WarningMsg | echo 'yurii_PKM: .md のファイル名 / リンクが見つからない' | echohl NONE
     return
   endif
-  let l:type = a:0 > 1 && a:2 !=# '' ? a:2 : s:v2_pick_type()
-  if l:type ==# '' | echo 'yurii_PKM: cancel' | return | endif
+  let l:rel = a:0 > 1 && a:2 !=# '' ? a:2 : s:v2_pick_relation()
+  if l:rel ==# '' | echo 'yurii_PKM: cancel' | return | endif
   let l:below = a:0 > 2 ? a:3 : 0
 
   let l:title = s:v2_title_for(l:tgt)
-  call s:v2_insert_link(l:type, '[' . l:title . '](' . l:tgt . ')', l:below)
+  call s:v2_insert_link(l:rel, '[' . l:title . '](' . l:tgt . ')', l:below)
   silent! write
-  echo 'yurii_PKM: ' . l:type . (l:below ? ' ↓ ' : ' ') . '+= ' . l:title
+  echo 'yurii_PKM: ' . l:rel . (l:below ? ' ↓ ' : ' ') . '+= ' . l:title
 endfunction
 
 " --- ページを開きながら関連ノートを新規作成。
 "   a:below … 1 = 現ノートの --- より下（子: 相手が上側に載る）
 "             0 = 現ノートの --- より上（親: 相手の下側に載る）
-"   a:1     … 型（省略時は数字で選択。'' でリンクなし作成のみ）
+"   a:1     … 関係(relation)（省略時は数字で選択。'' でリンクなし作成のみ）
 function! s:v2_new_related(below, ...) abort
   if s:pkm_format() !=# 'v2'
     echo 'yurii_PKM: v2 専用（g:yurii_pkm_format = ''v2''）' | return
@@ -2420,17 +2424,17 @@ function! s:v2_new_related(below, ...) abort
     echohl WarningMsg | echo 'yurii_PKM: 名前付きバッファで実行して' | echohl NONE
     return
   endif
-  let l:type = a:0 > 0 ? a:1 : s:v2_pick_type()
+  let l:rel = a:0 > 0 ? a:1 : s:v2_pick_relation()
 
   let l:dir = expand('%:p:h')
   let l:ts  = yurii_pkm#timestamp_filename()
   let l:file = s:join_path(l:dir, l:ts . '.md')
   call writefile(yurii_pkm#note_template(l:ts), l:file)
 
-  if l:type !=# ''
+  if l:rel !=# ''
     let l:save_ai = &autoindent | let l:save_si = &smartindent
     setlocal noautoindent nosmartindent
-    call s:v2_insert_link(l:type, '[' . l:ts . '](' . l:ts . '.md)', a:below)
+    call s:v2_insert_link(l:rel, '[' . l:ts . '](' . l:ts . '.md)', a:below)
     let &autoindent = l:save_ai | let &smartindent = l:save_si
     silent noautocmd write
     call s:run_update_one_for(l:cur)
