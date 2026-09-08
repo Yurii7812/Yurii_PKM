@@ -190,6 +190,46 @@ def test_migrate_legacy_v1_note() -> None:
         check(af.count("---") == 1, "本文以降の境界 --- は 1 本")
 
 
+
+def test_kenkai_and_custom_type() -> None:
+    print("type: 見解 と自由入力の型")
+    src = ("---\ntitle: A\n---\n\n# A\n\n"
+           "見解: [x](20250101.md)\n補足: [y](20250102.md)\n\n---\n")
+    n = v2.parse_note(Path("/x/A.md"), src)
+    check(n.up.get("見解") == [("x", "20250101.md", None)], "見解: を型として認識")
+    check(n.up.get("補足") == [("y", "20250102.md", None)], "自由な語:( 補足 ) も型として保持")
+    out = v2.render_note(n)
+    check("見解: [x](20250101.md)" in out and "補足: [y](20250102.md)" in out, "両方 round-trip")
+
+
+def test_body_link_becomes_backlink() -> None:
+    print("backlink: 本文中のリンク -> 相手の バックリンク:")
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        (root / "20250104.md").write_text(
+            "---\ntitle: A\n---\n\n# A\n\n詳しくは [B の話](20250111.md) を参照。\n\n---\n",
+            encoding="utf-8")
+        note(root / "20250111.md", "B")
+        v2.sync_vault(root)
+        up, dn = regions((root / "20250111.md").read_text(encoding="utf-8"))
+        check("バックリンク: [A](20250104.md)" in dn, "B の下側に バックリンク: A")
+        check("関連:" not in dn and "論点:" not in dn, "型セクションには入らない")
+
+
+def test_typed_link_suppresses_backlink() -> None:
+    print("backlink: 型付きの関係があれば バックリンク: にしない")
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        (root / "20250104.md").write_text(
+            "---\ntitle: A\n---\n\n# A\n\n本文で [B](20250111.md) に触れる。\n\n"
+            "論点: [B](20250111.md)\n\n---\n", encoding="utf-8")
+        note(root / "20250111.md", "B")
+        v2.sync_vault(root)
+        _up, dn = regions((root / "20250111.md").read_text(encoding="utf-8"))
+        check("論点: [A](20250104.md)" in dn, "論点: A は出る")
+        check("バックリンク" not in dn, "バックリンク: A は出さない（型で表示済み）")
+
+
 def main() -> int:
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

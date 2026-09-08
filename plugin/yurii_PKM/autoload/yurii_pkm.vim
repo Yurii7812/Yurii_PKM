@@ -2275,13 +2275,31 @@ endfunction
 " 逆側は書かない。sync が相方ノートの下側に生成する。
 " ---------------------------------------------------------------------------
 
-let s:v2_type_keys = {'c': 'カテゴリー', 'z': '前提', 'r': '論点', 'w': 'ワード', 'k': '関連'}
+let s:v2_types = ['カテゴリー', '前提', '論点', '見解', 'ワード', '関連']
 
+" 数字で型を選ぶ。末尾は「入力」= 自由に型名を打つ。空文字 = キャンセル。
 function! s:v2_pick_type() abort
-  echo 'type  [c]カテゴリー  [z]前提  [r]論点  [w]ワード  [k]関連'
-  let l:ch = tolower(nr2char(getchar()))
+  let l:menu = []
+  let l:i = 1
+  for l:t in s:v2_types
+    call add(l:menu, l:i . ' ' . l:t)
+    let l:i += 1
+  endfor
+  call add(l:menu, l:i . ' 入力')
+  echo 'type  ' . join(l:menu, '   ')
+  let l:ch = nr2char(getchar())
   redraw
-  return get(s:v2_type_keys, l:ch, '')
+  if l:ch !~# '^[0-9]$'
+    return ''
+  endif
+  let l:n = str2nr(l:ch)
+  if l:n >= 1 && l:n <= len(s:v2_types)
+    return s:v2_types[l:n - 1]
+  endif
+  if l:n == len(s:v2_types) + 1
+    return trim(input('型: '))
+  endif
+  return ''
 endfunction
 
 " front matter 終端行と、その後ろ最初の単独 --- （上下境界）を返す。
@@ -2305,38 +2323,48 @@ function! s:v2_boundaries() abort
   return [l:fm, l:bound]
 endfunction
 
-function! s:v2_insert_link(type, linktext) abort
+" a:below … 0 = --- より上（している）、1 = --- より下（されている）へ挿入
+function! s:v2_insert_link(type, linktext, ...) abort
+  let l:below = a:0 > 0 ? a:1 : 0
   let [l:fm, l:bound] = s:v2_boundaries()
+  if l:below
+    let l:lo = l:bound
+    let l:hi = line('$') + 1
+  else
+    let l:lo = l:fm
+    let l:hi = l:bound
+  endif
 
-  " 既存の `型:` ヘッダを上側から探す
+  " 該当区間の `型:` ヘッダを探す
   let l:hdr = 0
-  for l:i in range(l:fm + 1, l:bound - 1)
-    if getline(l:i) =~# '^' . a:type . '\s*:'
+  for l:i in range(l:lo + 1, l:hi - 1)
+    if getline(l:i) =~# '^\V' . escape(a:type, '\') . '\m\s*:'
       let l:hdr = l:i | break
     endif
   endfor
 
   if l:hdr == 0
-    " 新規セクションを境界直前（末尾空行の手前）へインラインで挿入
-    let l:ins = l:bound - 1
-    while l:ins > l:fm && getline(l:ins) =~# '^\s*$'
-      let l:ins -= 1
-    endwhile
-    call append(l:ins, a:type . ': ' . a:linktext)
+    if l:below
+      call append(line('$'), a:type . ': ' . a:linktext)
+    else
+      let l:ins = l:bound - 1
+      while l:ins > l:fm && getline(l:ins) =~# '^\s*$'
+        let l:ins -= 1
+      endwhile
+      call append(l:ins, a:type . ': ' . a:linktext)
+    endif
     return
   endif
 
-  let l:inline = matchstr(getline(l:hdr), '^' . a:type . '\s*:\s*\zs.*$')
+  let l:inline = matchstr(getline(l:hdr), ':\s*\zs.*$')
   if l:inline =~# '\S'
-    " 現在インライン（1 本）→ ブロック化して追記
     call setline(l:hdr, a:type . ':')
     call append(l:hdr, [l:inline, a:linktext])
     return
   endif
 
-  " 既にブロック → リンク行の末尾を探して追記
   let l:end = l:hdr
-  for l:i in range(l:hdr + 1, l:bound - 1)
+  for l:i in range(l:hdr + 1, l:hi - 1)
     if getline(l:i) =~# '^\s*\[[^]]*\]([^)]*)'
       let l:end = l:i
     else
@@ -2346,9 +2374,19 @@ function! s:v2_insert_link(type, linktext) abort
   call append(l:end, a:linktext)
 endfunction
 
-" クリップボード / 無名レジスタの `.md` ファイル名 or `[t](x.md)` を取り込む。
+function! s:v2_title_for(tgt) abort
+  let l:root = s:get_pkm_root()
+  let l:t = ''
+  if !empty(l:root)
+    let l:t = s:get_yaml_title(s:join_path(l:root, a:tgt))
+  endif
+  return l:t !=# '' ? l:t : fnamemodify(a:tgt, ':t:r')
+endfunction
+
+" クリップボード / 無名レジスタの `.md` ファイル名 or `[t](x.md)` を型付きで取り込む。
 "   a:1 … 取り込む対象（空ならレジスタから）
-"   a:2 … 型（'カテゴリー' 等 / 'c'z'r'w'k'）。省略時は 1 キーで選択
+"   a:2 … 型（省略時は数字で選択）
+"   a:3 … 1 なら --- より下（されている）へ。既定は上
 function! yurii_pkm#v2_add_link(...) abort
   let l:raw = a:0 > 0 && a:1 !=# '' ? a:1 : trim(getreg('+'))
   if l:raw ==# '' | let l:raw = trim(getreg('"')) | endif
@@ -2359,25 +2397,41 @@ function! yurii_pkm#v2_add_link(...) abort
     echohl WarningMsg | echo 'yurii_PKM: .md のファイル名 / リンクが見つからない' | echohl NONE
     return
   endif
-  if a:0 > 1 && a:2 !=# ''
-    let l:type = get(s:v2_type_keys, tolower(a:2), a:2)
-  else
-    let l:type = s:v2_pick_type()
-  endif
-  if index(values(s:v2_type_keys), l:type) < 0
-    echo 'yurii_PKM: cancel' | return
-  endif
+  let l:type = a:0 > 1 && a:2 !=# '' ? a:2 : s:v2_pick_type()
+  if l:type ==# '' | echo 'yurii_PKM: cancel' | return | endif
+  let l:below = a:0 > 2 ? a:3 : 0
 
-  let l:root = s:get_pkm_root()
-  let l:title = ''
-  if !empty(l:root)
-    let l:title = s:get_yaml_title(s:join_path(l:root, l:tgt))
-  endif
-  if l:title ==# '' | let l:title = fnamemodify(l:tgt, ':t:r') | endif
-
-  call s:v2_insert_link(l:type, '[' . l:title . '](' . l:tgt . ')')
+  let l:title = s:v2_title_for(l:tgt)
+  call s:v2_insert_link(l:type, '[' . l:title . '](' . l:tgt . ')', l:below)
   silent! write
-  echo 'yurii_PKM: ' . l:type . ' += ' . l:title
+  echo 'yurii_PKM: ' . l:type . (l:below ? ' ↓ ' : ' ') . '+= ' . l:title
+endfunction
+
+" --- ページを開きながら子ノートを新規作成。リンクは現ノートの --- より下へ。
+"   a:1 … 型（省略時は数字で選択。'' でリンクなし作成のみ）
+function! yurii_pkm#v2_new_child(...) abort
+  let l:parent = expand('%:p')
+  if empty(l:parent)
+    echohl WarningMsg | echo 'yurii_PKM: 名前付きバッファで実行して' | echohl NONE
+    return
+  endif
+  let l:type = a:0 > 0 ? a:1 : s:v2_pick_type()
+
+  let l:dir = expand('%:p:h')
+  let l:ts  = yurii_pkm#timestamp_filename()
+  let l:file = s:join_path(l:dir, l:ts . '.md')
+  call writefile(yurii_pkm#note_template(l:ts), l:file)
+
+  if l:type !=# ''
+    let l:save_ai = &autoindent | let l:save_si = &smartindent
+    setlocal noautoindent nosmartindent
+    call s:v2_insert_link(l:type, '[' . l:ts . '](' . l:ts . '.md)', 1)
+    let &autoindent = l:save_ai | let &smartindent = l:save_si
+    silent noautocmd write
+    call s:run_update_one_for(l:parent)
+  endif
+
+  execute 'edit ' . fnameescape(l:file)
 endfunction
 
 function! s:v2_link_dispatch() abort
@@ -2975,6 +3029,10 @@ function! s:trim_blank_edges(lines) abort
 endfunction
 
 function! s:new_note_no_title(prefix) abort
+  if s:pkm_format() ==# 'v2'
+    call yurii_pkm#v2_new_child()
+    return
+  endif
   let l:parent_line  = line('.')
   let l:parent_path  = expand('%:p')
   let l:parent_dir   = expand('%:p:h')
@@ -3412,6 +3470,10 @@ endfunction
 " ---------------------------------------------------------------------------
 
 function! yurii_pkm#new_quick(args) abort
+  if s:pkm_format() ==# 'v2'
+    call yurii_pkm#v2_new_child()
+    return
+  endif
   let l:parent_bufnr = bufnr('%')
   let l:parent_line = line('.')
   let l:parent_file  = expand('%:t')

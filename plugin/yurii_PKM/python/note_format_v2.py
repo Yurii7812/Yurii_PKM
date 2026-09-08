@@ -6,11 +6,13 @@
 - ファイル名 = タイムスタンプのみ。front matter は time / title。
 - 本文の後に型付きセクション（上側 = このノートが「している」こと）。
 - 単独行 ``---`` が上下の境界。その後ろが下側（「されている」こと）。
-- 型: カテゴリー / 前提 / 論点 / ワード / 関連
+- 既知の型: カテゴリー / 前提 / 論点 / 見解 / ワード / 関連。
+  それ以外の ``語:`` 見出しも型として扱う（自由入力）。
 - リンク 1 本は ``型: [t](x.md)`` のインライン、2 本以上は ``型:`` 改行のブロック。
-- 上側が真実。下側は他ノートの上側から導出する。
-  ただし下側も手で編集でき、下側への追加 / 削除は相方ノートの上側へ反映される。
-- ``BackLink`` に相当する本文リンク走査は行わない（型付きリンクのみ）。
+- 上側が真実。下側は他ノートの上側から導出。上下どちらも編集でき、
+  片面の追加 / 削除はもう片面へ反映される（``.pkm_sync_state_v2.json`` で判定）。
+- 本文（散文）中のリンクは、型付きの関係が無ければ相手の下側に
+  ``バックリンク:`` として現れる。
 
 CLI:
     note_format_v2.py update      ROOT
@@ -26,16 +28,21 @@ import re
 import sys
 from pathlib import Path
 
-TYPES: tuple[str, ...] = ("カテゴリー", "前提", "論点", "ワード", "関連")
+KNOWN_TYPES: tuple[str, ...] = ("カテゴリー", "前提", "論点", "見解", "ワード", "関連")
+BACKLINK = "バックリンク"
 
 DIVIDER_RE = re.compile(r"^-{3,}\s*$")
-HEADER_RE = re.compile(r"^(" + "|".join(map(re.escape, TYPES)) + r")\s*:\s*(.*)$")
+# 任意の `語:` 見出し（先頭が空白 / # / : でない）。散文除けは _looks_like_header で行う。
+HEADER_RE = re.compile(r"^([^\s:#][^:]*?)\s*:\s*(.*)$")
 # [表示]() 形式のリンク行（末尾に「 — 注釈」を許す）
 LINK_LINE_RE = re.compile(r"^\s*\[([^\]]*)\]\(([^)]+)\)\s*(?:—\s*(.*\S))?\s*$")
+# 本文どこにでも現れるリンク（バックリンク判定用）
+ANY_LINK_RE = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
 # 旧 v1 の構造見出し
 LEGACY_HDR_RE = re.compile(r"^(Parent|Child|Branch|BackLink|Back)\s*:\s*(.*)$", re.I)
 
 _EXTRA = "_extra"
+_RESERVED = {_EXTRA, BACKLINK}
 
 
 class Note:
@@ -84,7 +91,7 @@ def _looks_like_header(m: re.Match, lines: list[str], idx: int) -> bool:
 
 def _parse_sections(lines: list[str], allow_body: bool):
     body: list[str] = []
-    sections: dict[str, list] = {t: [] for t in TYPES}
+    sections: dict[str, list] = {}
     cur: str | None = None
     seen_header = False
     i, n = 0, len(lines)
@@ -93,8 +100,9 @@ def _parse_sections(lines: list[str], allow_body: bool):
         s = ln.strip()
         m = HEADER_RE.match(s)
         if m and _looks_like_header(m, lines, i):
-            cur = m.group(1)
+            cur = m.group(1).strip()
             seen_header = True
+            sections.setdefault(cur, [])
             lm = LINK_LINE_RE.match(m.group(2).strip())
             if lm:
                 sections[cur].append((lm.group(1), lm.group(2), lm.group(3) or None))
@@ -105,7 +113,6 @@ def _parse_sections(lines: list[str], allow_body: bool):
             sections[cur].append((lm.group(1), lm.group(2), lm.group(3) or None))
             i += 1
             continue
-        # blank / stray
         cur = None
         if s == "":
             if allow_body and not seen_header:
@@ -124,6 +131,7 @@ def _parse_sections(lines: list[str], allow_body: bool):
 def _route_legacy_link(up: dict, ti: str, tg: str, ann: str | None) -> None:
     base = tg.split("#", 1)[0].rsplit("/", 1)[-1].lower()
     kind = "カテゴリー" if base in ("index.md", "index") else "関連"
+    up.setdefault(kind, [])
     if all(e[1] != tg for e in up[kind]):
         up[kind].append((ti, tg, ann))
 
@@ -131,15 +139,15 @@ def _route_legacy_link(up: dict, ti: str, tg: str, ann: str | None) -> None:
 def _migrate_legacy(lines: list[str]):
     """旧 v1（Parent:/Child:/BackLink:）を v2 の形へ寄せる。
 
-    Parent/Child/Branch のリンク -> `関連:`、`[Index](index.md)` -> `カテゴリー:`。
+    Parent/Child/Branch のリンク -> ``関連:``、``[Index](index.md)`` -> ``カテゴリー:``。
     BackLink は捨てる（sync が下側に再生成する）。リンクは失わない。
     """
     body: list[str] = []
-    up: dict[str, list] = {t: [] for t in TYPES}
-    down: dict[str, list] = {t: [] for t in TYPES}
+    up: dict[str, list] = {}
+    down: dict[str, list] = {}
     zone: object = None  # None | "up" | "back" | ("typed", 型)
     seen = False
-    for ln in lines:
+    for idx, ln in enumerate(lines):
         s = ln.strip()
         lm = LINK_LINE_RE.match(s)
         if lm and lm.group(2).split("#", 1)[0].rsplit("/", 1)[-1].lower() in ("index.md", "index"):
@@ -155,19 +163,19 @@ def _migrate_legacy(lines: list[str]):
                 _route_legacy_link(up, inln.group(1), inln.group(2), inln.group(3) or None)
             continue
         tm = HEADER_RE.match(s)
-        if tm:
+        if tm and _looks_like_header(tm, lines, idx):
             seen = True
-            zone = ("typed", tm.group(1))
+            zone = ("typed", tm.group(1).strip())
+            up.setdefault(zone[1], [])
             inln = LINK_LINE_RE.match(tm.group(2).strip())
             if inln:
-                up[tm.group(1)].append((inln.group(1), inln.group(2), inln.group(3) or None))
+                up[zone[1]].append((inln.group(1), inln.group(2), inln.group(3) or None))
             continue
         if lm:
             if zone == "up":
                 _route_legacy_link(up, lm.group(1), lm.group(2), lm.group(3) or None)
             elif isinstance(zone, tuple):
                 up[zone[1]].append((lm.group(1), lm.group(2), lm.group(3) or None))
-            # zone == "back" -> drop
             continue
         if not seen:
             body.append(ln)
@@ -202,6 +210,16 @@ def parse_note(path, text: str | None = None) -> Note:
     return Note(p, fm, title, body, up, down)
 
 
+def _links_in(lines: list[str]) -> list[str]:
+    out: list[str] = []
+    for ln in lines:
+        for m in ANY_LINK_RE.finditer(ln):
+            t = m.group(1).split("#", 1)[0].strip()
+            if t.lower().endswith(".md"):
+                out.append(t)
+    return out
+
+
 # ---------------------------------------------------------------------------
 # render
 # ---------------------------------------------------------------------------
@@ -220,10 +238,21 @@ def _render_section(t: str, entries: list[tuple[str, str, str | None]]) -> list[
     return out
 
 
-def _render_group(d: dict[str, list]) -> list[str]:
+def _render_group(d: dict[str, list], is_down: bool = False) -> list[str]:
     out: list[str] = []
-    for t in TYPES:
-        out += _render_section(t, d.get(t, []))
+    done: set[str] = set()
+    for t in KNOWN_TYPES:
+        if d.get(t):
+            out += _render_section(t, d[t])
+            done.add(t)
+    for t in d:
+        if t in _RESERVED or t in done:
+            continue
+        if d.get(t):
+            out += _render_section(t, d[t])
+            done.add(t)
+    if is_down and d.get(BACKLINK):
+        out += _render_section(BACKLINK, d[BACKLINK])
     out += list(d.get(_EXTRA, []))
     return out
 
@@ -252,7 +281,7 @@ def render_note(note: Note) -> str:
 
     out.append("")
     out.append("---")
-    out += _render_group(note.down)
+    out += _render_group(note.down, is_down=True)
 
     out = _squeeze_blanks(out)
     while out and out[-1].strip() == "":
@@ -309,7 +338,6 @@ def _rel(from_dir: Path, target: Path) -> str:
 # ---------------------------------------------------------------------------
 
 _STATE_FILE = ".pkm_sync_state_v2.json"
-
 Rel = tuple[str, str, str]  # (src_id, type, tgt_id)  id = root からの相対 posix パス
 
 
@@ -338,12 +366,7 @@ def _save_state(root: Path, present: set[Rel]) -> None:
 
 
 def sync_vault(root) -> int:
-    """vault 全体を 1 パスで整合させる。
-
-    有向関係 r=(src, type, tgt) は「src の上側」と「tgt の下側」の両方に現れるのが
-    整合状態。前回整合時の集合を ``.pkm_sync_state_v2.json`` に持ち、上側だけ /
-    下側だけに現れる関係を「追加」か「削除」か判定する。
-    """
+    """vault 全体を 1 パスで整合させる。"""
     root = Path(root).resolve()
     by_name = _index(root)
 
@@ -351,7 +374,7 @@ def sync_vault(root) -> int:
     for p in _iter_md(root):
         try:
             notes.append(parse_note(p))
-        except Exception as exc:  # noqa: BLE001 - skip unparseable, keep going
+        except Exception as exc:  # noqa: BLE001
             print(f"note_format_v2: skip {p}: {exc}", file=sys.stderr)
 
     by_path: dict[Path, Note] = {n.path.resolve(): n for n in notes}
@@ -365,34 +388,43 @@ def sync_vault(root) -> int:
 
     def rid(target: str, base: Path) -> str | None:
         tp = _resolve(target, base, root, by_name)
-        if tp is None:
-            return None
-        return ids.get(tp.resolve())
+        return ids.get(tp.resolve()) if tp is not None else None
 
     observed_up: set[Rel] = set()
     observed_down: set[Rel] = set()
     up_ann: dict[Rel, str] = {}
-    up_unresolved: dict[Path, dict[str, list]] = {k: {t: [] for t in TYPES} for k in by_path}
+    up_unresolved: dict[Path, dict[str, list]] = {k: {} for k in by_path}
+    body_links: dict[str, set[str]] = {}
 
     for k, n in by_path.items():
         sid = ids.get(k)
         if sid is None:
             continue
-        for t in TYPES:
-            for ti, tg, ann in n.up.get(t, []):
+        for t, entries in n.up.items():
+            if t == _EXTRA:
+                continue
+            for ti, tg, ann in entries:
                 tid = rid(tg, n.path.parent)
                 if tid is None:
-                    up_unresolved[k][t].append((ti, tg, ann))
+                    up_unresolved[k].setdefault(t, []).append((ti, tg, ann))
                     continue
                 r = (sid, t, tid)
                 observed_up.add(r)
                 if ann:
                     up_ann[r] = ann
-        for t in TYPES:
-            for _ti, tg, _ann in n.down.get(t, []):
+        for t, entries in n.down.items():
+            if t in _RESERVED:
+                continue
+            for _ti, tg, _ann in entries:
                 src_id = rid(tg, n.path.parent)
                 if src_id is not None:
                     observed_down.add((src_id, t, sid))
+        bl: set[str] = set()
+        for tg in _links_in(n.body):
+            tid = rid(tg, n.path.parent)
+            if tid is not None and tid != sid:
+                bl.add(tid)
+        body_links[sid] = bl
 
     prev = _load_state(root)
     present: set[Rel] = set()
@@ -402,22 +434,22 @@ def sync_vault(root) -> int:
         if up_face and down_face:
             present.add(r)
         elif up_face != down_face and r not in prev:
-            present.add(r)  # 片面だけ & 前回に無い = ユーザが今追加した
-        # 片面だけ & 前回にあった = ユーザが片面を削除した -> 関係ごと消す
+            present.add(r)  # 片面だけ & 前回に無い = 今追加した
     present = {r for r in present if r[0] in id_to_path and r[2] in id_to_path}
 
-    # --- 上側を present から再構築（順序・注釈は既存を尊重、未解決は温存） ---
+    directed = {(s, tt) for (s, _ty, tt) in present}  # 型を問わない src->tgt
+
+    # --- 上側を present から再構築 ---
     for k, n in by_path.items():
         sid = ids.get(k)
         if sid is None:
             continue
-        for t in TYPES:
-            order: list[str] = []
-            for _ti, tg, _ann in n.up.get(t, []):
-                tid = rid(tg, n.path.parent)
-                if tid is not None:
-                    order.append(tid)
-            wanted = [tid for tid in order if (sid, t, tid) in present]
+        types_here = set(KNOWN_TYPES) | set(n.up) | {ty for (s, ty, _t) in present if s == sid}
+        types_here.discard(_EXTRA)
+        new_up: dict[str, list] = {}
+        for t in types_here:
+            order = [rid(tg, n.path.parent) for _ti, tg, _a in n.up.get(t, [])]
+            wanted = [tid for tid in order if tid and (sid, t, tid) in present]
             for (s2, t2, tgt2) in present:
                 if s2 == sid and t2 == t and tgt2 not in wanted:
                     wanted.append(tgt2)
@@ -425,28 +457,39 @@ def sync_vault(root) -> int:
             for tid in wanted:
                 tp = id_to_path[tid]
                 entries.append((by_path[tp].title, _rel(n.path.parent, tp), up_ann.get((sid, t, tid))))
-            entries += up_unresolved[k][t]
+            entries += up_unresolved[k].get(t, [])
             if entries:
-                n.up[t] = entries
-            else:
-                n.up.pop(t, None)
+                new_up[t] = entries
+        if n.up.get(_EXTRA):
+            new_up[_EXTRA] = n.up[_EXTRA]
+        n.up = new_up
 
-    # --- 下側を present から再構築（相互リンクは除外） ---
+    # --- 下側を再構築（型付き + バックリンク） ---
     for k, n in by_path.items():
         nid = ids.get(k)
-        extra = n.down.get(_EXTRA)
-        new_down: dict[str, list] = {t: [] for t in TYPES}
+        new_down: dict[str, list] = {}
         if nid is not None:
-            for t in TYPES:
-                srcs = sorted(s for (s, tt, tg) in present if tt == t and tg == nid)
-                for s in srcs:
-                    if (nid, t, s) in present:  # 相互リンクは下側に出さない
-                        continue
-                    sp = id_to_path[s]
-                    new_down[t].append((by_path[sp].title, _rel(n.path.parent, sp), None))
+            by_type: dict[str, list[str]] = {}
+            for (s, t, tg) in present:
+                if tg == nid and (nid, t, s) not in present:  # 相互リンクは出さない
+                    by_type.setdefault(t, []).append(s)
+            for t, srcs in by_type.items():
+                new_down[t] = [
+                    (by_path[id_to_path[s]].title, _rel(n.path.parent, id_to_path[s]), None)
+                    for s in sorted(set(srcs))
+                ]
+            back = sorted(
+                s for s, targets in body_links.items()
+                if nid in targets and (s, nid) not in directed and s in id_to_path
+            )
+            if back:
+                new_down[BACKLINK] = [
+                    (by_path[id_to_path[s]].title, _rel(n.path.parent, id_to_path[s]), None)
+                    for s in back
+                ]
+        if n.down.get(_EXTRA):
+            new_down[_EXTRA] = n.down[_EXTRA]
         n.down = new_down
-        if extra:
-            n.down[_EXTRA] = extra
 
     _save_state(root, present)
 
@@ -460,11 +503,8 @@ def sync_vault(root) -> int:
 
 
 def update_one(file_path, root) -> str:
-    """保存時 sync。現状は vault 全体を 1 パス（個人規模を想定）。"""
     changed = sync_vault(root)
-    if changed:
-        return f"yurii_PKM: v2 synced {changed} file(s)"
-    return "yurii_PKM: no changes"
+    return f"yurii_PKM: v2 synced {changed} file(s)" if changed else "yurii_PKM: no changes"
 
 
 # ---------------------------------------------------------------------------
@@ -505,19 +545,15 @@ def main(argv: list[str]) -> int:
             return 2
         title = argv[4] if len(argv) > 4 else ""
         p = make_new(argv[2], title)
-        # 作成直後に一度 sync（相方があれば下側へ反映）
         sync_vault(argv[3])
         print(str(p))
         return 0
     if mode == "retitle_links":
-        # v1 互換: FILE ROOT OLD NEW。v2 は sync が表示名を現タイトルへ揃えるので
-        # ROOT 全体を回すだけでよい。
         if len(argv) >= 4:
             sync_vault(argv[3])
         print("yurii_PKM: v2 retitle via sync")
         return 0
     if mode in {"update_titles", "rename_prefix", "reparent_down_children", "nf"}:
-        # v2 では不要 / 非対応。呼ばれても壊さないよう no-op で返す。
         print(f"yurii_PKM: v2 ignores mode '{mode}'", file=sys.stderr)
         return 0
     print(f"unsupported mode: {mode}", file=sys.stderr)
