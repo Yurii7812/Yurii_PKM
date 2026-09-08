@@ -35,6 +35,8 @@ import sys
 from pathlib import Path
 
 RELATIONS: tuple[str, ...] = ("カテゴリー", "前提", "論点", "見解", "ワード", "関連")
+# 対称関係: 上側には出さず、両ノートの下側に現れる。
+SYMMETRIC: frozenset[str] = frozenset({"関連"})
 BACKLINK = "バックリンク"
 
 UP_MARK = "<!-- している -->"
@@ -458,6 +460,8 @@ def sync_vault(root) -> int:
     up_ann: dict[Rel, str] = {}
     up_unresolved: dict[Path, dict[str, list]] = {k: {} for k in by_path}
     body_links: dict[str, set[str]] = {}
+    # 対称関係: (relation, frozenset{id,id}) -> {その関係行を持つ端点 id}
+    sym_face: dict[tuple[str, frozenset], set[str]] = {}
 
     for k, n in by_path.items():
         sid = ids.get(k)
@@ -471,6 +475,10 @@ def sync_vault(root) -> int:
                 if tid is None:
                     up_unresolved[k].setdefault(t, []).append((ti, tg, ann))
                     continue
+                if t in SYMMETRIC:
+                    if tid != sid:
+                        sym_face.setdefault((t, frozenset((sid, tid))), set()).add(sid)
+                    continue
                 r = (sid, t, tid)
                 observed_up.add(r)
                 if ann:
@@ -480,8 +488,13 @@ def sync_vault(root) -> int:
                 continue
             for _ti, tg, _ann in entries:
                 src_id = rid(tg, n.path.parent)
-                if src_id is not None:
-                    observed_down.add((src_id, t, sid))
+                if src_id is None:
+                    continue
+                if t in SYMMETRIC:
+                    if src_id != sid:
+                        sym_face.setdefault((t, frozenset((sid, src_id))), set()).add(sid)
+                    continue
+                observed_down.add((src_id, t, sid))
         bl: set[str] = set()
         for tg in _links_in(n.body):
             tid = rid(tg, n.path.parent)
@@ -490,8 +503,15 @@ def sync_vault(root) -> int:
         body_links[sid] = bl
 
     prev = _load_state(root)
+
+    def _sym_key(t: str, pair: frozenset) -> Rel:
+        a, b = sorted(pair)
+        return (a, t, b)
+
     present: set[Rel] = set()
     for r in observed_up | observed_down | prev:
+        if r[1] in SYMMETRIC:
+            continue
         up_face = r in observed_up
         down_face = r in observed_down
         if up_face and down_face:
@@ -500,7 +520,18 @@ def sync_vault(root) -> int:
             present.add(r)  # 片面だけ & 前回に無い = 今追加した
     present = {r for r in present if r[0] in id_to_path and r[2] in id_to_path}
 
-    directed = {(s, tt) for (s, _ty, tt) in present}  # 関係を問わない src->tgt
+    # 対称関係の解決（有向と同じく「片面 & 前回にあった = 相手が削除」）
+    present_sym: set[Rel] = set()
+    for (t, pair), faces in sym_face.items():
+        key = _sym_key(t, pair)
+        if not all(x in id_to_path for x in pair):
+            continue
+        if len(faces) >= 2 or (len(faces) == 1 and key not in prev):
+            present_sym.add(key)
+
+    directed = {(s, tt) for (s, _ty, tt) in present}
+    directed |= {(a, b) for (a, _t, b) in present_sym}
+    directed |= {(b, a) for (a, _t, b) in present_sym}
 
     # --- 上側を present から再構築 ---
     for k, n in by_path.items():
@@ -508,6 +539,7 @@ def sync_vault(root) -> int:
         if sid is None:
             continue
         types_here = set(RELATIONS) | set(n.up) | {ty for (s, ty, _t) in present if s == sid}
+        types_here -= SYMMETRIC  # 対称関係は上側に出さない
         types_here.discard(_EXTRA)
         new_up: dict[str, list] = {}
         for t in types_here:
@@ -547,6 +579,11 @@ def sync_vault(root) -> int:
             for (s, t, tg) in present:
                 if tg == nid and (nid, t, s) not in present:  # 相互リンクは出さない
                     by_type.setdefault(t, []).append(s)
+            # 対称関係: 両端の下側に相手を載せる
+            for (a, t, b) in present_sym:
+                other = b if a == nid else (a if b == nid else None)
+                if other is not None:
+                    by_type.setdefault(t, []).append(other)
             for t, srcs in by_type.items():
                 new_down[t] = [
                     (by_path[id_to_path[s]].title, _rel(n.path.parent, id_to_path[s]), None)
@@ -565,7 +602,7 @@ def sync_vault(root) -> int:
             new_down[_EXTRA] = n.down[_EXTRA]
         n.down = new_down
 
-    _save_state(root, present)
+    _save_state(root, present | present_sym)
 
     changed = 0
     for n in notes:

@@ -2288,10 +2288,15 @@ function! s:v2_pick_relation() abort
     let l:i += 1
   endfor
   call add(l:menu, l:i . ' 入力')
-  echo 'relation  ' . join(l:menu, '   ')
-  let l:ch = nr2char(getchar())
+  echo 'relation  ' . join(l:menu, '   ') . '    (Esc / q: キャンセル)'
+  let l:c = getchar()
   redraw
-  if l:ch !~# '^[0-9]$'
+  " Esc(27) / Ctrl-C(3) / q でキャンセル
+  if type(l:c) == v:t_number && (l:c == 27 || l:c == 3)
+    return ''
+  endif
+  let l:ch = type(l:c) == v:t_number ? nr2char(l:c) : l:c
+  if l:ch ==? 'q' || l:ch !~# '^[0-9]$'
     return ''
   endif
   let l:n = str2nr(l:ch)
@@ -2299,7 +2304,13 @@ function! s:v2_pick_relation() abort
     return s:v2_relations[l:n - 1]
   endif
   if l:n == len(s:v2_relations) + 1
-    return trim(input('関係: '))
+    let l:custom = ''
+    try
+      let l:custom = trim(input('関係（空でキャンセル）: '))
+    catch /^Vim:Interrupt$/
+      return ''
+    endtry
+    return l:custom
   endif
   return ''
 endfunction
@@ -2404,8 +2415,9 @@ function! yurii_pkm#v2_add_link(...) abort
     return
   endif
   let l:rel = a:0 > 1 && a:2 !=# '' ? a:2 : s:v2_pick_relation()
-  if l:rel ==# '' | echo 'yurii_PKM: cancel' | return | endif
-  let l:below = a:0 > 2 ? a:3 : 0
+  if l:rel ==# '' | echo 'yurii_PKM: キャンセル' | return | endif
+  " 関連 は対称なので必ず下側へ
+  let l:below = (l:rel ==# '関連') ? 1 : (a:0 > 2 ? a:3 : 0)
 
   let l:title = s:v2_title_for(l:tgt)
   if s:v2_insert_link(l:rel, '[' . l:title . '](' . l:tgt . ')', l:below)
@@ -2427,35 +2439,65 @@ function! s:v2_new_related(below, ...) abort
     echohl WarningMsg | echo 'yurii_PKM: 名前付きバッファで実行して' | echohl NONE
     return
   endif
-  let l:rel = a:0 > 0 ? a:1 : s:v2_pick_relation()
+  " 関係を先に決める。キャンセルならファイルを作らずに終了。
+  let l:rel = (a:0 > 0 && a:1 !=# '') ? a:1 : s:v2_pick_relation()
+  if l:rel ==# ''
+    echo 'yurii_PKM: キャンセル'
+    return
+  endif
+  " 関連 は対称関係なので必ず下側（されている）へ
+  let l:below = (l:rel ==# '関連') ? 1 : a:below
 
   let l:dir = expand('%:p:h')
   let l:ts  = yurii_pkm#timestamp_filename()
   let l:file = s:join_path(l:dir, l:ts . '.md')
-  call writefile(yurii_pkm#note_template(l:ts), l:file)
 
-  if l:rel !=# ''
-    let l:save_ai = &autoindent | let l:save_si = &smartindent
-    setlocal noautoindent nosmartindent
-    let l:ok = s:v2_insert_link(l:rel, '[' . l:ts . '](' . l:ts . '.md)', a:below)
-    let &autoindent = l:save_ai | let &smartindent = l:save_si
-    if l:ok
-      silent noautocmd write
-      call s:run_update_one_for(l:cur)
-    endif
+  let l:save_ai = &autoindent | let l:save_si = &smartindent
+  setlocal noautoindent nosmartindent
+  let l:ok = s:v2_insert_link(l:rel, '[' . l:ts . '](' . l:ts . '.md)', l:below)
+  let &autoindent = l:save_ai | let &smartindent = l:save_si
+  if !l:ok
+    return  " 現ノートが v2 形式でない（見張りなし）
   endif
 
+  call writefile(yurii_pkm#note_template(l:ts), l:file)
+  silent noautocmd write
+  call s:run_update_one_for(l:cur)
   execute 'edit ' . fnameescape(l:file)
 endfunction
 
-" 子ノート: リンクは現ノートの --- より下
+" 子ノート（nc）: リンクは現ノートの --- より下
 function! yurii_pkm#v2_new_child(...) abort
   call call('s:v2_new_related', [1] + a:000)
 endfunction
 
-" 親ノート: リンクは現ノートの --- より上（新ノートは sync で下側に現ノートを載せる）
+" 親ノート（np）: リンクは現ノートの --- より上（新ノートは sync で下側に現ノートを載せる）
 function! yurii_pkm#v2_new_parent(...) abort
   call call('s:v2_new_related', [0] + a:000)
+endfunction
+
+" カーソル直下ノート（nh）: 新ノートを作り、そのリンクをカーソル行の直下（本文）に置く。
+" 関係セクションには入れない → 相手には バックリンク: として現れる。
+function! yurii_pkm#v2_new_here() abort
+  if s:pkm_format() !=# 'v2'
+    echo 'yurii_PKM: v2 専用' | return
+  endif
+  let l:cur = expand('%:p')
+  if empty(l:cur)
+    echohl WarningMsg | echo 'yurii_PKM: 名前付きバッファで実行して' | echohl NONE
+    return
+  endif
+  let l:dir = expand('%:p:h')
+  let l:ts  = yurii_pkm#timestamp_filename()
+  let l:file = s:join_path(l:dir, l:ts . '.md')
+  call writefile(yurii_pkm#note_template(l:ts), l:file)
+  let l:save_ai = &autoindent | let l:save_si = &smartindent
+  setlocal noautoindent nosmartindent
+  call append(line('.'), '[' . l:ts . '](' . l:ts . '.md)')
+  let &autoindent = l:save_ai | let &smartindent = l:save_si
+  silent noautocmd write
+  call s:run_update_one_for(l:cur)
+  execute 'edit ' . fnameescape(l:file)
 endfunction
 
 " 旧形式（v1 の Parent:/Child: / 旧 `---`）を v2 へ明示変換。

@@ -113,6 +113,7 @@ command! -nargs=* NF         call yurii_pkm#new_quick(<q-args>)
 command!          NA         call yurii_pkm#new_here_typed('A')
 command! -nargs=? NP         call yurii_pkm#v2_new_parent(<q-args>)
 command! -nargs=? NC         call yurii_pkm#v2_new_child(<q-args>)
+command!          NH         call yurii_pkm#v2_new_here()
 command! -nargs=? V2Migrate  call yurii_pkm#v2_migrate(<q-args>)
 command! -nargs=* CA         call yurii_pkm#add_clipboard_to_branch()
 command! -nargs=* CU         call yurii_pkm#add_clipboard_before_up()
@@ -213,9 +214,13 @@ vnoremap <nowait> <silent> nf  <Esc><Cmd>call yurii_pkm#visual_new_quick_no_titl
 vnoremap <nowait> <silent> mm  <Esc><Cmd>call yurii_pkm#visual_new_prefix_note('N')<CR>
 vnoremap <nowait> <silent> nk  <Esc><Cmd>call yurii_pkm#visual_new_prefix_note('K')<CR>
 nnoremap <nowait> <silent> na  <Cmd>call yurii_pkm#new_here_typed('A')<CR>
-" v2: np = 親ノート新規作成（リンクは現ノートの --- より上へ、型は数字で選択）
-"     mm = 子ノート（--- より下）。どちらも v2 でのみ動作
+" v2 のノート作成（関係を数字で選択、Esc/q でキャンセル）
+"   nc … 子ノート（リンクは現ノートの されている 側）
+"   np … 親ノート（リンクは現ノートの している 側）
+"   nh … カーソル直下にリンク（本文リンク → 相手には バックリンク: として出る）
+nnoremap <nowait> <silent> nc  <Cmd>call yurii_pkm#v2_new_child()<CR>
 nnoremap <nowait> <silent> np  <Cmd>call yurii_pkm#v2_new_parent()<CR>
+nnoremap <nowait> <silent> nh  <Cmd>call yurii_pkm#v2_new_here()<CR>
 " cu: クリップボードのリンクを Parent: セクションへ追加
 nnoremap <nowait> <silent> cu  <Cmd>call yurii_pkm#add_clipboard_to_branch()<CR>
 " ca: クリップボードのリンクを Child: に追加し、リンク先の Parent: に現在ノートを追加

@@ -101,14 +101,25 @@ def test_sync_generates_down() -> None:
 
 
 def test_sync_symmetric_down_edit() -> None:
-    print("sync: 下側の手編集 → 相方の上側へ反映")
+    print("sync: 下側の手編集（有向）→ 相方の上側へ反映")
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        note(root / "20250104.md", "A")
+        note(root / "20250120.md", "C", down="論点: [A](20250104.md)")
+        v2.sync_vault(root)
+        up, _dn = regions((root / "20250104.md").read_text(encoding="utf-8"))
+        check("論点: [C](20250120.md)" in up, "A の上側に『論点: C』が入る")
+
+
+def test_kanren_down_edit_mirrors() -> None:
+    print("sync: 関連 を下側に手書き → 相方の下側にも入る")
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
         note(root / "20250104.md", "A")
         note(root / "20250120.md", "C", down="関連: [A](20250104.md)")
         v2.sync_vault(root)
-        up, _dn = regions((root / "20250104.md").read_text(encoding="utf-8"))
-        check("関連: [C](20250120.md)" in up, "A の上側に『関連: C』が入る")
+        _u, a_dn = regions((root / "20250104.md").read_text(encoding="utf-8"))
+        check("関連: [C](20250120.md)" in a_dn, "A の下側に 関連: C")
 
 
 def test_sync_delete_from_down_removes_up() -> None:
@@ -129,17 +140,18 @@ def test_sync_delete_from_down_removes_up() -> None:
         check("20250111.md" not in up, "A の上側から論点リンクが消える")
 
 
-def test_mutual_link_not_shown_in_down() -> None:
-    print("sync: 相互リンクは下側に出さない")
+def test_kanren_is_symmetric() -> None:
+    print("sync: 関連 は対称（両方の下側に出る、上側には出ない）")
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
-        note(root / "20250104.md", "A", up="関連: [B](20250111.md)")
-        note(root / "20250111.md", "B", up="関連: [A](20250104.md)")
+        note(root / "20250104.md", "A", up="関連: [B](20250111.md)")  # 旧スタイルの上側
+        note(root / "20250111.md", "B")
         v2.sync_vault(root)
-        a_down = regions((root / "20250104.md").read_text(encoding="utf-8"))[1]
-        b_down = regions((root / "20250111.md").read_text(encoding="utf-8"))[1]
-        check("20250111.md" not in a_down, "A の下側に B は出ない")
-        check("20250104.md" not in b_down, "B の下側に A は出ない")
+        a_up, a_dn = regions((root / "20250104.md").read_text(encoding="utf-8"))
+        b_up, b_dn = regions((root / "20250111.md").read_text(encoding="utf-8"))
+        check("関連: [B](20250111.md)" in a_dn, "A の下側に 関連: B")
+        check("関連: [A](20250104.md)" in b_dn, "B の下側に 関連: A")
+        check("関連" not in a_up and "関連" not in b_up, "どちらの上側にも 関連 は無い")
 
 
 def test_title_refresh() -> None:
@@ -197,7 +209,7 @@ def test_migrate_legacy_v1_note() -> None:
         up, dn = regions(txt)
         check("Parent:" not in txt and "Child:" not in txt and "BackLink:" not in txt,
               "旧見出しが消える")
-        check("関連: [parent-note](260909061513.md)" in up, "Parent リンク -> 関連: (表示名は現タイトルへ)")
+        check("関連: [parent-note](260909061513.md)" in dn, "Parent リンク -> 関連:（対称なので下側・表示名は現タイトルへ）")
         check("カテゴリー: [Index](index.md)" in up, "[Index] -> カテゴリー:")
         check(UP_MARK in txt and DOWN_MARK in txt, "見張りコメント形式に変換される")
 
@@ -283,11 +295,11 @@ def test_unmarked_notes_frozen_by_sync() -> None:
         v1raw = ("# 2020-01-01\n\n昔のメモ。\n\nParent:\n[何か](20200102120000.md)\n"
                  "Child:\nBackLink:\n[Index](index.md)\n")
         old.write_text(v1raw, encoding="utf-8")
-        note(root / "20250104.md", "現ノート", up="関連: [昔のメモ](diary/20200101120000.md)")
+        note(root / "20250104.md", "現ノート", up="論点: [昔のメモ](diary/20200101120000.md)")
         v2.sync_vault(root)
         check(old.read_text(encoding="utf-8") == v1raw, "v1 形式ノートは sync で 1 バイト不変")
         up, _dn = regions((root / "20250104.md").read_text(encoding="utf-8"))
-        check("関連: [昔のメモ](diary/20200101120000.md)" in up, "リンクは打った通りに残る")
+        check("論点: [昔のメモ](diary/20200101120000.md)" in up, "リンクは打った通りに残る（表示名も固定）")
         # migrate を明示的に呼ぶと変換される
         conv = v2.migrate_note(v1raw, str(old))
         check(conv is not None and "<!-- している -->" in conv, "migrate は v2 化する")
