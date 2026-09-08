@@ -111,6 +111,8 @@ command! -nargs=? UpdateALL  call yurii_pkm#update_all(<q-args>)
 command!          CheckPrefix call yurii_pkm#check_missing_prefix_in_current_dir()
 command! -nargs=* NF         call yurii_pkm#new_quick(<q-args>)
 command!          NA         call yurii_pkm#new_here_typed('A')
+command! -nargs=? NP         call yurii_pkm#v2_new_parent(<q-args>)
+command! -nargs=? NC         call yurii_pkm#v2_new_child(<q-args>)
 command! -nargs=* CA         call yurii_pkm#add_clipboard_to_branch()
 command! -nargs=* CU         call yurii_pkm#add_clipboard_before_up()
 command! -nargs=* TT         call yurii_pkm#add_clipboard_to_top()
@@ -210,6 +212,9 @@ vnoremap <nowait> <silent> nf  <Esc><Cmd>call yurii_pkm#visual_new_quick_no_titl
 vnoremap <nowait> <silent> mm  <Esc><Cmd>call yurii_pkm#visual_new_prefix_note('N')<CR>
 vnoremap <nowait> <silent> nk  <Esc><Cmd>call yurii_pkm#visual_new_prefix_note('K')<CR>
 nnoremap <nowait> <silent> na  <Cmd>call yurii_pkm#new_here_typed('A')<CR>
+" v2: np = 親ノート新規作成（リンクは現ノートの --- より上へ、型は数字で選択）
+"     mm = 子ノート（--- より下）。どちらも v2 でのみ動作
+nnoremap <nowait> <silent> np  <Cmd>call yurii_pkm#v2_new_parent()<CR>
 " cu: クリップボードのリンクを Parent: セクションへ追加
 nnoremap <nowait> <silent> cu  <Cmd>call yurii_pkm#add_clipboard_to_branch()<CR>
 " ca: クリップボードのリンクを Child: に追加し、リンク先の Parent: に現在ノートを追加

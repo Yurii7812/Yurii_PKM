@@ -2407,11 +2407,16 @@ function! yurii_pkm#v2_add_link(...) abort
   echo 'yurii_PKM: ' . l:type . (l:below ? ' ↓ ' : ' ') . '+= ' . l:title
 endfunction
 
-" --- ページを開きながら子ノートを新規作成。リンクは現ノートの --- より下へ。
-"   a:1 … 型（省略時は数字で選択。'' でリンクなし作成のみ）
-function! yurii_pkm#v2_new_child(...) abort
-  let l:parent = expand('%:p')
-  if empty(l:parent)
+" --- ページを開きながら関連ノートを新規作成。
+"   a:below … 1 = 現ノートの --- より下（子: 相手が上側に載る）
+"             0 = 現ノートの --- より上（親: 相手の下側に載る）
+"   a:1     … 型（省略時は数字で選択。'' でリンクなし作成のみ）
+function! s:v2_new_related(below, ...) abort
+  if s:pkm_format() !=# 'v2'
+    echo 'yurii_PKM: v2 専用（g:yurii_pkm_format = ''v2''）' | return
+  endif
+  let l:cur = expand('%:p')
+  if empty(l:cur)
     echohl WarningMsg | echo 'yurii_PKM: 名前付きバッファで実行して' | echohl NONE
     return
   endif
@@ -2425,13 +2430,23 @@ function! yurii_pkm#v2_new_child(...) abort
   if l:type !=# ''
     let l:save_ai = &autoindent | let l:save_si = &smartindent
     setlocal noautoindent nosmartindent
-    call s:v2_insert_link(l:type, '[' . l:ts . '](' . l:ts . '.md)', 1)
+    call s:v2_insert_link(l:type, '[' . l:ts . '](' . l:ts . '.md)', a:below)
     let &autoindent = l:save_ai | let &smartindent = l:save_si
     silent noautocmd write
-    call s:run_update_one_for(l:parent)
+    call s:run_update_one_for(l:cur)
   endif
 
   execute 'edit ' . fnameescape(l:file)
+endfunction
+
+" 子ノート: リンクは現ノートの --- より下
+function! yurii_pkm#v2_new_child(...) abort
+  call call('s:v2_new_related', [1] + a:000)
+endfunction
+
+" 親ノート: リンクは現ノートの --- より上（新ノートは sync で下側に現ノートを載せる）
+function! yurii_pkm#v2_new_parent(...) abort
+  call call('s:v2_new_related', [0] + a:000)
 endfunction
 
 function! s:v2_link_dispatch() abort
