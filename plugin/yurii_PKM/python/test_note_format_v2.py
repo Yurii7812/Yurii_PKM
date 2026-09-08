@@ -55,7 +55,7 @@ def test_parse_inline_and_block_roundtrip() -> None:
         "---\ntime: 2026-01-01 00:00:00\ntitle: A\n---\n\n# A\n\n"
         "散文。ここに ワード: と書いても本文。ここに --- も書ける。\n\n"
         "<!-- している -->\n"
-        "カテゴリー: [瞑想](20250101.md)\n"
+        "所属: [瞑想](20250101.md)\n"
         "論点:\n[問い](20250111.md) — メモ\n[別の問い](20250112.md)\n"
         "<!-- されている -->\n"
         "関連: [呼吸法](20250107.md)\n"
@@ -63,12 +63,12 @@ def test_parse_inline_and_block_roundtrip() -> None:
     n = v2.parse_note(Path("/x/A.md"), src)
     check(n.title == "A", "title を front matter から取得")
     check("ワード:" in "\n".join(n.body), "本文の『ワード:』は本文のまま（型にしない）")
-    check(n.up["カテゴリー"] == [("瞑想", "20250101.md", None)], "インライン 1 本")
+    check(n.up["所属"] == [("瞑想", "20250101.md", None)], "インライン 1 本")
     check(len(n.up["論点"]) == 2, "ブロック 2 本")
     check(n.up["論点"][0][2] == "メモ", "注釈を保持")
     check(n.down["関連"] == [("呼吸法", "20250107.md", None)], "下側インライン")
     out = v2.render_note(n)
-    check("カテゴリー: [瞑想](20250101.md)" in out, "1 本はインラインで出力")
+    check("所属: [瞑想](20250101.md)" in out, "1 本はインラインで出力")
     check("論点:\n[問い](20250111.md) — メモ" in out, "2 本はブロックで出力")
     check(UP_MARK in out and DOWN_MARK in out, "見張りコメントが両方ある")
     check(out.count("\n---\n") == 1, "--- は front matter の 1 箇所だけ（本文の --- は保持）")
@@ -210,7 +210,7 @@ def test_migrate_legacy_v1_note() -> None:
         check("Parent:" not in txt and "Child:" not in txt and "BackLink:" not in txt,
               "旧見出しが消える")
         check("関連: [parent-note](260909061513.md)" in dn, "Parent リンク -> 関連:（対称なので下側・表示名は現タイトルへ）")
-        check("カテゴリー: [Index](index.md)" in up, "[Index] -> カテゴリー:")
+        check("所属: [Index](index.md)" in up, "[Index] -> 所属:")
         check(UP_MARK in txt and DOWN_MARK in txt, "見張りコメント形式に変換される")
 
 
@@ -277,7 +277,7 @@ def test_pkm_raw_optout() -> None:
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
         raw = ("---\ntitle: 生ログ\npkm: raw\n---\n\n# 生ログ\n\n"
-               "<!-- している -->\nカテゴリー: [x](20250104.md)\n<!-- されている -->\n")
+               "<!-- している -->\n所属: [x](20250104.md)\n<!-- されている -->\n")
         p = root / "20250101.md"
         p.write_text(raw, encoding="utf-8")
         note(root / "20250104.md", "X")

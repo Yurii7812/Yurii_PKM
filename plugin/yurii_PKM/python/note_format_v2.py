@@ -7,7 +7,7 @@
 - 本文の後、``<!-- している -->`` 見張り行から上側（このノートが「している」こと）。
 - ``<!-- されている -->`` 見張り行から下側（「されている」こと）。
   HTML コメントなのでレンダラで不可視・見出し化しない・本文と衝突しない。
-- 既知の関係: カテゴリー / 前提 / 論点 / 見解 / ワード / 関連。
+- 既知の関係: 所属 / 前提 / 論点 / 見解 / ワード / 関連。
   それ以外の ``語:`` 見出しも関係として扱う（自由入力）。
 - リンク 1 本は ``関係: [t](x.md)`` のインライン、2 本以上は ``関係:`` 改行のブロック。
 - 上側が真実。下側は他ノートの上側から導出。上下どちらも編集でき、
@@ -34,7 +34,9 @@ import re
 import sys
 from pathlib import Path
 
-RELATIONS: tuple[str, ...] = ("カテゴリー", "前提", "論点", "見解", "ワード", "関連")
+RELATIONS: tuple[str, ...] = ("所属", "前提", "論点", "見解", "ワード", "関連")
+# 旧名の読み替え（既存ノートの見出しを次の sync で正規化）
+RELATION_ALIASES: dict[str, str] = {"カテゴリー": "所属"}
 # 対称関係: 上側には出さず、両ノートの下側に現れる。
 SYMMETRIC: frozenset[str] = frozenset({"関連"})
 BACKLINK = "バックリンク"
@@ -113,7 +115,7 @@ def _parse_sections(lines: list[str], allow_body: bool):
         s = ln.strip()
         m = HEADER_RE.match(s)
         if m and _looks_like_header(m, lines, i):
-            cur = m.group(1).strip()
+            cur = RELATION_ALIASES.get(m.group(1).strip(), m.group(1).strip())
             seen_header = True
             sections.setdefault(cur, [])
             lm = LINK_LINE_RE.match(m.group(2).strip())
@@ -150,7 +152,7 @@ def _has_relation_header(lines: list[str]) -> bool:
 
 def _route_legacy_link(up: dict, ti: str, tg: str, ann: str | None) -> None:
     base = tg.split("#", 1)[0].rsplit("/", 1)[-1].lower()
-    kind = "カテゴリー" if base in ("index.md", "index") else "関連"
+    kind = "所属" if base in ("index.md", "index") else "関連"
     up.setdefault(kind, [])
     if all(e[1] != tg for e in up[kind]):
         up[kind].append((ti, tg, ann))
@@ -185,7 +187,8 @@ def _migrate_legacy(lines: list[str]):
         tm = HEADER_RE.match(s)
         if tm and _looks_like_header(tm, lines, idx):
             seen = True
-            zone = ("rel", tm.group(1).strip())
+            _r = RELATION_ALIASES.get(tm.group(1).strip(), tm.group(1).strip())
+            zone = ("rel", _r)
             up.setdefault(zone[1], [])
             inln = LINK_LINE_RE.match(tm.group(2).strip())
             if inln:
