@@ -604,6 +604,21 @@ def main(argv: list[str]) -> int:
             sync_vault(argv[3])
         print("yurii_PKM: v2 retitle via sync")
         return 0
+    if mode == "dupcheck":
+        # 2 つの vault を merge する前に、同名 .md（＝タイムスタンプ衝突）を洗い出す。
+        if len(argv) < 4:
+            print("usage: note_format_v2.py dupcheck DIR_A DIR_B", file=sys.stderr)
+            return 2
+        a = {p.name for p in Path(argv[2]).rglob("*.md")} - {"index.md"}
+        b = {p.name for p in Path(argv[3]).rglob("*.md")} - {"index.md"}
+        dup = sorted(a & b)
+        if dup:
+            print("衝突するファイル名（merge 前にどちらかを改名）:")
+            for name in dup:
+                print(f"  {name}")
+            return 1
+        print("衝突なし（index.md を除く）")
+        return 0
     if mode in {"update_titles", "rename_prefix", "reparent_down_children", "nf"}:
         print(f"yurii_PKM: v2 ignores mode '{mode}'", file=sys.stderr)
         return 0
