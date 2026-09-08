@@ -36,8 +36,8 @@ import sys
 from pathlib import Path
 
 RELATIONS: tuple[str, ...] = ("所属", "前提", "ワード", "関連")
-# 旧名の読み替え（既存ノートの見出しを次の sync で正規化）
-RELATION_ALIASES: dict[str, str] = {"カテゴリー": "所属"}
+# 関係名の読み替え（既定は無し。カテゴリー: はそのまま残す）
+RELATION_ALIASES: dict[str, str] = {}
 # ノードの属性（front matter `attribute:`）。関係ではない。
 ATTR_KEYS = ("attribute", "属性")
 FREEZE_ATTR = "日記"  # この属性のノートは sync が一切触らない
@@ -165,7 +165,7 @@ def _has_relation_header(lines: list[str]) -> bool:
 
 def _route_legacy_link(up: dict, ti: str, tg: str, ann: str | None) -> None:
     base = tg.split("#", 1)[0].rsplit("/", 1)[-1].lower()
-    kind = "所属" if base in ("index.md", "index") else "関連"
+    kind = "所属" if base in ("index.md", "index") else "関連"  # v1 の Index リンクは所属へ
     up.setdefault(kind, [])
     if all(e[1] != tg for e in up[kind]):
         up[kind].append((ti, tg, ann))
