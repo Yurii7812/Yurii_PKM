@@ -206,22 +206,14 @@ nnoremap <nowait> <silent> ,,  <Cmd>call yurii_pkm#jump_up()<CR>
 nnoremap <nowait> <silent> ,.  <Cmd>call yurii_pkm#jump_down_top()<CR>
 nnoremap <nowait> <silent> ,/  <Cmd>call yurii_pkm#jump_down_bottom()<CR>
 
-" ノート操作
-nnoremap <nowait> <silent> nf  <Cmd>call yurii_pkm#new_quick_no_title()<CR>
-nnoremap <nowait> <silent> mm  <Cmd>call yurii_pkm#new_prefix_note('N')<CR>
-nnoremap <nowait> <silent> nk  <Cmd>call yurii_pkm#new_prefix_note('K')<CR>
-vnoremap <nowait> <silent> nf  <Esc><Cmd>call yurii_pkm#visual_new_quick_no_title()<CR>
-vnoremap <nowait> <silent> mm  <Esc><Cmd>call yurii_pkm#visual_new_prefix_note('N')<CR>
-vnoremap <nowait> <silent> nk  <Esc><Cmd>call yurii_pkm#visual_new_prefix_note('K')<CR>
-nnoremap <nowait> <silent> na  <Cmd>call yurii_pkm#new_here_typed('A')<CR>
-" v2 のノート作成（関係を数字で選択、Esc/q でキャンセル）
+" ノート作成（関係を数字で選択、Esc/q でキャンセル）
 "   nc … 子ノート（リンクは現ノートの されている 側）
 "   np … 親ノート（リンクは現ノートの している 側）
 "   nh … カーソル直下にリンク（本文リンク → 相手には バックリンク: として出る）
+"   nk … カテゴリーノート（c=子 / p=親 を聞く。カテゴリーは nk でのみ作れる）
 nnoremap <nowait> <silent> nc  <Cmd>call yurii_pkm#v2_new_child()<CR>
 nnoremap <nowait> <silent> np  <Cmd>call yurii_pkm#v2_new_parent()<CR>
 nnoremap <nowait> <silent> nh  <Cmd>call yurii_pkm#v2_new_here()<CR>
-" nk : カテゴリーノートを作る（child/parent を聞く）。カテゴリーは nk でのみ作れる
 nnoremap <nowait> <silent> nk  <Cmd>call yurii_pkm#v2_new_category()<CR>
 " cu: クリップボードのリンクを Parent: セクションへ追加
 nnoremap <nowait> <silent> cu  <Cmd>call yurii_pkm#add_clipboard_to_branch()<CR>
