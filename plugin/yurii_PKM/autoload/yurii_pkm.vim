@@ -1885,6 +1885,7 @@ function! s:rlp_row_path(it) abort
   return get(a:it, 'path', '')
 endfunction
 
+" 末尾を残して頭を削る（パンくず用。今どこに居るかは末尾が大事）
 function! s:rlp_trunc_tail(s, w) abort
   if a:w <= 1 | return a:s | endif
   if strdisplaywidth(a:s) <= a:w | return a:s | endif
@@ -1893,6 +1894,17 @@ function! s:rlp_trunc_tail(s, w) abort
     let l:s = strcharpart(l:s, 1)
   endwhile
   return '…' . l:s
+endfunction
+
+" 頭を残して末尾を削る（ノート名・ラベル用。頭が読めないと何のノートか分からない）
+function! s:rlp_trunc_head(s, w) abort
+  if a:w <= 1 | return a:s | endif
+  if strdisplaywidth(a:s) <= a:w | return a:s | endif
+  let l:s = a:s
+  while strchars(l:s) > 1 && strdisplaywidth(l:s) > a:w - 1
+    let l:s = strcharpart(l:s, 0, strchars(l:s) - 1)
+  endwhile
+  return l:s . '…'
 endfunction
 
 function! s:rlp_crumb_line(w) abort
@@ -2000,7 +2012,7 @@ function! s:rlp_geometry() abort
     let l:h = max([&lines - l:chrome_h - 2 * l:outer, 8])
     let l:lw = get(g:, 'yurii_pkm_space_list_width', 0)
     if l:lw <= 0
-      let l:lw = max([32, min([float2nr(&columns * 0.32), 46])])
+      let l:lw = max([36, min([float2nr(&columns * 0.38), 58])])
     endif
     let l:list_col = 1 + l:outer
     let l:pv_col = l:list_col + l:lw + l:chrome_w + l:gap
@@ -2083,7 +2095,12 @@ endfunction
 function! s:rlp_dive(idx) abort
   if !s:rlp_is_sel(a:idx) | return | endif
   let l:it = s:rlp_items[a:idx]
-  if get(l:it, 'kind', '') ==# 'anchor' | return | endif
+  if get(l:it, 'kind', '') ==# 'anchor'
+    " アンカー（自分自身）には潜れない。選ぶだけ ＝ ⏎ で開ける状態にする
+    let s:rlp_sel = a:idx
+    call s:rlp_render()
+    return
+  endif
   let l:p = s:rlp_row_path(l:it)
   if empty(l:p) || (!filereadable(l:p) && !isdirectory(l:p)) | return | endif
   if isdirectory(l:p) || !s:is_markdown_file(l:p)
@@ -2203,15 +2220,17 @@ function! s:rlp_render() abort
     let l:kind = get(l:it, 'kind', '')
     if l:kind ==# 'anchor'
       call add(l:lines, l:cur . l:lbl . l:mk . '◎ '
-            \ . s:rlp_trunc_tail(l:it.text, l:w - 5))
+            \ . s:rlp_trunc_head(l:it.text, l:w - 5))
     elseif l:kind ==# 'note'
       call add(l:lines, l:cur . l:lbl . l:mk . '  '
-            \ . s:rlp_trunc_tail(l:it.text, l:w - 5))
+            \ . s:rlp_trunc_head(l:it.text, l:w - 5))
     else
       let l:arw = (l:it.side ==# 'up') ? '→' : (l:it.side ==# 'down' ? '←' : '¶')
       let l:pad = repeat(' ', max([l:lw - strdisplaywidth(l:it.label), 0]))
-      call add(l:lines, s:rlp_trunc_tail(printf('%s%s%s%s %s%s  %s',
-            \ l:cur, l:lbl, l:mk, l:arw, l:it.label, l:pad, l:it.text), l:w))
+      let l:pre = printf('%s%s%s%s %s%s  ',
+            \ l:cur, l:lbl, l:mk, l:arw, l:it.label, l:pad)
+      call add(l:lines, l:pre
+            \ . s:rlp_trunc_head(l:it.text, max([l:w - strdisplaywidth(l:pre), 4])))
     endif
   endfor
 
@@ -2221,7 +2240,7 @@ function! s:rlp_render() abort
         \ : repeat('─', l:w))
   call add(l:lines, s:rlp_mode ==# 'input'
         \ ? '打つ 絞る  ↑↓ 選択  → 潜る  ← 戻る  ⏎ 開く  ⇥ 切替  ⎋ 抜ける'
-        \ : 'jk/字 選択  l 潜る  ⏎ 開く  fb プレ  c/p 子/親  y m a  i 絞込  ⇥ 全体')
+        \ : '字 潜る  jk 選択  ⏎ 開く  ⌫/h 戻る  fb プレ  c/p 子親  y m a  i 絞込  ⇥ 全体')
   call popup_settext(s:rlp_win, l:lines)
   call popup_setoptions(s:rlp_win,
         \ {'title': s:rlp_scope ==# 'global' ? ' 全ノート ' : ' ローカル '})
@@ -2335,6 +2354,7 @@ function! s:rlp_key(winid, key) abort
     call s:rlp_dive(s:rlp_sel)
     return 1
   elseif a:key ==# 'h' || a:key ==# "\<Left>"
+        \ || a:key ==# "\<BS>" || a:key ==# "\<C-h>"
     call s:rlp_back()
     return 1
   elseif a:key ==# 'm'
@@ -2358,7 +2378,10 @@ function! s:rlp_key(winid, key) abort
     call popup_close(s:rlp_win, {'yank': s:rlp_targets()})
     return 1
   elseif has_key(s:rlp_rowmap, a:key)
-    let s:rlp_sel = s:rlp_rowmap[a:key]
+    " ラベルは1タップでそのまま潜る。潜ってもノートは（アンカー行とプレビューに）
+    " 出続けるし ⌫ / h で即戻れるので、確認の1打は要らない。
+    call s:rlp_dive(s:rlp_rowmap[a:key])
+    return 1
   else
     return 1
   endif
