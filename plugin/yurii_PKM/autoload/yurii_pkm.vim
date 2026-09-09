@@ -2151,6 +2151,31 @@ function! yurii_pkm#go_back() abort
   endif
   silent! execute 'hide edit ' . fnameescape(l:item.file)
   call setpos('.', l:item.pos)
+  call s:snap_cursor_to_link()
+endfunction
+
+" 戻った直後、カーソルがリンク上でなければ一番近いリンクへ寄せる。
+" （同期で行がずれてもリンクを見失わないように）
+function! s:snap_cursor_to_link() abort
+  let l:lnum = line('.')
+  " まず現在行にリンクがあればその先頭へ
+  let l:m = matchstrpos(getline(l:lnum), s:link_pat)
+  if l:m[1] >= 0
+    call cursor(l:lnum, l:m[1] + 1)
+    return
+  endif
+  " なければ前後 12 行を近い順に探索
+  let l:last = line('$')
+  for l:d in range(1, 12)
+    for l:cand in [l:lnum + l:d, l:lnum - l:d]
+      if l:cand < 1 || l:cand > l:last | continue | endif
+      let l:mm = matchstrpos(getline(l:cand), s:link_pat)
+      if l:mm[1] >= 0
+        call cursor(l:cand, l:mm[1] + 1)
+        return
+      endif
+    endfor
+  endfor
 endfunction
 
 " ---------------------------------------------------------------------------
