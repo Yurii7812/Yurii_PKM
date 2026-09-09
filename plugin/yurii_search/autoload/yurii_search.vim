@@ -27,6 +27,26 @@ let s:win   = -1
 let s:pvwin = -1
 let s:rows  = 15
 let s:mode  = 'input'   " 'input' = 打つと絞り込み / 'pick' = 数字で行を開く
+let s:hl    = []        " 開いた先のハイライト [[winid, matchid], ...]
+
+" 検索語を \V マジックの「いずれか」パターンにする
+function! s:query_pattern() abort
+  let l:q = substitute(s:query, '　', ' ', 'g')
+  let l:terms = filter(split(l:q, ' '), 'v:val !=# ""')
+  if empty(l:terms) | return '' | endif
+  call map(l:terms, {_, v -> '\V' . escape(v, '\')})
+  return '\%(' . join(l:terms, '\|') . '\)'
+endfunction
+
+" 直前に付けたハイライトを消す
+function! yurii_search#clear_hl() abort
+  for l:pair in s:hl
+    if win_id2win(l:pair[0]) > 0
+      silent! call matchdelete(l:pair[1], l:pair[0])
+    endif
+  endfor
+  let s:hl = []
+endfunction
 
 function! yurii_search#run(...) abort
   let l:idx = get(g:, 'yurii_search_index', '')
@@ -266,8 +286,20 @@ function! s:done(winid, result) abort
     call popup_close(s:pvwin)
     let s:pvwin = -1
   endif
-  if type(a:result) == v:t_number && a:result >= 0 && a:result < len(s:cands)
-    execute 'edit ' . fnameescape(s:cands[a:result].p)
+  if type(a:result) != v:t_number || a:result < 0 || a:result >= len(s:cands)
+    return
+  endif
+  let l:pat = s:query_pattern()
+  execute 'edit ' . fnameescape(s:cands[a:result].p)
+  call yurii_search#clear_hl()
+  if empty(l:pat) | return | endif
+  " 検索レジスタにも入れて n / N / :noh を効かせる
+  let @/ = l:pat
+  call add(s:hl, [win_getid(), matchadd('Search', l:pat)])
+  " 最初のヒット行へ寄せる
+  call cursor(1, 1)
+  if search(l:pat, 'cW') > 0
+    normal! zz
   endif
 endfunction
 
