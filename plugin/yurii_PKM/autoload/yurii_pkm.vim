@@ -1822,7 +1822,7 @@ let s:rlp_top = 0
 let s:rlp_rows = 14
 let s:rlp_geo = {}
 let s:rlp_scope = 'local'     " 'local' | 'global'
-let s:rlp_filtering = 0       " ローカルの一時絞り込み（/）中か
+let s:rlp_input = 0           " 1 = 打つとクエリ / 0 = 打つとコマンド
 let s:rlp_query = ''
 let s:rlp_terms = []
 let s:rlp_path = ''           " アンカー = いま一覧を出しているノート
@@ -2092,10 +2092,10 @@ function! s:rlp_dive(idx) abort
   endif
   call add(s:rlp_stack, {'path': s:rlp_path, 'base': s:rlp_base,
         \ 'sel': s:rlp_sel, 'top': s:rlp_top,
-        \ 'scope': s:rlp_scope, 'query': s:rlp_query, 'filtering': s:rlp_filtering})
+        \ 'scope': s:rlp_scope, 'query': s:rlp_query, 'input': s:rlp_input})
   call add(s:rlp_crumbs, fnamemodify(l:p, ':t:r'))
   let s:rlp_query = ''
-  let s:rlp_filtering = 0
+  let s:rlp_input = 0
   call s:rlp_load(l:p, fnamemodify(l:p, ':h'))
 endfunction
 
@@ -2107,7 +2107,7 @@ function! s:rlp_back() abort
   let l:prev = remove(s:rlp_stack, -1)
   if !empty(s:rlp_crumbs) | call remove(s:rlp_crumbs, -1) | endif
   let s:rlp_query = get(l:prev, 'query', '')
-  let s:rlp_filtering = get(l:prev, 'filtering', 0)
+  let s:rlp_input = get(l:prev, 'input', 0)
   if get(l:prev, 'scope', 'local') ==# 'global'
     let s:rlp_scope = 'global'
     call s:rlp_refresh()
@@ -2172,6 +2172,11 @@ function! s:rlp_render() abort
     " 打っているツールだけ検索バーを出す。カーソル ▏ が見えている＝打てる合図。
     let l:qtext = (s:rlp_scope ==# 'global' ? '検索 ' : '絞込 ') . s:rlp_query . '▏'
     let l:right = l:pos
+  elseif s:rlp_scope ==# 'global'
+    " グローバルのコマンド状態。i で打てることと、効いているクエリを見せる
+    let l:qtext = '全ノート' . (empty(s:rlp_query) ? '' : ' ' . s:rlp_query)
+    let l:qtext = s:rlp_trunc_head(l:qtext, l:w - 14)
+    let l:right = l:pos
   else
     " ローカルは打たないので、バーではなく居場所だけ出す
     let l:qtext = '◎ ' . s:rlp_trunc_head(s:get_title(s:rlp_path), l:w - 14)
@@ -2223,12 +2228,10 @@ function! s:rlp_render() abort
   call add(l:lines, l:below > 0
         \ ? '─── ↓' . l:below . ' ' . repeat('─', max([l:w - 6 - len(string(l:below)), 0]))
         \ : repeat('─', l:w))
-  if s:rlp_scope ==# 'global'
-    call add(l:lines, '打つ 絞る  ↑↓ 選択  →/⇥ 潜る  ⏎ 開く  ⌫ 消す/戻る  +- 子親')
-  elseif s:rlp_filtering
-    call add(l:lines, '打つ 絞る  ↑↓ 選択  → 潜る  ⏎ 確定  ⎋ 解除')
+  if s:rlp_input
+    call add(l:lines, '打つ 絞る  ↑↓ 選択  → 潜る  ⏎ 入力終了  ⌫ 消す  ⎋ 消して終了')
   else
-    call add(l:lines, '字 潜る  jk 選択  ⏎ 開く  ⌫ 戻る  ␣ ここ  fb プレ  cp 子親  ym  / 絞込  ⇥ 検索')
+    call add(l:lines, '字 潜る  jk 選択  ⏎ 開く  ⌫ 戻る  ␣ ここ  fb プレ  cp 子親  ym  i 打つ  ⇥ 切替')
   endif
   call popup_settext(s:rlp_win, l:lines)
   call popup_setoptions(s:rlp_win,
@@ -2273,11 +2276,12 @@ endfunction
 " --- キー -------------------------------------------------------------------
 
 " 打鍵がクエリに行くか（＝グローバル、またはローカルの一時絞り込み中）
+" 打鍵がクエリに行く状態か
 function! s:rlp_typing() abort
-  return s:rlp_scope ==# 'global' || s:rlp_filtering
+  return s:rlp_input
 endfunction
 
-" c/p/y/m の共通処理。ローカルは英字、グローバルは記号から呼ばれる。
+" c/p/y/m の共通処理。記号からも英字からも呼ばれる。
 function! s:rlp_op(op) abort
   if a:op ==# 'child'
     call popup_close(s:rlp_win, {'link': 1, 'below': 1, 'targets': s:rlp_targets()})
@@ -2292,56 +2296,33 @@ function! s:rlp_op(op) abort
 endfunction
 
 " =============================================================================
-" キー。モードは持たない。ツール（ローカル / グローバル）ごとに 1 キー 1 意味。
+" キー
 "
-"   ローカル … 打たない。全部コマンド。ラベル1タップで潜る。
-"   グローバル … 打つ。矢印で選ぶ。数字もそのままクエリに入る。
-"   ⇥ は「もう一方のツールへ」。グローバル→ローカルは選択ノートへ潜ることを意味する。
+"   状態は 1 つだけ: 打つ（入力） / 打たない（コマンド）。
+"     ⏎ で入力を終える → コマンド
+"     i で入力に戻る（/ はクエリを消して入力）
+"   コマンド状態のキーは **ローカルでもグローバルでも完全に同じ**。
+"   スコープ（ローカル / グローバル）は候補が何かの違いでしかない。
 " =============================================================================
 function! s:rlp_key(winid, key) abort
-  " --- どちらのツールでも同じ意味の共通キー ---
-  if a:key ==# "\<Esc>" || a:key ==# "\<C-c>"
-    if s:rlp_filtering
-      let s:rlp_filtering = 0
-      let s:rlp_query = ''
-      call s:rlp_refresh()
-      call s:rlp_render()
-      return 1
-    endif
-    call popup_close(s:rlp_win, {'cancel': 1})
-    return 1
-  elseif a:key ==# "\<CR>"
-    if s:rlp_filtering
-      let s:rlp_filtering = 0
-      call s:rlp_render()
-      return 1
-    endif
-    call popup_close(s:rlp_win, {'open': s:rlp_sel})
-    return 1
-  elseif a:key ==# "\<Tab>"
-    call s:rlp_switch_tool()
+  " --- 状態に関係なく同じ意味（記号なので打鍵を邪魔しない） ---
+  if a:key ==# "\<Tab>"
+    call s:rlp_switch_scope()
     return 1
   elseif a:key ==# "\<Down>"
-    call s:rlp_step_sel(1)
-    call s:rlp_render()
-    return 1
+    call s:rlp_step_sel(1)  | call s:rlp_render() | return 1
   elseif a:key ==# "\<Up>"
-    call s:rlp_step_sel(-1)
-    call s:rlp_render()
-    return 1
+    call s:rlp_step_sel(-1) | call s:rlp_render() | return 1
   elseif a:key ==# "\<Right>"
-    call s:rlp_dive(s:rlp_sel)
-    return 1
+    call s:rlp_dive(s:rlp_sel) | return 1
   elseif a:key ==# "\<Left>"
-    call s:rlp_back()
-    return 1
+    call s:rlp_back() | return 1
   elseif a:key ==# "\<PageDown>"
     if s:rlp_pvwin >= 0 | call win_execute(s:rlp_pvwin, "normal! \<C-f>") | endif
     return 1
   elseif a:key ==# "\<PageUp>"
     if s:rlp_pvwin >= 0 | call win_execute(s:rlp_pvwin, "normal! \<C-b>") | endif
     return 1
-  " 記号のリンク操作。クエリを打っている最中でも使える（英字を食わない）
   elseif a:key ==# '+'
     call s:rlp_op('child')  | return 1
   elseif a:key ==# '-'
@@ -2352,9 +2333,22 @@ function! s:rlp_key(winid, key) abort
     call s:rlp_op('yank')   | return 1
   endif
 
-  " --- 打鍵がクエリに行くツール（グローバル / ローカルの一時絞り込み） ---
-  if s:rlp_typing()
-    if a:key ==# "\<BS>" || a:key ==# "\<C-h>"
+  " ===== 入力状態: 打つとクエリ =====
+  if s:rlp_input
+    if a:key ==# "\<CR>"
+      " 入力終了 → コマンド状態（ここからラベル1タップで潜れる）
+      let s:rlp_input = 0
+    elseif a:key ==# "\<Esc>" || a:key ==# "\<C-c>"
+      " クエリを捨てて入力終了。空で押したら閉じる
+      if empty(s:rlp_query)
+        call popup_close(s:rlp_win, {'cancel': 1})
+        return 1
+      endif
+      let s:rlp_query = ''
+      let s:rlp_input = 0
+      call s:rlp_refresh()
+      let s:rlp_sel = max([s:rlp_first_sel(), 0])
+    elseif a:key ==# "\<BS>" || a:key ==# "\<C-h>"
       if empty(s:rlp_query)
         call s:rlp_back()
         return 1
@@ -2373,8 +2367,14 @@ function! s:rlp_key(winid, key) abort
     return 1
   endif
 
-  " --- ローカル（打たない。全部コマンド） ---
-  if a:key ==# "\<BS>" || a:key ==# "\<C-h>" || a:key ==# 'h' || a:key ==# 'q'
+  " ===== コマンド状態: 打たない。ローカル / グローバルで同じキー =====
+  if a:key ==# "\<Esc>" || a:key ==# "\<C-c>"
+    call popup_close(s:rlp_win, {'cancel': 1})
+    return 1
+  elseif a:key ==# "\<CR>"
+    call popup_close(s:rlp_win, {'open': s:rlp_sel})
+    return 1
+  elseif a:key ==# "\<BS>" || a:key ==# "\<C-h>" || a:key ==# 'h' || a:key ==# 'q'
     call s:rlp_back()
     return 1
   elseif a:key ==# ' '
@@ -2383,6 +2383,15 @@ function! s:rlp_key(winid, key) abort
   elseif a:key ==# 'l'
     call s:rlp_dive(s:rlp_sel)
     return 1
+  elseif a:key ==# 'i'
+    " クエリを残したまま入力へ戻る
+    let s:rlp_input = 1
+  elseif a:key ==# '/'
+    " クエリを消して入力へ
+    let s:rlp_input = 1
+    let s:rlp_query = ''
+    call s:rlp_refresh()
+    let s:rlp_sel = max([s:rlp_first_sel(), 0])
   elseif a:key ==# 'j'
     call s:rlp_step_sel(1)
   elseif a:key ==# 'k'
@@ -2397,11 +2406,6 @@ function! s:rlp_key(winid, key) abort
   elseif a:key ==# 'b'
     if s:rlp_pvwin >= 0 | call win_execute(s:rlp_pvwin, "normal! \<C-b>") | endif
     return 1
-  elseif a:key ==# '/'
-    " この一覧だけの一時絞り込み。⏎ で確定、⎋ で解除。
-    let s:rlp_filtering = 1
-    let s:rlp_query = ''
-    call s:rlp_refresh()
   elseif a:key ==# 'c'
     call s:rlp_op('child')  | return 1
   elseif a:key ==# 'p'
@@ -2427,14 +2431,14 @@ function! s:rlp_key(winid, key) abort
   return 1
 endfunction
 
-" ⇥ … もう一方のツールへ。
-"   ローカル → グローバル（全ノート検索を空クエリで開始）
-"   グローバル → ローカル（選択中のノートへ潜る ＝ そこが新しいアンカー）
-function! s:rlp_switch_tool() abort
+" ⇥ … スコープを切り替える（候補が何かだけが変わる）
+"   ローカル → グローバル（全ノートを空クエリ・入力状態で）
+"   グローバル → ローカル（選択中のノートへ潜る＝そこが新しいアンカー）
+function! s:rlp_switch_scope() abort
   if s:rlp_scope ==# 'local'
-    let s:rlp_filtering = 0
     if empty(s:rlp_cands) | call s:rlp_build_index() | endif
     let s:rlp_scope = 'global'
+    let s:rlp_input = 1
     let s:rlp_query = ''
     let s:rlp_sel = 0
     let s:rlp_top = 0
@@ -2443,12 +2447,12 @@ function! s:rlp_switch_tool() abort
     call s:rlp_render()
     return
   endif
-  " グローバル → 選択ノートのローカルへ
   if s:rlp_is_sel(s:rlp_sel)
     call s:rlp_dive(s:rlp_sel)
     return
   endif
   let s:rlp_scope = 'local'
+  let s:rlp_input = 0
   let s:rlp_query = ''
   call s:rlp_refresh()
   let s:rlp_sel = max([s:rlp_first_sel(), 0])
@@ -2612,7 +2616,7 @@ function! yurii_pkm#note_navigator(scope) abort
   let s:rlp_stack = []
   let s:rlp_crumbs = [fnamemodify(l:origin_path, ':t:r')]
   let s:rlp_scope = 'local'
-  let s:rlp_filtering = 0
+  let s:rlp_input = 0
   let s:rlp_query = ''
   let s:rlp_terms = []
   let s:rlp_cands = []
@@ -2648,10 +2652,10 @@ function! yurii_pkm#note_navigator(scope) abort
         \ })
   call s:rlp_load(l:origin_path, expand('%:p:h'))
   if a:scope ==# 'global'
-    " gs 相当。索引を読んで検索（入力サブモード）から始める
+    " gs 相当。索引を読んで、打てる状態（入力）から始める
     if empty(s:rlp_cands) | call s:rlp_build_index() | endif
     let s:rlp_scope = 'global'
-    let s:rlp_filtering = 0
+    let s:rlp_input = 1
     let s:rlp_query = ''
     let s:rlp_sel = 0
     let s:rlp_top = 0
@@ -3541,14 +3545,13 @@ endfunction
 " 逆側は書かない。sync が相方ノートの下側に生成する。
 " ---------------------------------------------------------------------------
 
-" ピッカーで選べる関係。論点 / 見解 は廃止（ノート に集約）。
-" 既存ノートの 論点: / 見解: はそのまま残り、sync の並び替えでも壊れない。
-let s:v2_relations = ['カテゴリー', 'キーワード', '前提', 'ノート', '関連']
+" ピッカーで選べる関係。論点 / 見解 / 前提 は廃止。
+" 既存ノートの 論点: / 見解: / 前提: はそのまま残り、sync の並び替えでも壊れない。
+let s:v2_relations = ['カテゴリー', 'キーワード', 'ノート', '関連', '補足', '資料']
 
 " 関係ごとの向きの制約。0 = している側のみ / 1 = されている側のみ / -1 = 制約なし
 function! s:v2_relation_side(rel) abort
   if a:rel ==# 'キーワード' | return 1 | endif
-  if a:rel ==# '前提'       | return 0 | endif
   if a:rel ==# 'カテゴリー' | return 0 | endif
   if a:rel ==# '関連'       | return 1 | endif
   return -1
@@ -3720,7 +3723,7 @@ function! yurii_pkm#v2_add_link(...) abort
   endif
   let l:rel = a:0 > 1 && a:2 !=# '' ? a:2 : s:v2_pick_relation()
   if l:rel ==# '' | echo 'yurii_PKM: キャンセル' | return | endif
-  " 関係ごとの向きの制約（キーワード=されている / 前提・カテゴリー=している / 関連=対称）
+  " 関係ごとの向きの制約（キーワード=されている / カテゴリー=している / 関連=対称）
   let l:side = s:v2_relation_side(l:rel)
   let l:below = l:side >= 0 ? l:side : (a:0 > 2 ? a:3 : 0)
 
@@ -3754,7 +3757,7 @@ function! s:v2_new_related(below, is_cat, ...) abort
   endif
   let l:rel = (a:0 > 0 && a:1 !=# '') ? a:1 : s:v2_pick_relation()
   if l:rel ==# '' | echo 'yurii_PKM: キャンセル' | return | endif
-  " 関係ごとの向きの制約（キーワード=されている / 前提・カテゴリー=している / 関連=対称）
+  " 関係ごとの向きの制約（キーワード=されている / カテゴリー=している / 関連=対称）
   let l:side = s:v2_relation_side(l:rel)
   let l:below = l:side >= 0 ? l:side : a:below
 

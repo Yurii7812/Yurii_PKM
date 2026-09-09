@@ -39,7 +39,7 @@ import re
 import sys
 from pathlib import Path
 
-RELATIONS: tuple[str, ...] = ("カテゴリー", "キーワード", "前提", "論点", "見解", "関連", "ノート")
+RELATIONS: tuple[str, ...] = ("カテゴリー", "キーワード", "前提", "論点", "見解", "ノート", "関連", "補足", "資料")
 # 関係名の読み替え（既定は無し。カテゴリー: はそのまま残す）
 RELATION_ALIASES: dict[str, str] = {"ワード": "キーワード"}
 # 唯一のノード属性: `attribute: カテゴリー`（容器ノートの印）。他の値は使わない。
