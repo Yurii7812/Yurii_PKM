@@ -24,15 +24,39 @@ function! s:fzf_run(initial) abort
   endif
   let l:tmp = tempname()
   let l:src = 'python3 ' . shellescape(l:idx) . ' ' . shellescape(l:root)
-  " alt-1..alt-9 で「今見えている N 行目」を選んで即開く（数字は普通に打てる）
-  let l:jump = join(map(range(1, 9), '"alt-" . v:val . ":pos(" . v:val . ")+accept"'), ',')
-  " --with-nth='2..' : 一覧・検索対象を タイトル+本文 に。path(1列目)は隠して非マッチ。
-  let l:fzf = 'fzf --exact --layout=reverse --info=inline'
+
+  " 移動モードで使うキー
+  let l:mkeys = '1,2,3,4,5,6,7,8,9,j,k,g,q'
+  let l:movebinds = '1:pos(1)+accept,2:pos(2)+accept,3:pos(3)+accept,4:pos(4)+accept,'
+        \ . '5:pos(5)+accept,6:pos(6)+accept,7:pos(7)+accept,8:pos(8)+accept,9:pos(9)+accept,'
+        \ . 'j:down,k:up,g:first,q:abort'
+  " ⎋ = 移動モード（検索OFF・数字/jk有効） / / = 検索モードへ戻る
+  let l:modal = 'start:unbind(' . l:mkeys . '),'
+        \ . 'esc:disable-search+rebind(' . l:mkeys . ')+change-prompt(移動 › ),'
+        \ . '/:enable-search+unbind(' . l:mkeys . ')+change-prompt(検索 › )'
+
+  " ヒット箇所を色付きで（rg で該当行＋前後3行、無ければ全文）
+  let l:preview = 'q={q}; f={1}; '
+        \ . 'if [ -n "$q" ]; then '
+        \ . 'p=$(printf "%s" "$q" | tr -s " " | tr " " "|"); '
+        \ . 'rg --color=always --colors "match:fg:16" --colors "match:bg:11" -n -C3 -e "$p" -- "$f" 2>/dev/null | head -400 '
+        \ . '|| sed -n 1,300p -- "$f"; '
+        \ . 'else sed -n 1,300p -- "$f"; fi'
+
+  let l:colors = 'fg+:-1,bg+:238,hl:11,hl+:11:bold,pointer:14,marker:14,'
+        \ . 'prompt:14,info:8,border:8,header:8,gutter:-1'
+
+  let l:fzf = 'fzf --exact --ansi --layout=reverse --info=inline --cycle'
         \ . ' --delimiter=''\t'' --with-nth=''2..'''
-        \ . ' --prompt=''note> '' --query=' . shellescape(a:initial)
-        \ . ' --preview-window=right:55%:wrap'
-        \ . ' --preview ' . shellescape('sed -n 1,300p -- {1}')
-        \ . ' --bind ' . shellescape('ctrl-/:toggle-preview,ctrl-d:preview-half-page-down,ctrl-u:preview-half-page-up,' . l:jump)
+        \ . ' --prompt=''検索 › '' --pointer=''▶'' --marker=''✓'''
+        \ . ' --query=' . shellescape(a:initial)
+        \ . ' --color=' . shellescape(l:colors)
+        \ . ' --header=' . shellescape('⏎ 開く   ⎋ 移動   / 検索   1-9 行へ   ^/ プレビュー')
+        \ . ' --preview-window=right:58%:wrap:border-left'
+        \ . ' --preview ' . shellescape(l:preview)
+        \ . ' --bind ' . shellescape('ctrl-/:toggle-preview,ctrl-d:preview-half-page-down,ctrl-u:preview-half-page-up')
+        \ . ' --bind ' . shellescape(l:movebinds)
+        \ . ' --bind ' . shellescape(l:modal)
   let l:cmd = l:src . ' | ' . l:fzf . ' > ' . shellescape(l:tmp)
 
   if get(g:, 'yurii_search_popup', 1) && has('popupwin') && has('terminal')
