@@ -1,10 +1,20 @@
 " autoload/yurii_search.vim
 " ファイル単位のキーワード AND 検索。ネイティブのポップアップ。
+" 一度に 10 件だけ表示し、下に「他 N 件」を出す。
+"
+" 入力モード（既定）:
 "   打つ            … 絞り込み（タイトル+本文、全角スペースも区切り）
-"   1-9 / 0         … その番号の行を開く（0 = 10 行目）
-"   <C-j>/<C-k> ↓↑  … カーソル移動
-"   <C-f>/<C-b>     … 1 画面送り / 戻し
+"   <C-j>/<C-k>     … 1 ページ送り / 戻し
+"   ↑ / ↓          … カーソル 1 件移動
+"   <Tab>          … 選択モードへ
 "   <CR>           … カーソル行を開く
+" 選択モード（<Tab> で切替）:
+"   h / l          … 10 件（区間）ずつ移動
+"   j / k          … 1 件ずつ移動
+"   g              … 先頭へ
+"   1-9 / 0        … その番号の行へ（0 = 10 件目）。同じ数字をもう一度で開く
+"   <CR>           … カーソル行を開く
+" 共通:
 "   <Esc>/<C-c>    … 閉じる
 "   <BS>           … 1 文字消す
 
@@ -48,24 +58,26 @@ function! yurii_search#run(...) abort
   let s:top = 0
   call s:refilter()
 
+  let s:rows = 10
+  let l:h = s:rows + 5          " query + hr + 10行 + hr + 件数/文脈 + ヒント
   let l:w = min([float2nr(&columns * 0.42), 70])
-  let s:rows = max([8, min([&lines - 8, 22])])
-  let l:col = (&columns - (l:w + 2 + float2nr(&columns * 0.42))) / 2
-  let l:line = (&lines - (s:rows + 4)) / 2
+  let l:pv = min([float2nr(&columns * 0.42), 80])
+  let l:col = max([(&columns - (l:w + 3 + l:pv)) / 2, 2])
+  let l:line = max([(&lines - l:h) / 2, 1])
 
   let s:win = popup_create([], {
-        \ 'line': l:line, 'col': max([l:col, 2]),
+        \ 'line': l:line, 'col': l:col,
         \ 'minwidth': l:w, 'maxwidth': l:w,
-        \ 'minheight': s:rows + 2, 'maxheight': s:rows + 2,
+        \ 'minheight': l:h, 'maxheight': l:h,
         \ 'border': [], 'borderchars': ['─','│','─','│','╭','╮','╯','╰'],
         \ 'borderhighlight': ['Comment'], 'padding': [0,1,0,1],
         \ 'title': ' 検索 ', 'zindex': 300,
         \ 'mapping': 0, 'filter': function('s:key'), 'callback': function('s:done'),
         \ })
   let s:pvwin = popup_create([], {
-        \ 'line': l:line, 'col': max([l:col, 2]) + l:w + 3,
-        \ 'minwidth': float2nr(&columns * 0.42), 'maxwidth': float2nr(&columns * 0.42),
-        \ 'minheight': s:rows + 2, 'maxheight': s:rows + 2,
+        \ 'line': l:line, 'col': l:col + l:w + 3,
+        \ 'minwidth': l:pv, 'maxwidth': l:pv,
+        \ 'minheight': l:h, 'maxheight': l:h,
         \ 'border': [], 'borderchars': ['─','│','─','│','╭','╮','╯','╰'],
         \ 'borderhighlight': ['Comment'], 'padding': [0,1,0,1],
         \ 'title': ' プレビュー ', 'zindex': 299,
@@ -100,9 +112,12 @@ endfunction
 function! s:render() abort
   if s:win < 0 | return | endif
   let l:tag = (s:mode ==# 'pick') ? '[選択] ' : ''
-  let l:lines = [l:tag . '> ' . s:query . '▏', repeat('─', 60)]
+  let l:bar = repeat('─', 58)
+  let l:lines = [l:tag . '> ' . s:query . '▏', l:bar]
   if empty(s:hits)
     call add(l:lines, '  (該当なし)')
+    " 10 行ぶん高さを埋める
+    call extend(l:lines, repeat([''], s:rows - 1))
   else
     let l:end = min([s:top + s:rows, len(s:hits)])
     let l:n = 1
@@ -113,12 +128,20 @@ function! s:render() abort
       call add(l:lines, printf('%s%s %s', l:mark, l:num, l:c.t))
       let l:n += 1
     endfor
+    call extend(l:lines, repeat([''], s:rows - (l:end - s:top)))
   endif
+  " 上下に何件あるか
+  let l:above = s:top
+  let l:below = max([0, len(s:hits) - (s:top + s:rows)])
+  let l:ctx = (l:above > 0 ? '↑ 上に ' . l:above . ' 件   ' : '')
+        \ . (l:below > 0 ? '↓ 他 ' . l:below . ' 件' : '')
   let l:hint = (s:mode ==# 'pick')
-        \ ? '数字=その行へ 同じ数字=開く  jk 1行  ^J^K ページ  ⇥ 入力  ⎋ 閉じる'
-        \ : '打つ=絞込  ⇥ 選択へ  ^J^K ページ送り  ↑↓ 1行  ⏎ 開く  ⎋ 閉じる'
-  call add(l:lines, repeat('─', 60))
-  call add(l:lines, printf('%d/%d   %s', empty(s:hits) ? 0 : s:sel + 1, len(s:hits), l:hint))
+        \ ? 'hl ページ  jk 1件  数字=見る 同数字=開く  ⇥ 入力  ⎋ 閉じる'
+        \ : '打つ=絞込  ⇥ 選択へ  ^J^K ページ  ↑↓ 1件  ⏎ 開く  ⎋ 閉じる'
+  call add(l:lines, l:bar)
+  call add(l:lines, printf('%d/%d  %s', empty(s:hits) ? 0 : s:sel + 1, len(s:hits),
+        \ empty(l:ctx) ? l:hint : l:ctx))
+  call add(l:lines, l:hint)
   call popup_settext(s:win, l:lines)
   call popup_setoptions(s:win, {'title': s:mode ==# 'pick' ? ' 選択 ' : ' 検索 '})
   call s:preview()
@@ -206,7 +229,18 @@ function! s:key(winid, key) abort
       endif
       let s:sel = l:target
     endif
+  elseif s:mode ==# 'pick' && (a:key ==# 'l' || a:key ==# 'h')
+    " 選択モード: h/l で 10 件（区間）ずつ移動
+    if a:key ==# 'l'
+      if s:top + s:rows < len(s:hits)
+        let s:top += s:rows
+      endif
+    else
+      let s:top = max([s:top - s:rows, 0])
+    endif
+    let s:sel = s:top
   elseif s:mode ==# 'pick' && (a:key ==# 'j' || a:key ==# 'k' || a:key ==# 'g')
+    " 選択モード: j/k で 1 件ずつ
     if a:key ==# 'j'
       let s:sel = min([s:sel + 1, max([0, len(s:hits) - 1])])
     elseif a:key ==# 'k'
