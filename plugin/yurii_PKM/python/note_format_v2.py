@@ -7,7 +7,9 @@
 - 本文の後、``<!-- している -->`` 見張り行から上側（このノートが「している」こと）。
 - ``<!-- されている -->`` 見張り行から下側（「されている」こと）。
   HTML コメントなのでレンダラで不可視・見出し化しない・本文と衝突しない。
-- 既知の関係: 所属 / 前提 / 論点 / 見解 / ワード / 関連（`関連` は対称）。他の ``語:`` も可。
+- 既知の関係: カテゴリー / 前提 / 論点 / 見解 / キーワード / 関連。他の ``語:`` も可（自由入力）。
+  `関連` は対称。相手が `attribute: カテゴリー` のノートなら、自分側のラベルは
+  常に `カテゴリー:` になる（相手側の されている は書かれた関係のまま）。
 - 唯一のノード属性は front matter の `attribute: カテゴリー`（容器ノートの印）。無ければただのノート。
   論点 / 見解 等は宣言しない（関係とタイトルから分かる）。
 - リンク 1 本は ``関係: [t](x.md)`` のインライン、2 本以上は ``関係:`` 改行のブロック。
@@ -35,12 +37,12 @@ import re
 import sys
 from pathlib import Path
 
-RELATIONS: tuple[str, ...] = ("所属", "前提", "論点", "見解", "ワード", "関連")
+RELATIONS: tuple[str, ...] = ("カテゴリー", "前提", "論点", "見解", "キーワード", "関連")
 # 関係名の読み替え（既定は無し。カテゴリー: はそのまま残す）
-RELATION_ALIASES: dict[str, str] = {}
+RELATION_ALIASES: dict[str, str] = {"ワード": "キーワード"}
 # 唯一のノード属性: `attribute: カテゴリー`（容器ノートの印）。他の値は使わない。
 ATTR_KEYS = ("attribute", "属性")
-CATEGORY_ATTR = "カテゴリー"
+CATEGORY_ATTR = "カテゴリー"  # attribute の唯一の値 / 関係名でもある
 # 対称関係: 上側には出さず、両ノートの下側に現れる。
 SYMMETRIC: frozenset[str] = frozenset({"関連"})
 BACKLINK = "バックリンク"
@@ -165,7 +167,7 @@ def _has_relation_header(lines: list[str]) -> bool:
 
 def _route_legacy_link(up: dict, ti: str, tg: str, ann: str | None) -> None:
     base = tg.split("#", 1)[0].rsplit("/", 1)[-1].lower()
-    kind = "所属" if base in ("index.md", "index") else "関連"  # v1 の Index リンクは所属へ
+    kind = "カテゴリー" if base in ("index.md", "index") else "関連"  # v1 の Index -> カテゴリー
     up.setdefault(kind, [])
     if all(e[1] != tg for e in up[kind]):
         up[kind].append((ti, tg, ann))
@@ -174,7 +176,7 @@ def _route_legacy_link(up: dict, ti: str, tg: str, ann: str | None) -> None:
 def _migrate_legacy(lines: list[str]):
     """旧 v1（Parent:/Child:/BackLink:）を v2 の形へ寄せる。
 
-    Parent/Child/Branch のリンク -> ``関連:``、``[Index](index.md)`` -> ``所属:``。
+    Parent/Child/Branch のリンク -> ``関連:``、``[Index](index.md)`` -> ``カテゴリー:``。
     BackLink は捨てる（sync が下側に再生成する）。リンクは失わない。
     """
     body: list[str] = []
@@ -429,20 +431,28 @@ def _nid(path: Path, root: Path) -> str | None:
         return None
 
 
-def _load_state(root: Path) -> set[Rel]:
+def _load_state(root: Path) -> set[tuple]:
+    """有向関係 = `from\\tto`（2 要素）、対称関係 = `a\\t関連\\tb`（3 要素）。"""
     fp = root / _STATE_FILE
     if not fp.exists():
         return set()
     try:
         data = json.loads(fp.read_text(encoding="utf-8"))
-        return {tuple(x.split("\t")) for x in data if isinstance(x, str) and x.count("\t") == 2}
+        out: set[tuple] = set()
+        for x in data:
+            if not isinstance(x, str):
+                continue
+            parts = x.split("\t")
+            if len(parts) in (2, 3):
+                out.add(tuple(parts))
+        return out
     except Exception:  # noqa: BLE001
         return set()
 
 
-def _save_state(root: Path, present: set[Rel]) -> None:
+def _save_state(root: Path, entries: set[tuple]) -> None:
     fp = root / _STATE_FILE
-    payload = sorted("\t".join(r) for r in present)
+    payload = sorted("\t".join(r) for r in entries)
     fp.write_text(json.dumps(payload, ensure_ascii=False, indent=0), encoding="utf-8")
 
 
@@ -471,13 +481,13 @@ def sync_vault(root) -> int:
         tp = _resolve(target, base, root, by_name)
         return ids.get(tp.resolve()) if tp is not None else None
 
-    observed_up: set[Rel] = set()
-    observed_down: set[Rel] = set()
-    up_ann: dict[Rel, str] = {}
+    # 有向関係の同一性は (from_id, to_id) のペア。ラベルは別管理（表示のみ）。
+    up_label: dict[tuple[str, str], str] = {}    # (A,B) <- A の している 行 `label: [B]`
+    down_label: dict[tuple[str, str], str] = {}  # (A,B) <- B の されている 行 `label: [A]`
+    up_ann: dict[tuple[str, str], str] = {}
     up_unresolved: dict[Path, dict[str, list]] = {k: {} for k in by_path}
     body_links: dict[str, set[str]] = {}
-    # 対称関係: (relation, frozenset{id,id}) -> {その関係行を持つ端点 id}
-    sym_face: dict[tuple[str, frozenset], set[str]] = {}
+    sym_face: dict[tuple[str, frozenset], set[str]] = {}  # (関係, {id,id}) -> 端点
 
     for k, n in by_path.items():
         sid = ids.get(k)
@@ -495,10 +505,9 @@ def sync_vault(root) -> int:
                     if tid != sid:
                         sym_face.setdefault((t, frozenset((sid, tid))), set()).add(sid)
                     continue
-                r = (sid, t, tid)
-                observed_up.add(r)
+                up_label[(sid, tid)] = t
                 if ann:
-                    up_ann[r] = ann
+                    up_ann[(sid, tid)] = ann
         for t, entries in n.down.items():
             if t in _RESERVED:
                 continue
@@ -510,7 +519,7 @@ def sync_vault(root) -> int:
                     if src_id != sid:
                         sym_face.setdefault((t, frozenset((sid, src_id))), set()).add(sid)
                     continue
-                observed_down.add((src_id, t, sid))
+                down_label[(src_id, sid)] = t
         bl: set[str] = set()
         for tg in _links_in(n.body):
             tid = rid(tg, n.path.parent)
@@ -519,89 +528,99 @@ def sync_vault(root) -> int:
         body_links[sid] = bl
 
     prev = _load_state(root)
+    prev_pairs = {(a, b) for r in prev if len(r) == 2 for a, b in [r]}
+    prev_pairs |= {(r[0], r[2]) for r in prev if len(r) == 3 and r[1] not in SYMMETRIC}
+    prev_sym = {r for r in prev if len(r) == 3 and r[1] in SYMMETRIC}
 
-    def _sym_key(t: str, pair: frozenset) -> Rel:
-        a, b = sorted(pair)
-        return (a, t, b)
-
-    present: set[Rel] = set()
-    for r in observed_up | observed_down | prev:
-        if r[1] in SYMMETRIC:
-            continue
-        up_face = r in observed_up
-        down_face = r in observed_down
+    # --- 有向関係の解決（ペア単位） ---
+    present: set[tuple[str, str]] = set()
+    for pair in set(up_label) | set(down_label) | prev_pairs:
+        up_face = pair in up_label
+        down_face = pair in down_label
         if up_face and down_face:
-            present.add(r)
-        elif up_face != down_face and r not in prev:
-            present.add(r)  # 片面だけ & 前回に無い = 今追加した
-    present = {r for r in present if r[0] in id_to_path and r[2] in id_to_path}
+            present.add(pair)
+        elif (up_face != down_face) and pair not in prev_pairs:
+            present.add(pair)  # 片面だけ & 前回に無い = 今追加
+    present = {p for p in present if p[0] in id_to_path and p[1] in id_to_path}
 
-    # 対称関係の解決（有向と同じく「片面 & 前回にあった = 相手が削除」）
+    # --- 対称関係（関連） ---
     present_sym: set[Rel] = set()
     for (t, pair), faces in sym_face.items():
-        key = _sym_key(t, pair)
-        if not all(x in id_to_path for x in pair):
+        a, b = sorted(pair)
+        if a not in id_to_path or b not in id_to_path:
             continue
-        if len(faces) >= 2 or (len(faces) == 1 and key not in prev):
-            present_sym.add(key)
+        if len(faces) >= 2 or (len(faces) == 1 and (a, t, b) not in prev_sym):
+            present_sym.add((a, t, b))
 
-    directed = {(s, tt) for (s, _ty, tt) in present}
+    directed = set(present)
     directed |= {(a, b) for (a, _t, b) in present_sym}
     directed |= {(b, a) for (a, _t, b) in present_sym}
 
-    # --- 上側を present から再構築 ---
+    is_cat: set[str] = {
+        i for kk, nn in by_path.items()
+        if (i := ids.get(kk)) is not None and _fm_attr(nn.fm) == CATEGORY_ATTR
+    }
+
+    def far_label(pair: tuple[str, str]) -> str:
+        return down_label.get(pair) or up_label.get(pair) or "関連"
+
+    # --- 上側を再構築。相手がカテゴリーなら自分側ラベルは常に `カテゴリー:` ---
+    incoming: dict[str, list[tuple[str, str]]] = {}  # to_id -> [(from_id, label)]
+    for (a, b) in present:
+        lbl = far_label((a, b))
+        incoming.setdefault(b, []).append((a, lbl))
+
     for k, n in by_path.items():
         sid = ids.get(k)
         if sid is None:
             continue
-        types_here = set(RELATIONS) | set(n.up) | {ty for (s, ty, _t) in present if s == sid}
-        types_here -= SYMMETRIC  # 対称関係は上側に出さない
-        types_here.discard(_EXTRA)
-        new_up: dict[str, list] = {}
-        for t in types_here:
-            orig_title: dict[str, str] = {}
-            order: list[str] = []
-            for _ti, tg, _a in n.up.get(t, []):
+        outgoing = [(b, (CATEGORY_ATTR if b in is_cat else far_label((sid, b))))
+                    for (a, b) in present if a == sid]
+        # 既存の並び順と、手で打った表示名を尊重
+        order: list[str] = []
+        orig_title: dict[str, str] = {}
+        for t, es in n.up.items():
+            if t == _EXTRA:
+                continue
+            for _ti, tg, _a in es:
                 r = rid(tg, n.path.parent)
                 if r:
                     order.append(r)
                     orig_title.setdefault(r, _ti)
-            wanted = [tid for tid in order if (sid, t, tid) in present]
-            for (s2, t2, tgt2) in present:
-                if s2 == sid and t2 == t and tgt2 not in wanted:
-                    wanted.append(tgt2)
-            entries = []
-            for tid in wanted:
-                tp = id_to_path[tid]
-                tn = by_path.get(tp)
-                if tn is not None and tn.managed:
-                    disp = tn.title  # 管理下のノートは現タイトルへ追従
-                else:  # 外部 / 凍結ノートへのリンクは打った表示名を尊重
-                    disp = orig_title.get(tid) or (tn.title if tn else Path(tid).stem)
-                entries.append((disp, _rel(n.path.parent, tp), up_ann.get((sid, t, tid))))
-            entries += up_unresolved[k].get(t, [])
-            if entries:
-                new_up[t] = entries
+        outgoing.sort(key=lambda x: order.index(x[0]) if x[0] in order else 1_000_000)
+        new_up: dict[str, list] = {}
+        for tid, lbl in outgoing:
+            tp = id_to_path[tid]
+            tn = by_path.get(tp)
+            if tn is not None and tn.managed:
+                disp = tn.title  # 管理下は現タイトルへ追従
+            else:  # 外部 / 凍結ノートは打った表示名を尊重
+                disp = orig_title.get(tid) or (tn.title if tn else Path(tid).stem)
+            new_up.setdefault(lbl, []).append(
+                (disp, _rel(n.path.parent, tp), up_ann.get((sid, tid))))
+        for t, es in up_unresolved[k].items():
+            for e in es:
+                new_up.setdefault(t, []).append(e)
         if n.up.get(_EXTRA):
             new_up[_EXTRA] = n.up[_EXTRA]
         n.up = new_up
 
-    # --- 下側を再構築（関係 + バックリンク） ---
+    # --- 下側を再構築（関係 + 対称 + バックリンク） ---
     for k, n in by_path.items():
         nid = ids.get(k)
         new_down: dict[str, list] = {}
         if nid is not None:
-            by_type: dict[str, list[str]] = {}
-            for (s, t, tg) in present:
-                if tg == nid and (nid, t, s) not in present:  # 相互リンクは出さない
-                    by_type.setdefault(t, []).append(s)
-            # 対称関係: 両端の下側に相手を載せる
+            by_lbl: dict[str, list[str]] = {}
+            for (a, lbl) in incoming.get(nid, []):
+                if (nid, a) in present:  # 相互は下側に出さない
+                    continue
+                by_lbl.setdefault(lbl, []).append(a)
             for (a, t, b) in present_sym:
                 other = b if a == nid else (a if b == nid else None)
                 if other is not None:
-                    by_type.setdefault(t, []).append(other)
-            for t, srcs in by_type.items():
-                new_down[t] = [
+                    by_lbl.setdefault(t, []).append(other)
+            for lbl, srcs in by_lbl.items():
+                new_down[lbl] = [
                     (by_path[id_to_path[s]].title, _rel(n.path.parent, id_to_path[s]), None)
                     for s in sorted(set(srcs))
                 ]
@@ -618,7 +637,7 @@ def sync_vault(root) -> int:
             new_down[_EXTRA] = n.down[_EXTRA]
         n.down = new_down
 
-    _save_state(root, present | present_sym)
+    _save_state(root, set(present) | present_sym)
 
     changed = 0
     for n in notes:

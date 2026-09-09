@@ -222,6 +222,8 @@ nnoremap <nowait> <silent> na  <Cmd>call yurii_pkm#new_here_typed('A')<CR>
 nnoremap <nowait> <silent> nc  <Cmd>call yurii_pkm#v2_new_child()<CR>
 nnoremap <nowait> <silent> np  <Cmd>call yurii_pkm#v2_new_parent()<CR>
 nnoremap <nowait> <silent> nh  <Cmd>call yurii_pkm#v2_new_here()<CR>
+" nk : カテゴリーノート（attribute: カテゴリー）を作る
+nnoremap <nowait> <silent> nk  <Cmd>call yurii_pkm#v2_new_category()<CR>
 " \pc : カテゴリー印をトグル
 nnoremap <silent> \pc <Cmd>call yurii_pkm#v2_toggle_category()<CR>
 " cu: クリップボードのリンクを Parent: セクションへ追加

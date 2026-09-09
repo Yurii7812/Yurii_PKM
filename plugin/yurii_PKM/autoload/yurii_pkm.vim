@@ -2282,7 +2282,7 @@ endfunction
 " 逆側は書かない。sync が相方ノートの下側に生成する。
 " ---------------------------------------------------------------------------
 
-let s:v2_relations = ['所属', '前提', '論点', '見解', 'ワード', '関連']
+let s:v2_relations = ['論点', '見解', '関連', '前提', 'キーワード', 'カテゴリー']
 
 " 数字で 1 項目選ぶ共通ピッカー。末尾は「入力」= 自由入力。'' = キャンセル（Esc/q）。
 function! s:v2_pick(label, items) abort
@@ -2455,7 +2455,10 @@ endfunction
 "   a:below … 1 = 現ノートの --- より下（子: 相手が上側に載る）
 "             0 = 現ノートの --- より上（親: 相手の下側に載る）
 "   a:1     … 関係(relation)（省略時は数字で選択）
-function! s:v2_new_related(below, ...) abort
+" a:below … 0 = 現ノートの している 側 / 1 = されている 側
+" a:is_cat … 1 なら新ノートを attribute: カテゴリー で作る
+" a:1(可変) … 関係名（省略時は数字ピッカー）
+function! s:v2_new_related(below, is_cat, ...) abort
   if s:pkm_format() !=# 'v2'
     echo 'yurii_PKM: v2 専用（g:yurii_pkm_format = ''v2''）' | return
   endif
@@ -2464,12 +2467,9 @@ function! s:v2_new_related(below, ...) abort
     echohl WarningMsg | echo 'yurii_PKM: 名前付きバッファで実行して' | echohl NONE
     return
   endif
-  " 関係を選ぶ（キャンセルならファイルを作らない）
   let l:rel = (a:0 > 0 && a:1 !=# '') ? a:1 : s:v2_pick_relation()
   if l:rel ==# '' | echo 'yurii_PKM: キャンセル' | return | endif
-  " 関連 は対称なので必ず下側（されている）へ
   let l:below = (l:rel ==# '関連') ? 1 : a:below
-  let l:cat = s:v2_ask_category()
 
   let l:dir = expand('%:p:h')
   let l:ts  = yurii_pkm#timestamp_filename()
@@ -2483,20 +2483,25 @@ function! s:v2_new_related(below, ...) abort
     return  " 現ノートが v2 形式でない（見張りなし）
   endif
 
-  call writefile(yurii_pkm#note_template(l:ts, l:cat), l:file)
+  call writefile(yurii_pkm#note_template(l:ts, a:is_cat), l:file)
   silent noautocmd write
   call s:run_update_one_for(l:cur)
   execute 'edit ' . fnameescape(l:file)
 endfunction
 
-" 子ノート（nc）: リンクは現ノートの --- より下
+" nc: 子ノート（リンクは現ノートの されている 側）
 function! yurii_pkm#v2_new_child(...) abort
-  call call('s:v2_new_related', [1] + a:000)
+  call call('s:v2_new_related', [1, 0] + a:000)
 endfunction
 
-" 親ノート（np）: リンクは現ノートの --- より上（新ノートは sync で下側に現ノートを載せる）
+" np: 親ノート（リンクは現ノートの している 側）
 function! yurii_pkm#v2_new_parent(...) abort
-  call call('s:v2_new_related', [0] + a:000)
+  call call('s:v2_new_related', [0, 0] + a:000)
+endfunction
+
+" nk: カテゴリーノートを作る（attribute: カテゴリー）。関係は数字で選ぶ
+function! yurii_pkm#v2_new_category(...) abort
+  call call('s:v2_new_related', [1, 1] + a:000)
 endfunction
 
 " カーソル直下ノート（nh）: 新ノートを作り、そのリンクをカーソル行の直下（本文）に置く。
@@ -2510,11 +2515,10 @@ function! yurii_pkm#v2_new_here() abort
     echohl WarningMsg | echo 'yurii_PKM: 名前付きバッファで実行して' | echohl NONE
     return
   endif
-  let l:cat = s:v2_ask_category()
   let l:dir = expand('%:p:h')
   let l:ts  = yurii_pkm#timestamp_filename()
   let l:file = s:join_path(l:dir, l:ts . '.md')
-  call writefile(yurii_pkm#note_template(l:ts, l:cat), l:file)
+  call writefile(yurii_pkm#note_template(l:ts, 0), l:file)
   let l:save_ai = &autoindent | let l:save_si = &smartindent
   setlocal noautoindent nosmartindent
   call append(line('.'), '[' . l:ts . '](' . l:ts . '.md)')

@@ -210,7 +210,7 @@ def test_migrate_legacy_v1_note() -> None:
         check("Parent:" not in txt and "Child:" not in txt and "BackLink:" not in txt,
               "旧見出しが消える")
         check("関連: [parent-note](260909061513.md)" in dn, "Parent リンク -> 関連:（対称なので下側・表示名は現タイトルへ）")
-        check("所属: [Index](index.md)" in up, "[Index] -> 所属:")
+        check("カテゴリー: [Index](index.md)" in up, "[Index] -> カテゴリー:")
         check(UP_MARK in txt and DOWN_MARK in txt, "見張りコメント形式に変換される")
 
 
