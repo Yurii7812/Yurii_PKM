@@ -16,6 +16,7 @@ let s:top   = 0       " 表示の先頭（s:hits 内）
 let s:win   = -1
 let s:pvwin = -1
 let s:rows  = 15
+let s:mode  = 'input'   " 'input' = 打つと絞り込み / 'pick' = 数字で行を開く
 
 function! yurii_search#run(...) abort
   let l:idx = get(g:, 'yurii_search_index', '')
@@ -42,6 +43,7 @@ function! yurii_search#run(...) abort
   endif
 
   let s:query = a:0 > 0 ? a:1 : ''
+  let s:mode = 'input'
   let s:sel = 0
   let s:top = 0
   call s:refilter()
@@ -97,7 +99,8 @@ endfunction
 " --- 描画 -----------------------------------------------------------------
 function! s:render() abort
   if s:win < 0 | return | endif
-  let l:lines = ['> ' . s:query . (empty(s:query) ? '▏' : '▏'), repeat('─', 60)]
+  let l:tag = (s:mode ==# 'pick') ? '[選択] ' : ''
+  let l:lines = [l:tag . '> ' . s:query . '▏', repeat('─', 60)]
   if empty(s:hits)
     call add(l:lines, '  (該当なし)')
   else
@@ -111,11 +114,13 @@ function! s:render() abort
       let l:n += 1
     endfor
   endif
-  let l:foot = printf('%d/%d   1-9 開く  ^J^K 移動  ^F^B 送り  ⏎ 開く  ⎋ 閉じる',
-        \ empty(s:hits) ? 0 : s:sel + 1, len(s:hits))
+  let l:hint = (s:mode ==# 'pick')
+        \ ? '1-9/0 開く  jk 移動  ⇥ 入力へ  ⏎ 開く  ⎋ 閉じる'
+        \ : '打つ=絞込  ⇥ 選択へ  ^J^K 移動  ⏎ 開く  ⎋ 閉じる'
   call add(l:lines, repeat('─', 60))
-  call add(l:lines, l:foot)
+  call add(l:lines, printf('%d/%d   %s', empty(s:hits) ? 0 : s:sel + 1, len(s:hits), l:hint))
   call popup_settext(s:win, l:lines)
+  call popup_setoptions(s:win, {'title': s:mode ==# 'pick' ? ' 選択 ' : ' 検索 '})
   call s:preview()
 endfunction
 
@@ -182,20 +187,31 @@ function! s:key(winid, key) abort
     let s:sel = min([s:sel + s:rows / 2, max([0, len(s:hits) - 1])])
   elseif a:key ==# "\<C-u>"
     let s:sel = max([s:sel - s:rows / 2, 0])
+  elseif a:key ==# "\<Tab>"
+    let s:mode = (s:mode ==# 'pick') ? 'input' : 'pick'
   elseif a:key ==# "\<BS>" || a:key ==# "\<C-h>"
     let s:query = strcharpart(s:query, 0, strchars(s:query) - 1)
     let s:sel = 0 | let s:top = 0
-  elseif a:key ==# "\<C-w>" || a:key ==# "\<C-u>"
+  elseif a:key ==# "\<C-w>"
     let s:query = '' | let s:sel = 0 | let s:top = 0
-  elseif a:key =~# '^[0-9]$'
+  elseif s:mode ==# 'pick' && a:key =~# '^[0-9]$'
+    " 選択モード: 数字で行を開く
     let l:row = (a:key ==# '0') ? 10 : str2nr(a:key)
     let l:target = s:top + l:row - 1
     if l:target >= 0 && l:target < len(s:hits)
       call popup_close(a:winid, s:hits[l:target])
       return 1
     endif
-    " 表示外の番号は無視
-  elseif strchars(a:key) == 1 && a:key !~# '[[:cntrl:]]'
+  elseif s:mode ==# 'pick' && (a:key ==# 'j' || a:key ==# 'k' || a:key ==# 'g')
+    if a:key ==# 'j'
+      let s:sel = min([s:sel + 1, max([0, len(s:hits) - 1])])
+    elseif a:key ==# 'k'
+      let s:sel = max([s:sel - 1, 0])
+    else
+      let s:sel = 0
+    endif
+  elseif s:mode ==# 'input' && strchars(a:key) == 1 && a:key !~# '[[:cntrl:]]'
+    " 入力モード: 文字（数字含む）を検索語へ
     let s:query .= a:key
     let s:sel = 0 | let s:top = 0
   else

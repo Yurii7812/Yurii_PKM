@@ -37,8 +37,8 @@ def main() -> int:
     root = sys.argv[1] if len(sys.argv) > 1 else "."
     rows: list[str] = []
     for dp, dns, fns in os.walk(root):
-        dns[:] = [d for d in dns if d not in SKIP_DIRS and not d.startswith(".")]
-        for fn in fns:
+        dns[:] = sorted(d for d in dns if d not in SKIP_DIRS and not d.startswith("."))
+        for fn in sorted(fns):
             if not fn.endswith(".md"):
                 continue
             p = os.path.join(dp, fn)
