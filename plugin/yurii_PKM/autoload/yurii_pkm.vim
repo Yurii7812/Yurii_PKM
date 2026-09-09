@@ -2158,7 +2158,29 @@ function! s:rlp_render() abort
   endfor
   let l:lw = min([l:lw, 14])
 
-  let l:lines = [s:rlp_crumb_line(l:w), repeat('─', l:w)]
+  " 上部 = パンくず / 検索バー / 区切り。打つ場所と見る場所を近づける。
+  let l:nsel = 0
+  for l:it in s:rlp_items
+    if !get(l:it, 'sep', 0) | let l:nsel += 1 | endif
+  endfor
+  let l:tag = (s:rlp_scope ==# 'global' ? '検索' : '絞込')
+  if s:rlp_mode ==# 'input'
+    let l:qtext = l:tag . ' ' . s:rlp_query . '▏'
+    let l:right = printf(' %d件', l:nsel)
+  else
+    let l:qtext = empty(s:rlp_query) ? l:tag . ' —' : l:tag . ' ' . s:rlp_query
+    let l:nmark = len(s:rlp_marks)
+    let l:right = printf(' %d/%d%s',
+          \ l:nsel ? index(filter(range(len(s:rlp_items)),
+          \   '!get(s:rlp_items[v:val], "sep", 0)'), s:rlp_sel) + 1 : 0,
+          \ l:nsel, l:nmark > 0 ? ' *' . l:nmark : '')
+  endif
+  let l:bar = s:rlp_trunc_tail(l:qtext,
+        \ max([l:w - strdisplaywidth(l:right), 4]))
+  let l:bar .= repeat(' ',
+        \ max([l:w - strdisplaywidth(l:bar) - strdisplaywidth(l:right), 0])) . l:right
+
+  let l:lines = [s:rlp_crumb_line(l:w), l:bar, repeat('─', l:w)]
   let l:labels = s:rlp_labels_str()
   let l:ln = 0
   let s:rlp_rowmap = {}
@@ -2193,24 +2215,10 @@ function! s:rlp_render() abort
     endif
   endfor
 
-  call add(l:lines, repeat('─', l:w))
-  if s:rlp_mode ==# 'input'
-    let l:nsel = 0
-    for l:it in s:rlp_items
-      if !get(l:it, 'sep', 0) | let l:nsel += 1 | endif
-    endfor
-    let l:q = (s:rlp_scope ==# 'global' ? '検索 ' : '絞込 ') . s:rlp_query . '▏'
-    let l:cnt = printf(' %d件', l:nsel)
-    call add(l:lines, s:rlp_trunc_tail(l:q, max([l:w - strdisplaywidth(l:cnt), 4]))
-          \ . l:cnt)
-  else
-    let l:below = max([0, l:total - l:end])
-    let l:nmark = len(s:rlp_marks)
-    call add(l:lines, printf('%d/%d%s%s',
-          \ l:total ? s:rlp_sel + 1 : 0, l:total,
-          \ l:below > 0 ? '   ↓' . l:below : '',
-          \ l:nmark > 0 ? '   *' . l:nmark : ''))
-  endif
+  let l:below = max([0, l:total - l:end])
+  call add(l:lines, l:below > 0
+        \ ? '─── ↓' . l:below . ' ' . repeat('─', max([l:w - 6 - len(string(l:below)), 0]))
+        \ : repeat('─', l:w))
   call add(l:lines, s:rlp_mode ==# 'input'
         \ ? '打つ 絞る  ↑↓ 選択  → 潜る  ← 戻る  ⏎ 開く  ⇥ 切替  ⎋ 抜ける'
         \ : 'jk/字 選択  l 潜る  ⏎ 開く  fb プレ  c/p 子/親  y m a  i 絞込  ⇥ 全体')
