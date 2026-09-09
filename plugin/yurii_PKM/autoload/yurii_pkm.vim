@@ -1822,7 +1822,7 @@ let s:rlp_top = 0
 let s:rlp_rows = 14
 let s:rlp_geo = {}
 let s:rlp_scope = 'local'     " 'local' | 'global'
-let s:rlp_mode = 'select'     " 'select' | 'input'
+let s:rlp_filtering = 0       " ローカルの一時絞り込み（/）中か
 let s:rlp_query = ''
 let s:rlp_terms = []
 let s:rlp_path = ''           " アンカー = いま一覧を出しているノート
@@ -2074,23 +2074,6 @@ function! s:rlp_load(path, base, ...) abort
   call s:rlp_render()
 endfunction
 
-function! s:rlp_toggle_scope() abort
-  if s:rlp_scope ==# 'local'
-    if empty(s:rlp_cands) | call s:rlp_build_index() | endif
-    let s:rlp_scope = 'global'
-    let s:rlp_mode = 'input'
-  else
-    let s:rlp_scope = 'local'
-    let s:rlp_mode = 'select'
-  endif
-  let s:rlp_query = ''
-  let s:rlp_sel = 0
-  let s:rlp_top = 0
-  call s:rlp_refresh()
-  let s:rlp_sel = max([s:rlp_first_sel(), 0])
-  call s:rlp_render()
-endfunction
-
 " 選択行のノートへ『潜る』（ポップアップは開いたまま local ビューを積む）
 function! s:rlp_dive(idx) abort
   if !s:rlp_is_sel(a:idx) | return | endif
@@ -2109,10 +2092,10 @@ function! s:rlp_dive(idx) abort
   endif
   call add(s:rlp_stack, {'path': s:rlp_path, 'base': s:rlp_base,
         \ 'sel': s:rlp_sel, 'top': s:rlp_top,
-        \ 'scope': s:rlp_scope, 'query': s:rlp_query, 'mode': s:rlp_mode})
+        \ 'scope': s:rlp_scope, 'query': s:rlp_query, 'filtering': s:rlp_filtering})
   call add(s:rlp_crumbs, fnamemodify(l:p, ':t:r'))
   let s:rlp_query = ''
-  let s:rlp_mode = 'select'
+  let s:rlp_filtering = 0
   call s:rlp_load(l:p, fnamemodify(l:p, ':h'))
 endfunction
 
@@ -2124,7 +2107,7 @@ function! s:rlp_back() abort
   let l:prev = remove(s:rlp_stack, -1)
   if !empty(s:rlp_crumbs) | call remove(s:rlp_crumbs, -1) | endif
   let s:rlp_query = get(l:prev, 'query', '')
-  let s:rlp_mode = get(l:prev, 'mode', 'select')
+  let s:rlp_filtering = get(l:prev, 'filtering', 0)
   if get(l:prev, 'scope', 'local') ==# 'global'
     let s:rlp_scope = 'global'
     call s:rlp_refresh()
@@ -2180,17 +2163,19 @@ function! s:rlp_render() abort
   for l:it in s:rlp_items
     if !get(l:it, 'sep', 0) | let l:nsel += 1 | endif
   endfor
-  let l:tag = (s:rlp_scope ==# 'global' ? '検索' : '絞込')
-  if s:rlp_mode ==# 'input'
-    let l:qtext = l:tag . ' ' . s:rlp_query . '▏'
-    let l:right = printf(' %d件', l:nsel)
+  let l:nmark = len(s:rlp_marks)
+  let l:pos = printf(' %d/%d%s',
+        \ l:nsel ? index(filter(range(len(s:rlp_items)),
+        \   '!get(s:rlp_items[v:val], "sep", 0)'), s:rlp_sel) + 1 : 0,
+        \ l:nsel, l:nmark > 0 ? ' *' . l:nmark : '')
+  if s:rlp_typing()
+    " 打っているツールだけ検索バーを出す。カーソル ▏ が見えている＝打てる合図。
+    let l:qtext = (s:rlp_scope ==# 'global' ? '検索 ' : '絞込 ') . s:rlp_query . '▏'
+    let l:right = l:pos
   else
-    let l:qtext = empty(s:rlp_query) ? l:tag . ' —' : l:tag . ' ' . s:rlp_query
-    let l:nmark = len(s:rlp_marks)
-    let l:right = printf(' %d/%d%s',
-          \ l:nsel ? index(filter(range(len(s:rlp_items)),
-          \   '!get(s:rlp_items[v:val], "sep", 0)'), s:rlp_sel) + 1 : 0,
-          \ l:nsel, l:nmark > 0 ? ' *' . l:nmark : '')
+    " ローカルは打たないので、バーではなく居場所だけ出す
+    let l:qtext = '◎ ' . s:rlp_trunc_head(s:get_title(s:rlp_path), l:w - 14)
+    let l:right = l:pos
   endif
   let l:bar = s:rlp_trunc_tail(l:qtext,
         \ max([l:w - strdisplaywidth(l:right), 4]))
@@ -2238,9 +2223,13 @@ function! s:rlp_render() abort
   call add(l:lines, l:below > 0
         \ ? '─── ↓' . l:below . ' ' . repeat('─', max([l:w - 6 - len(string(l:below)), 0]))
         \ : repeat('─', l:w))
-  call add(l:lines, s:rlp_mode ==# 'input'
-        \ ? '打つ 絞る  ↑↓ 選択  → 潜る  ← 戻る  ⏎ 開く  ⇥ 切替  ⎋ 抜ける'
-        \ : '字 潜る  jk 選択  ⏎ 開く  ⌫/h 戻る  fb プレ  c/p 子親  y m a  i 絞込  ⇥ 全体')
+  if s:rlp_scope ==# 'global'
+    call add(l:lines, '打つ 絞る  ↑↓ 選択  →/⇥ 潜る  ⏎ 開く  ⌫ 消す/戻る  +- 子親')
+  elseif s:rlp_filtering
+    call add(l:lines, '打つ 絞る  ↑↓ 選択  → 潜る  ⏎ 確定  ⎋ 解除')
+  else
+    call add(l:lines, '字 潜る  jk 選択  ⏎ 開く  ⌫ 戻る  ␣ ここ  fb プレ  cp 子親  ym  / 絞込  ⇥ 検索')
+  endif
   call popup_settext(s:rlp_win, l:lines)
   call popup_setoptions(s:rlp_win,
         \ {'title': s:rlp_scope ==# 'global' ? ' 全ノート ' : ' ローカル '})
@@ -2283,34 +2272,97 @@ endfunction
 
 " --- キー -------------------------------------------------------------------
 
+" 打鍵がクエリに行くか（＝グローバル、またはローカルの一時絞り込み中）
+function! s:rlp_typing() abort
+  return s:rlp_scope ==# 'global' || s:rlp_filtering
+endfunction
+
+" c/p/y/m の共通処理。ローカルは英字、グローバルは記号から呼ばれる。
+function! s:rlp_op(op) abort
+  if a:op ==# 'child'
+    call popup_close(s:rlp_win, {'link': 1, 'below': 1, 'targets': s:rlp_targets()})
+  elseif a:op ==# 'parent'
+    call popup_close(s:rlp_win, {'link': 1, 'below': 0, 'targets': s:rlp_targets()})
+  elseif a:op ==# 'yank'
+    call popup_close(s:rlp_win, {'yank': s:rlp_targets()})
+  elseif a:op ==# 'mark'
+    call s:rlp_toggle_mark()
+    call s:rlp_render()
+  endif
+endfunction
+
+" =============================================================================
+" キー。モードは持たない。ツール（ローカル / グローバル）ごとに 1 キー 1 意味。
+"
+"   ローカル … 打たない。全部コマンド。ラベル1タップで潜る。
+"   グローバル … 打つ。矢印で選ぶ。数字もそのままクエリに入る。
+"   ⇥ は「もう一方のツールへ」。グローバル→ローカルは選択ノートへ潜ることを意味する。
+" =============================================================================
 function! s:rlp_key(winid, key) abort
-  " === 入力サブモード ===
-  " 打ちながら矢印で選択・潜る・戻るまでできるので、モードを抜けずに完結する。
-  if s:rlp_mode ==# 'input'
-    if a:key ==# "\<CR>"
-      " ⏎ は選択モードと同じ「開く」。検索は ⇥→打つ→⏎ の最短で終わる
-      call popup_close(s:rlp_win, {'open': s:rlp_sel})
+  " --- どちらのツールでも同じ意味の共通キー ---
+  if a:key ==# "\<Esc>" || a:key ==# "\<C-c>"
+    if s:rlp_filtering
+      let s:rlp_filtering = 0
+      let s:rlp_query = ''
+      call s:rlp_refresh()
+      call s:rlp_render()
       return 1
-    elseif a:key ==# "\<Esc>" || a:key ==# "\<C-c>"
-      " 1段だけ抜ける（クエリは残す）。もう一度で閉じる
-      let s:rlp_mode = 'select'
-    elseif a:key ==# "\<Tab>"
-      call s:rlp_toggle_scope()
+    endif
+    call popup_close(s:rlp_win, {'cancel': 1})
+    return 1
+  elseif a:key ==# "\<CR>"
+    if s:rlp_filtering
+      let s:rlp_filtering = 0
+      call s:rlp_render()
       return 1
-    elseif a:key ==# "\<Down>"
-      call s:rlp_step_sel(1)
-    elseif a:key ==# "\<Up>"
-      call s:rlp_step_sel(-1)
-    elseif a:key ==# "\<Right>"
-      call s:rlp_dive(s:rlp_sel)
-      return 1
-    elseif a:key ==# "\<Left>"
-      call s:rlp_back()
-      return 1
-    elseif a:key ==# "\<BS>" || a:key ==# "\<C-h>"
+    endif
+    call popup_close(s:rlp_win, {'open': s:rlp_sel})
+    return 1
+  elseif a:key ==# "\<Tab>"
+    call s:rlp_switch_tool()
+    return 1
+  elseif a:key ==# "\<Down>"
+    call s:rlp_step_sel(1)
+    call s:rlp_render()
+    return 1
+  elseif a:key ==# "\<Up>"
+    call s:rlp_step_sel(-1)
+    call s:rlp_render()
+    return 1
+  elseif a:key ==# "\<Right>"
+    call s:rlp_dive(s:rlp_sel)
+    return 1
+  elseif a:key ==# "\<Left>"
+    call s:rlp_back()
+    return 1
+  elseif a:key ==# "\<PageDown>"
+    if s:rlp_pvwin >= 0 | call win_execute(s:rlp_pvwin, "normal! \<C-f>") | endif
+    return 1
+  elseif a:key ==# "\<PageUp>"
+    if s:rlp_pvwin >= 0 | call win_execute(s:rlp_pvwin, "normal! \<C-b>") | endif
+    return 1
+  " 記号のリンク操作。クエリを打っている最中でも使える（英字を食わない）
+  elseif a:key ==# '+'
+    call s:rlp_op('child')  | return 1
+  elseif a:key ==# '-'
+    call s:rlp_op('parent') | return 1
+  elseif a:key ==# '*'
+    call s:rlp_op('mark')   | return 1
+  elseif a:key ==# '='
+    call s:rlp_op('yank')   | return 1
+  endif
+
+  " --- 打鍵がクエリに行くツール（グローバル / ローカルの一時絞り込み） ---
+  if s:rlp_typing()
+    if a:key ==# "\<BS>" || a:key ==# "\<C-h>"
+      if empty(s:rlp_query)
+        call s:rlp_back()
+        return 1
+      endif
       let s:rlp_query = strcharpart(s:rlp_query, 0,
             \ max([strchars(s:rlp_query) - 1, 0]))
       call s:rlp_refresh()
+      let s:rlp_sel = max([s:rlp_first_sel(), 0])
     elseif a:key =~# '^.$' && a:key !~# '^[[:cntrl:]]$'
       let s:rlp_query .= a:key
       call s:rlp_refresh()
@@ -2321,24 +2373,19 @@ function! s:rlp_key(winid, key) abort
     return 1
   endif
 
-  " === 選択サブモード（全部プレーンキー） ===
-  if a:key ==# "\<Esc>" || a:key ==# "\<C-c>" || a:key ==# 'q'
-    call popup_close(s:rlp_win, {'cancel': 1})
-    return 1
-  elseif a:key ==# "\<CR>"
-    call popup_close(s:rlp_win, {'open': s:rlp_sel})
+  " --- ローカル（打たない。全部コマンド） ---
+  if a:key ==# "\<BS>" || a:key ==# "\<C-h>" || a:key ==# 'h' || a:key ==# 'q'
+    call s:rlp_back()
     return 1
   elseif a:key ==# ' '
     call popup_close(s:rlp_win, {'open_anchor': 1})
     return 1
-  elseif a:key ==# "\<Tab>"
-    call s:rlp_toggle_scope()
+  elseif a:key ==# 'l'
+    call s:rlp_dive(s:rlp_sel)
     return 1
-  elseif a:key ==# 'i' || a:key ==# '/'
-    let s:rlp_mode = 'input'
-  elseif a:key ==# 'j' || a:key ==# "\<Down>"
+  elseif a:key ==# 'j'
     call s:rlp_step_sel(1)
-  elseif a:key ==# 'k' || a:key ==# "\<Up>"
+  elseif a:key ==# 'k'
     call s:rlp_step_sel(-1)
   elseif a:key ==# 'g'
     let s:rlp_sel = max([s:rlp_first_sel(), 0])
@@ -2350,36 +2397,27 @@ function! s:rlp_key(winid, key) abort
   elseif a:key ==# 'b'
     if s:rlp_pvwin >= 0 | call win_execute(s:rlp_pvwin, "normal! \<C-b>") | endif
     return 1
-  elseif a:key ==# 'l' || a:key ==# "\<Right>"
-    call s:rlp_dive(s:rlp_sel)
-    return 1
-  elseif a:key ==# 'h' || a:key ==# "\<Left>"
-        \ || a:key ==# "\<BS>" || a:key ==# "\<C-h>"
-    call s:rlp_back()
-    return 1
+  elseif a:key ==# '/'
+    " この一覧だけの一時絞り込み。⏎ で確定、⎋ で解除。
+    let s:rlp_filtering = 1
+    let s:rlp_query = ''
+    call s:rlp_refresh()
+  elseif a:key ==# 'c'
+    call s:rlp_op('child')  | return 1
+  elseif a:key ==# 'p'
+    call s:rlp_op('parent') | return 1
+  elseif a:key ==# 'y'
+    call s:rlp_op('yank')   | return 1
   elseif a:key ==# 'm'
-    call s:rlp_toggle_mark()
+    call s:rlp_op('mark')   | return 1
   elseif a:key ==# 'M'
     let s:rlp_marks = {}
   elseif a:key ==# 'a'
-    " 選択行をアンカーにする（潜らずにリンク追加のターゲットだけ移す）
-    let l:p = s:rlp_row_path(s:rlp_sel_item())
-    if !empty(l:p) && filereadable(l:p) && s:is_markdown_file(l:p)
-      call s:rlp_dive(s:rlp_sel)
-    endif
-    return 1
-  elseif a:key ==# 'c'
-    call popup_close(s:rlp_win, {'link': 1, 'below': 1, 'targets': s:rlp_targets()})
-    return 1
-  elseif a:key ==# 'p'
-    call popup_close(s:rlp_win, {'link': 1, 'below': 0, 'targets': s:rlp_targets()})
-    return 1
-  elseif a:key ==# 'y'
-    call popup_close(s:rlp_win, {'yank': s:rlp_targets()})
+    call s:rlp_dive(s:rlp_sel)
     return 1
   elseif has_key(s:rlp_rowmap, a:key)
-    " ラベルは1タップでそのまま潜る。潜ってもノートは（アンカー行とプレビューに）
-    " 出続けるし ⌫ / h で即戻れるので、確認の1打は要らない。
+    " ラベル1タップでそのまま潜る。潜ってもノートはアンカー行 ◎ とプレビューに
+    " 出続けるし ⌫ で即戻れる（＝非破壊）ので、確認の1打は要らない。
     call s:rlp_dive(s:rlp_rowmap[a:key])
     return 1
   else
@@ -2387,6 +2425,34 @@ function! s:rlp_key(winid, key) abort
   endif
   call s:rlp_render()
   return 1
+endfunction
+
+" ⇥ … もう一方のツールへ。
+"   ローカル → グローバル（全ノート検索を空クエリで開始）
+"   グローバル → ローカル（選択中のノートへ潜る ＝ そこが新しいアンカー）
+function! s:rlp_switch_tool() abort
+  if s:rlp_scope ==# 'local'
+    let s:rlp_filtering = 0
+    if empty(s:rlp_cands) | call s:rlp_build_index() | endif
+    let s:rlp_scope = 'global'
+    let s:rlp_query = ''
+    let s:rlp_sel = 0
+    let s:rlp_top = 0
+    call s:rlp_refresh()
+    let s:rlp_sel = max([s:rlp_first_sel(), 0])
+    call s:rlp_render()
+    return
+  endif
+  " グローバル → 選択ノートのローカルへ
+  if s:rlp_is_sel(s:rlp_sel)
+    call s:rlp_dive(s:rlp_sel)
+    return
+  endif
+  let s:rlp_scope = 'local'
+  let s:rlp_query = ''
+  call s:rlp_refresh()
+  let s:rlp_sel = max([s:rlp_first_sel(), 0])
+  call s:rlp_render()
 endfunction
 
 " --- 確定後の処理 -----------------------------------------------------------
@@ -2546,7 +2612,7 @@ function! yurii_pkm#note_navigator(scope) abort
   let s:rlp_stack = []
   let s:rlp_crumbs = [fnamemodify(l:origin_path, ':t:r')]
   let s:rlp_scope = 'local'
-  let s:rlp_mode = 'select'
+  let s:rlp_filtering = 0
   let s:rlp_query = ''
   let s:rlp_terms = []
   let s:rlp_cands = []
@@ -2585,7 +2651,7 @@ function! yurii_pkm#note_navigator(scope) abort
     " gs 相当。索引を読んで検索（入力サブモード）から始める
     if empty(s:rlp_cands) | call s:rlp_build_index() | endif
     let s:rlp_scope = 'global'
-    let s:rlp_mode = 'input'
+    let s:rlp_filtering = 0
     let s:rlp_query = ''
     let s:rlp_sel = 0
     let s:rlp_top = 0
