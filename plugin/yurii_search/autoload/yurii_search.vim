@@ -17,8 +17,8 @@ function! s:fzf_run(initial) abort
   if empty(l:root) || !isdirectory(l:root)
     let l:root = getcwd()
   endif
-  let l:idx = expand('<sfile>:p:h:h') . '/python/notes_index.py'
-  if !filereadable(l:idx)
+  let l:idx = get(g:, 'yurii_search_index', '')
+  if empty(l:idx) || !filereadable(l:idx)
     echoerr 'notes_index.py が見つかりません: ' . l:idx
     return
   endif
