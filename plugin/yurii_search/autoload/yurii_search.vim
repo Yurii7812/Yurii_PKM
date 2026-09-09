@@ -1,6 +1,6 @@
 " autoload/yurii_search.vim
 " ファイル単位のキーワード AND 検索。ネイティブのポップアップ。
-" 一度に 10 件だけ表示し、下に「他 N 件」を出す。
+" 一度に 10 件だけ表示し、下に「残り N 件」を出す。
 " ヒット語は一覧・プレビュー（ポップアップ内）だけで強調する。
 " 開いた先のバッファには一切ハイライトを残さない（最初のヒット行へ寄せるだけ）。
 "
@@ -187,8 +187,8 @@ function! s:render() abort
   " 上下に何件あるか
   let l:above = s:top
   let l:below = max([0, len(s:hits) - (s:top + s:rows)])
-  let l:ctx = (l:above > 0 ? '↑ 上に ' . l:above . ' 件   ' : '')
-        \ . (l:below > 0 ? '↓ 他 ' . l:below . ' 件' : '')
+  let l:ctx = (l:above > 0 ? '↑ 上 ' . l:above . ' 件   ' : '')
+        \ . (l:below > 0 ? '残り ' . l:below . ' 件' : '')
   let l:hint = (s:mode ==# 'pick')
         \ ? 'hl ページ  jk 1件  数字=見る 同数字=開く  ⇥ 入力  ⎋ 閉じる'
         \ : '打つ=絞込  ⇥ 選択へ  ^J^K ページ  ↑↓ 1件  ⏎ 開く  ⎋ 閉じる'

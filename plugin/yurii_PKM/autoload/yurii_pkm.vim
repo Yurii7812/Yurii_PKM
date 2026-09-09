@@ -1714,7 +1714,6 @@ let s:rlp_items = []
 let s:rlp_sel = 0
 let s:rlp_top = 0
 let s:rlp_rows = 14
-let s:rlp_last_digit = -1
 
 " <Space> … parent/child のリンク一覧ポップアップ（右にプレビュー）。
 "   j/k 上下  h 閉じる  l/⏎ 開く  数字=選択(同数字で開く)  ^F/^B プレビュー送り
@@ -1726,7 +1725,6 @@ function! yurii_pkm#relation_link_popup() abort
     return
   endif
   let s:rlp_items = l:items
-  let s:rlp_last_digit = -1
   let s:rlp_top = 0
   " カーソル位置以降の最初の項目を初期選択
   let l:cur = [line('.'), col('.')]
@@ -1739,7 +1737,7 @@ function! yurii_pkm#relation_link_popup() abort
     let l:i += 1
   endfor
 
-  let s:rlp_rows = min([len(l:items), max([&lines - 9, 4])])
+  let s:rlp_rows = min([len(l:items), 10])
   let l:h = s:rlp_rows + 3
   let l:w = min([float2nr(&columns * 0.40), 56])
   let l:pv = min([float2nr(&columns * 0.46), 90])
@@ -1784,18 +1782,24 @@ function! s:rlp_render() abort
 
   let l:lines = []
   let l:end = min([s:rlp_top + s:rlp_rows, l:total])
+  let l:vis = 0
   for l:i in range(s:rlp_top, l:end - 1)
+    let l:vis += 1
     let l:it = s:rlp_items[l:i]
-    let l:num = (l:i + 1 <= 9) ? (l:i + 1) : (l:i + 1 == 10 ? 0 : ' ')
+    let l:num = (l:vis <= 9) ? l:vis : (l:vis == 10 ? 0 : ' ')
     let l:mark = (l:i == s:rlp_sel) ? '▶' : ' '
     let l:arrow = (l:it.side ==# 'up') ? '→' : '←'
     let l:pad = repeat(' ', l:lw - strdisplaywidth(l:it.label))
     call add(l:lines, printf('%s%s %s %s%s  %s',
           \ l:mark, l:num, l:arrow, l:it.label, l:pad, l:it.text))
   endfor
+  let l:above = s:rlp_top
+  let l:below = max([0, l:total - (s:rlp_top + s:rlp_rows)])
+  let l:scroll = (l:above > 0 ? '↑ 上 ' . l:above . ' 件   ' : '')
+        \ . (l:below > 0 ? '残り ' . l:below . ' 件' : '')
   call add(l:lines, repeat('─', 46))
-  call add(l:lines, printf('%d/%d  → している / ← されている', s:rlp_sel + 1, l:total))
-  call add(l:lines, 'jk 上下  l/⏎ 開く  h/⎋ 閉じる  数字 選択  ^F^B プレ送り')
+  call add(l:lines, printf('%d/%d   %s', s:rlp_sel + 1, l:total, l:scroll))
+  call add(l:lines, 'jk 上下  l/⏎ 開く  h/⎋ 閉じる  数字 選択  ^F^B プレ送り  (→し ←され)')
   call popup_settext(s:rlp_win, l:lines)
   call s:rlp_preview()
 endfunction
@@ -1841,14 +1845,12 @@ function! s:rlp_key(winid, key) abort
     return 1
   elseif a:key ==# 'j' || a:key ==# "\<Down>" || a:key ==# "\<C-n>"
     let s:rlp_sel = min([s:rlp_sel + 1, l:n - 1])
-    let s:rlp_last_digit = -1
   elseif a:key ==# 'k' || a:key ==# "\<Up>" || a:key ==# "\<C-p>"
     let s:rlp_sel = max([s:rlp_sel - 1, 0])
-    let s:rlp_last_digit = -1
   elseif a:key ==# 'g'
-    let s:rlp_sel = 0 | let s:rlp_last_digit = -1
+    let s:rlp_sel = 0
   elseif a:key ==# 'G'
-    let s:rlp_sel = l:n - 1 | let s:rlp_last_digit = -1
+    let s:rlp_sel = l:n - 1
   elseif a:key ==# "\<C-f>" || a:key ==# "\<C-d>" || a:key ==# "\<PageDown>"
     if s:rlp_pvwin >= 0 | call win_execute(s:rlp_pvwin, "normal! \<C-d>") | endif
     return 1
@@ -1856,14 +1858,15 @@ function! s:rlp_key(winid, key) abort
     if s:rlp_pvwin >= 0 | call win_execute(s:rlp_pvwin, "normal! \<C-u>") | endif
     return 1
   elseif a:key =~# '^[0-9]$'
+    " 表示中の行番号（1〜10、0=10）。同じ行をもう一度で開く。
     let l:row = (a:key ==# '0') ? 10 : str2nr(a:key)
-    if l:row >= 1 && l:row <= l:n
-      if s:rlp_last_digit == l:row
-        call popup_close(a:winid, l:row - 1)
+    let l:target = s:rlp_top + l:row - 1
+    if l:row >= 1 && l:row <= s:rlp_rows && l:target < l:n
+      if s:rlp_sel == l:target
+        call popup_close(a:winid, l:target)
         return 1
       endif
-      let s:rlp_sel = l:row - 1
-      let s:rlp_last_digit = l:row
+      let s:rlp_sel = l:target
     endif
   else
     return 1
