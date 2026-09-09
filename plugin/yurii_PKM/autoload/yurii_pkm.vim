@@ -1886,19 +1886,24 @@ endfunction
 
 function! s:rlp_geometry() abort
   if get(g:, 'yurii_pkm_space_fullscreen', 1)
-    let l:mh = 2
-    let l:top = 1
-    let l:h = max([&lines - 4, 8])
+    " popup 1 個の画面占有 = 宣言幅/高 + border(2) + padding(横2/縦0)
+    let l:chrome_w = 4
+    let l:chrome_h = 2
+    let l:outer = 1
+    let l:gap = 1
+    let l:top = 1 + l:outer
+    let l:h = max([&lines - l:chrome_h - 2 * l:outer, 8])
     let l:lw = get(g:, 'yurii_pkm_space_list_width', 0)
     if l:lw <= 0
-      let l:lw = max([34, min([float2nr(&columns * 0.34), 50])])
+      let l:lw = max([32, min([float2nr(&columns * 0.32), 46])])
     endif
-    let l:gap = 2
-    let l:pvw = max([&columns - 2 * l:mh - l:lw - l:gap, 20])
+    let l:list_col = 1 + l:outer
+    let l:pv_col = l:list_col + l:lw + l:chrome_w + l:gap
+    let l:pvw = max([&columns - l:pv_col - l:chrome_w - l:outer + 1, 20])
     return {
-          \ 'list_line': l:top, 'list_col': 1 + l:mh, 'list_w': l:lw, 'h': l:h,
-          \ 'pv_line': l:top, 'pv_col': 1 + l:mh + l:lw + l:gap, 'pv_w': l:pvw,
-          \ 'rows': max([l:h - 7, 3]),
+          \ 'list_line': l:top, 'list_col': l:list_col, 'list_w': l:lw, 'h': l:h,
+          \ 'pv_line': l:top, 'pv_col': l:pv_col, 'pv_w': l:pvw,
+          \ 'rows': max([l:h - 4, 3]),
           \ }
   endif
   " 従来の中央小窓
@@ -2034,7 +2039,8 @@ endfunction
 function! s:rlp_render() abort
   if s:rlp_win < 0 | return | endif
   let l:total = len(s:rlp_items)
-  let l:sepw = get(s:rlp_geo, 'list_w', 46)
+  " 本文幅 = 宣言幅 - padding(左右1)
+  let l:sepw = max([get(s:rlp_geo, 'list_w', 46) - 2, 10])
   " 選択が見える範囲に s:rlp_top を寄せる
   if s:rlp_sel < s:rlp_top | let s:rlp_top = s:rlp_sel | endif
   if s:rlp_sel >= s:rlp_top + s:rlp_rows | let s:rlp_top = s:rlp_sel - s:rlp_rows + 1 | endif
@@ -2055,7 +2061,8 @@ function! s:rlp_render() abort
   for l:i in range(s:rlp_top, l:end - 1)
     let l:it = s:rlp_items[l:i]
     if get(l:it, 'sep', 0)
-      call add(l:lines, printf('── %s ─────────────────', l:it.title))
+      let l:tw = strdisplaywidth('── ' . l:it.title . ' ')
+      call add(l:lines, '── ' . l:it.title . ' ' . repeat('─', max([l:sepw - l:tw, 0])))
       continue
     endif
     let l:lbl = ' '
@@ -2123,7 +2130,7 @@ function! s:rlp_preview() abort
   endwhile
   let l:arw = (l:it.side ==# 'up') ? '→' : (l:it.side ==# 'down' ? '←' : '¶')
   let l:head = printf('%s   %s %s', fnamemodify(l:path, ':t'), l:arw, l:it.label)
-  let l:rule = repeat('─', max([get(s:rlp_geo, 'pv_w', 46), 10]))
+  let l:rule = repeat('─', max([get(s:rlp_geo, 'pv_w', 46) - 2, 10]))
   call popup_settext(s:rlp_pvwin, [l:head, l:rule] + l:body)
   call popup_setoptions(s:rlp_pvwin, {'firstline': 1})
 endfunction
