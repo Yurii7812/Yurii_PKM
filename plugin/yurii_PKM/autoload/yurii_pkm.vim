@@ -2482,16 +2482,16 @@ function! yurii_pkm#v2_new_parent(...) abort
 endfunction
 
 " nk: カテゴリーノートを作る（attribute: カテゴリー）。関係は数字で選ぶ
-" nk: カテゴリーノートを作る。まず child / parent を聞く
-function! yurii_pkm#v2_new_category(...) abort
-  echo '新カテゴリーを  c=子（現ノートの されている 側） / p=親（している 側）  (既定 c, Esc/q キャンセル)'
+" nk: カテゴリーノートを作る。c=子 / p=親 を聞くだけ。関係は常に カテゴリー（含有）
+function! yurii_pkm#v2_new_category() abort
+  echo '新カテゴリーを  c=子（現ノートの中） / p=親（現ノートを含む）  (既定 c, Esc/q キャンセル)'
   let l:ch = nr2char(getchar())
   redraw
   if l:ch ==? 'q' || char2nr(l:ch) == 27 || char2nr(l:ch) == 3
     echo 'yurii_PKM: キャンセル' | return
   endif
   let l:below = (l:ch ==? 'p') ? 0 : 1
-  call call('s:v2_new_related', [l:below, 1] + a:000)
+  call s:v2_new_related(l:below, 1, 'カテゴリー')
 endfunction
 
 " カーソル直下ノート（nh）: 新ノートを作り、そのリンクをカーソル行の直下（本文）に置く。
