@@ -2080,7 +2080,7 @@ function! s:rlp_render() abort
   else
     call add(l:lines, printf('%d/%d   %s', s:rlp_sel + 1, l:total, l:scroll))
   endif
-  call add(l:lines, 'l/字 潜る  h 戻る  ⏎ 着地  / 絞込  ⎋ 取消  ^F^B プレ')
+  call add(l:lines, 'l/字 潜る  h 戻る  ⏎ 選択へ  ␣ ここへ  / 絞込  ⎋ 取消')
   call popup_settext(s:rlp_win, l:lines)
 
   " パンくずをタイトルに
@@ -2148,8 +2148,12 @@ function! s:rlp_key(winid, key) abort
     return 1
   endif
 
-  if a:key ==# "\<Esc>" || a:key ==# "\<C-c>" || a:key ==# 'q' || a:key ==# ' '
+  if a:key ==# "\<Esc>" || a:key ==# "\<C-c>" || a:key ==# 'q'
     call popup_close(s:rlp_win, {'cancel': 1})
+    return 1
+  elseif a:key ==# ' '
+    " もう一度 <Space> … いま潜っているノート自体を開いて着地
+    call popup_close(s:rlp_win, {'here': 1})
     return 1
   elseif a:key ==# "\<CR>"
     call popup_close(s:rlp_win, {'commit': s:rlp_sel})
@@ -2193,8 +2197,23 @@ function! s:rlp_done(winid, result) abort
     call popup_close(s:rlp_pvwin)
     let s:rlp_pvwin = -1
   endif
+  if type(a:result) != v:t_dict
+    return
+  endif
+
+  " <Space> 再押し / 選択リンク無し … いま潜っているノート自体へ着地。
+  " 起点のまま（潜っていない）なら何もしない ＝ ⎋ と同じ。
+  if has_key(a:result, 'here')
+    if empty(s:rlp_stack) || s:rlp_path ==# get(s:rlp_origin, 'path', '')
+      return
+    endif
+    call yurii_pkm#push_history()
+    silent! execute 'hide edit ' . fnameescape(s:rlp_path)
+    return
+  endif
+
   " ⎋ 取消 … ウォーク中に実バッファは開いていないので起点はそのまま。何もしない。
-  if type(a:result) != v:t_dict || !has_key(a:result, 'commit')
+  if !has_key(a:result, 'commit')
     return
   endif
 
