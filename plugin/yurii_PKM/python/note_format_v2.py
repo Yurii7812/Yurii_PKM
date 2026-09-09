@@ -251,9 +251,9 @@ def parse_note(path, text: str | None = None) -> Note:
     d = len(stripped) - 1 - stripped[::-1].index(DOWN_MARK)
     if u > d:
         u = stripped.index(UP_MARK)
+    # 本文は 1 行も削らない。見張りの直前に空いている行は「書くための余白」で、
+    # テンプレートが意図して置いたもの（カーソルはそこに来る）。
     body = list(rest[:u])
-    while body and body[-1].strip() == "":
-        body.pop()
     _, up = _parse_sections(rest[u + 1: d], allow_body=False)
     _, down = _parse_sections(rest[d + 1:], allow_body=False)
     return Note(p, fm, title, body, up, down)
@@ -361,18 +361,27 @@ def _squeeze_blanks(lines: list[str]) -> list[str]:
 
 
 def render_note(note: Note) -> str:
+    """本文はユーザーのもの。空行を含めてそのまま通す。
+
+    整形するのは見張りコメント以降（関係セクション）だけ。本文の空行を
+    潰すと、テンプレートが置いた「書くための余白」が毎回消えてしまう。
+    """
     out: list[str] = list(note.fm)
-    out.append("")
-    out += note.body
+    body = list(note.body)
+    # front matter の直後は 1 行空ける（本文が既に空行始まりならそれを使う）
+    if not body or body[0].strip() != "":
+        out.append("")
+    out += body
 
-    # 本文 → (空行) している見張り → 上側 → されている見張り → 下側
-    out.append("")
+    # 本文 → している見張り → 上側 → されている見張り → 下側
+    # 本文が空行で終わっていなければ 1 行だけ空ける（余白があるならそのまま）
+    if out and out[-1].strip() != "":
+        out.append("")
     out.append(UP_MARK)
-    out += _render_group(note.up)
+    out += _squeeze_blanks(_render_group(note.up))
     out.append(DOWN_MARK)
-    out += _render_group(note.down, is_down=True)
+    out += _squeeze_blanks(_render_group(note.down, is_down=True))
 
-    out = _squeeze_blanks(out)
     while out and out[-1].strip() == "":
         out.pop()
     return "\n".join(out) + "\n"
