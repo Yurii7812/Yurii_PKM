@@ -28,14 +28,25 @@ let s:pvwin = -1
 let s:rows  = 15
 let s:mode  = 'input'   " 'input' = 打つと絞り込み / 'pick' = 数字で行を開く
 let s:hl    = []        " 開いた先のハイライト [[winid, matchid], ...]
+let s:pending_hl = ''   " timer で貼るパターン
 
-" 検索語を \V マジックの「いずれか」パターンにする
+" 目立つハイライト群を用意（配色に埋もれないよう自前で色指定）
+function! yurii_search#ensure_hl_group() abort
+  highlight YuriiSearchHit cterm=bold gui=bold ctermfg=16 ctermbg=226 guifg=#000000 guibg=#FFD24A
+endfunction
+call yurii_search#ensure_hl_group()
+augroup yurii_search_hl
+  autocmd!
+  autocmd ColorScheme * call yurii_search#ensure_hl_group()
+augroup END
+
+" 検索語を「いずれか」パターンにする（各語リテラル、全角スペース区切り）
 function! s:query_pattern() abort
   let l:q = substitute(s:query, '　', ' ', 'g')
   let l:terms = filter(split(l:q, ' '), 'v:val !=# ""')
   if empty(l:terms) | return '' | endif
   call map(l:terms, {_, v -> '\V' . escape(v, '\')})
-  return '\%(' . join(l:terms, '\|') . '\)'
+  return '\%(' . join(l:terms, '\m\|') . '\m\)'
 endfunction
 
 " 直前に付けたハイライトを消す
@@ -46,6 +57,22 @@ function! yurii_search#clear_hl() abort
     endif
   endfor
   let s:hl = []
+endfunction
+
+" popup が完全に閉じてから、実ウィンドウでハイライトを貼る
+function! s:apply_hl(timer) abort
+  if empty(s:pending_hl) | return | endif
+  let l:pat = s:pending_hl
+  let s:pending_hl = ''
+  call yurii_search#clear_hl()
+  call yurii_search#ensure_hl_group()
+  call add(s:hl, [win_getid(), matchadd('YuriiSearchHit', l:pat, 20)])
+  let @/ = l:pat
+  call cursor(1, 1)
+  if search(l:pat, 'cW') > 0
+    normal! zvzz
+  endif
+  redraw
 endfunction
 
 function! yurii_search#run(...) abort
@@ -291,16 +318,10 @@ function! s:done(winid, result) abort
   endif
   let l:pat = s:query_pattern()
   execute 'edit ' . fnameescape(s:cands[a:result].p)
-  call yurii_search#clear_hl()
-  if empty(l:pat) | return | endif
-  " 検索レジスタにも入れて n / N / :noh を効かせる
-  let @/ = l:pat
-  call add(s:hl, [win_getid(), matchadd('Search', l:pat)])
-  " 最初のヒット行へ寄せる
-  call cursor(1, 1)
-  if search(l:pat, 'cW') > 0
-    normal! zz
-  endif
+  " popup の callback 中は実ウィンドウがまだ確定していないことがあるので、
+  " ハイライトは timer で 1 tick 遅らせて貼る。
+  let s:pending_hl = l:pat
+  call timer_start(0, function('s:apply_hl'))
 endfunction
 
 " --- 旧 curses TUI（python ヘルパーが無い時のみ）----------------------------
