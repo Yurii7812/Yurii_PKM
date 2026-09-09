@@ -3956,7 +3956,7 @@ endfunction
 
 function! yurii_pkm#add_clipboard_before_up() abort
   if s:pkm_format() ==# 'v2'
-    call yurii_pkm#v2_add_link()
+    call yurii_pkm#v2_add_link('', '', 1)  " ca: されている 側へ
     return
   endif
   let l:current_file = expand('%:p')
@@ -4312,8 +4312,7 @@ endfunction
 
 function! yurii_pkm#at_add() abort
   if s:pkm_format() ==# 'v2'
-    " v2: 相方への書き込みは sync に任せる。現ノートの上側へ 1 本足すだけ。
-    call yurii_pkm#v2_add_link()
+    call yurii_pkm#v2_add_link('', '', 0)  " at: している 側へ（相方は sync）
     return
   endif
   let l:current_file  = expand('%:p')
