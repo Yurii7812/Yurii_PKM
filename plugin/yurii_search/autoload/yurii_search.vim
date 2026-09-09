@@ -57,6 +57,8 @@ function! s:fzf_run(initial) abort
         \ . ' --bind ' . shellescape('ctrl-/:toggle-preview,ctrl-d:preview-half-page-down,ctrl-u:preview-half-page-up')
         \ . ' --bind ' . shellescape(l:movebinds)
         \ . ' --bind ' . shellescape(l:modal)
+        \ . ' --bind ' . shellescape('change:transform-query(printf %s {q} | sed "s/　/ /g")')
+        \ . ' --bind ' . shellescape('load:transform-query(printf %s {q} | sed "s/　/ /g")')
   let l:cmd = l:src . ' | ' . l:fzf . ' > ' . shellescape(l:tmp)
 
   if get(g:, 'yurii_search_popup', 1) && has('popupwin') && has('terminal')
