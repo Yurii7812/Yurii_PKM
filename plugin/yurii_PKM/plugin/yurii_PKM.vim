@@ -199,6 +199,18 @@ nnoremap <silent> <S-Tab>  <Cmd>call yurii_pkm#jump_link(0)<CR>
 silent! execute "nnoremap <silent> \<Esc>[Z <Cmd>call yurii_pkm#jump_link(0)<CR>"
 nnoremap <silent> <CR>     <Cmd>call yurii_pkm#open_link_under_cursor()<CR>
 nnoremap <silent> <BS>     <Cmd>call yurii_pkm#go_back()<CR>
+" 履歴を前へ（⌫ の対）。戻りが可逆になるので、戻るのを躊躇しなくなる。
+nnoremap <silent> <S-BS>   <Cmd>call yurii_pkm#go_forward()<CR>
+nnoremap <silent> \.       <Cmd>call yurii_pkm#go_forward()<CR>
+" 直前ノートとの1キー往復（A⇄B）。読むもの・選ぶものゼロの最速移動。
+nnoremap <silent> _        <Cmd>call yurii_pkm#toggle_alternate()<CR>
+" ハブ … \1〜\9 で直行、\H で今のノートを登録、\H0 で一覧
+for s:h in range(1, 9)
+  execute printf('nnoremap <silent> \%d <Cmd>call yurii_pkm#hub_jump(%d)<CR>', s:h, s:h)
+endfor
+unlet s:h
+nnoremap <silent> \H       <Cmd>call yurii_pkm#hub_set()<CR>
+nnoremap <silent> \0       <Cmd>call yurii_pkm#hub_list()<CR>
 " <Space> … ノートナビゲータ。スコープ = ローカル（今のノートのリンク）/
 "           グローバル（全ノート検索）、サブモード = 入力（打つと絞り込み）/
 "           選択（プレーンキー）。キーは両スコープ共通で Ctrl は使わない。

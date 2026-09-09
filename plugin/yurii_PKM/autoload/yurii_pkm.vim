@@ -1921,8 +1921,11 @@ function! s:rlp_match(hay) abort
 endfunction
 
 function! s:rlp_build_local() abort
-  let l:items = [{'kind': 'anchor', 'path': s:rlp_path, 'label': '',
-        \ 'text': s:get_title(s:rlp_path)}]
+  let l:items = []
+  if !empty(s:rlp_path) && filereadable(s:rlp_path)
+    call add(l:items, {'kind': 'anchor', 'path': s:rlp_path, 'label': '',
+          \ 'text': s:get_title(s:rlp_path)})
+  endif
   for [l:key, l:title] in [['body', '文中'], ['up', 'している'], ['down', 'されている']]
     let l:g = get(s:rlp_groups, l:key, [])
     let l:hit = filter(copy(l:g), 's:rlp_match(v:val.label . " " . v:val.text)')
@@ -1976,6 +1979,12 @@ function! s:rlp_build_index() abort
       call add(s:rlp_cands, {'p': l:p, 't': s:get_title(l:p), 'b': ''})
     endfor
   endif
+  " 最近訪問した順に固定する。無クエリでも絞り込み後でも並びが安定し、
+  " 「決める時間」が減る（NAVIGATION.md 根本4）。
+  let l:recent = yurii_pkm#recent_map()
+  call map(s:rlp_cands, {_, c -> extend(c,
+        \ {'r': get(l:recent, fnamemodify(c.p, ':p'), 0)})})
+  call sort(s:rlp_cands, {a, b -> b.r == a.r ? (a.t < b.t ? -1 : 1) : b.r - a.r})
 endfunction
 
 " --- ジオメトリ -------------------------------------------------------------
@@ -2186,7 +2195,14 @@ function! s:rlp_render() abort
 
   call add(l:lines, repeat('─', l:w))
   if s:rlp_mode ==# 'input'
-    call add(l:lines, (s:rlp_scope ==# 'global' ? '検索▏' : '絞込▏') . s:rlp_query)
+    let l:nsel = 0
+    for l:it in s:rlp_items
+      if !get(l:it, 'sep', 0) | let l:nsel += 1 | endif
+    endfor
+    let l:q = (s:rlp_scope ==# 'global' ? '検索 ' : '絞込 ') . s:rlp_query . '▏'
+    let l:cnt = printf(' %d件', l:nsel)
+    call add(l:lines, s:rlp_trunc_tail(l:q, max([l:w - strdisplaywidth(l:cnt), 4]))
+          \ . l:cnt)
   else
     let l:below = max([0, l:total - l:end])
     let l:nmark = len(s:rlp_marks)
@@ -2196,7 +2212,7 @@ function! s:rlp_render() abort
           \ l:nmark > 0 ? '   *' . l:nmark : ''))
   endif
   call add(l:lines, s:rlp_mode ==# 'input'
-        \ ? '打つ 絞る   ⏎ 選択へ   ⇥ 切替   ⎋ クリア'
+        \ ? '打つ 絞る  ↑↓ 選択  → 潜る  ← 戻る  ⏎ 開く  ⇥ 切替  ⎋ 抜ける'
         \ : 'jk/字 選択  l 潜る  ⏎ 開く  fb プレ  c/p 子/親  y m a  i 絞込  ⇥ 全体')
   call popup_settext(s:rlp_win, l:lines)
   call popup_setoptions(s:rlp_win,
@@ -2242,18 +2258,27 @@ endfunction
 
 function! s:rlp_key(winid, key) abort
   " === 入力サブモード ===
+  " 打ちながら矢印で選択・潜る・戻るまでできるので、モードを抜けずに完結する。
   if s:rlp_mode ==# 'input'
     if a:key ==# "\<CR>"
-      let s:rlp_mode = 'select'
+      " ⏎ は選択モードと同じ「開く」。検索は ⇥→打つ→⏎ の最短で終わる
+      call popup_close(s:rlp_win, {'open': s:rlp_sel})
+      return 1
     elseif a:key ==# "\<Esc>" || a:key ==# "\<C-c>"
-      if empty(s:rlp_query)
-        let s:rlp_mode = 'select'
-      else
-        let s:rlp_query = ''
-        call s:rlp_refresh()
-      endif
+      " 1段だけ抜ける（クエリは残す）。もう一度で閉じる
+      let s:rlp_mode = 'select'
     elseif a:key ==# "\<Tab>"
       call s:rlp_toggle_scope()
+      return 1
+    elseif a:key ==# "\<Down>"
+      call s:rlp_step_sel(1)
+    elseif a:key ==# "\<Up>"
+      call s:rlp_step_sel(-1)
+    elseif a:key ==# "\<Right>"
+      call s:rlp_dive(s:rlp_sel)
+      return 1
+    elseif a:key ==# "\<Left>"
+      call s:rlp_back()
       return 1
     elseif a:key ==# "\<BS>" || a:key ==# "\<C-h>"
       let s:rlp_query = strcharpart(s:rlp_query, 0,
@@ -2262,6 +2287,8 @@ function! s:rlp_key(winid, key) abort
     elseif a:key =~# '^.$' && a:key !~# '^[[:cntrl:]]$'
       let s:rlp_query .= a:key
       call s:rlp_refresh()
+      let s:rlp_sel = max([s:rlp_first_sel(), 0])
+      let s:rlp_top = 0
     endif
     call s:rlp_render()
     return 1
@@ -2462,12 +2489,26 @@ endfunction
 "   jk/ラベル 選択  l 潜る  h 戻る  ⏎ 開く  ␣ アンカーを開く  fb プレビュー
 "   c/p 子/親に追加  y ヤンク  m マーク  a アンカー移動  i 絞込  ⇥ local⇄global
 function! yurii_pkm#relation_link_popup() abort
+  call yurii_pkm#note_navigator('local')
+endfunction
+
+" gs … 同じナビゲータを global スコープ（全ノート検索）で開く
+function! yurii_pkm#note_search() abort
+  call yurii_pkm#note_navigator('global')
+endfunction
+
+" a:scope … 'local'（今のノートのリンク） / 'global'（全ノート検索）
+function! yurii_pkm#note_navigator(scope) abort
   let l:origin_path = expand('%:p')
-  let l:groups0 = s:space_collect(getline(1, '$'), expand('%:p:h'))
-  if empty(get(l:groups0, 'body', [])) && empty(get(l:groups0, 'up', []))
-        \ && empty(get(l:groups0, 'down', []))
-    call yurii_pkm#jump_relation_link(1)
-    return
+  let l:is_note = !empty(l:origin_path) && s:is_markdown_file(l:origin_path)
+  let l:groups0 = l:is_note
+        \ ? s:space_collect(getline(1, '$'), expand('%:p:h')) : {}
+  if a:scope ==# 'local'
+    if empty(get(l:groups0, 'body', [])) && empty(get(l:groups0, 'up', []))
+          \ && empty(get(l:groups0, 'down', []))
+      call yurii_pkm#jump_relation_link(1)
+      return
+    endif
   endif
 
   let s:rlp_origin = {'bufnr': bufnr('%'), 'pos': getpos('.'), 'path': l:origin_path}
@@ -2509,6 +2550,18 @@ function! yurii_pkm#relation_link_popup() abort
         \ 'borderhighlight': ['Comment'], 'padding': [0,1,0,1],
         \ })
   call s:rlp_load(l:origin_path, expand('%:p:h'))
+  if a:scope ==# 'global'
+    " gs 相当。索引を読んで検索（入力サブモード）から始める
+    if empty(s:rlp_cands) | call s:rlp_build_index() | endif
+    let s:rlp_scope = 'global'
+    let s:rlp_mode = 'input'
+    let s:rlp_query = ''
+    let s:rlp_sel = 0
+    let s:rlp_top = 0
+    call s:rlp_refresh()
+    let s:rlp_sel = max([s:rlp_first_sel(), 0])
+    call s:rlp_render()
+  endif
 endfunction
 
 " 数字キー … 本文の N 番目のリンクへ。該当が無ければ通常のカウントとして送る。
@@ -3012,6 +3065,113 @@ endfunction
 " History (Back key)
 " ---------------------------------------------------------------------------
 
+" --- 履歴 / 直前ノート / ハブ / 最近訪問 --------------------------------------
+
+function! s:hist_state_file(name) abort
+  return s:state_dir() . s:sep() . a:name
+endfunction
+
+function! s:load_json_state(name, default) abort
+  let l:f = s:hist_state_file(a:name)
+  if !filereadable(l:f) | return a:default | endif
+  try
+    return json_decode(join(readfile(l:f), ''))
+  catch
+    return a:default
+  endtry
+endfunction
+
+function! s:save_json_state(name, value) abort
+  let l:dir = s:state_dir()
+  if !isdirectory(l:dir) | call mkdir(l:dir, 'p') | endif
+  try
+    call writefile([json_encode(a:value)], s:hist_state_file(a:name))
+  catch
+  endtry
+endfunction
+
+" 最近訪問（path -> epoch）。global スコープの無クエリ時の並び順に使う。
+function! yurii_pkm#recent_map() abort
+  if !exists('g:yurii_pkm_recent')
+    let g:yurii_pkm_recent = s:load_json_state('recent.json', {})
+  endif
+  return g:yurii_pkm_recent
+endfunction
+
+function! s:recent_touch(path) abort
+  if empty(a:path) || !s:is_markdown_file(a:path) | return | endif
+  let l:m = yurii_pkm#recent_map()
+  let l:m[fnamemodify(a:path, ':p')] = localtime()
+  " 上限を超えたら古いものから捨てる
+  let l:cap = get(g:, 'yurii_pkm_recent_max', 500)
+  if len(l:m) > l:cap
+    let l:pairs = sort(items(l:m), {a, b -> a[1] - b[1]})
+    for l:i in range(len(l:pairs) - l:cap)
+      call remove(l:m, l:pairs[l:i][0])
+    endfor
+  endif
+  let g:yurii_pkm_recent = l:m
+  call s:save_json_state('recent.json', l:m)
+endfunction
+
+" ハブ（'1'..'9' -> path）
+function! yurii_pkm#hub_map() abort
+  if !exists('g:yurii_pkm_hubs')
+    let g:yurii_pkm_hubs = s:load_json_state('hubs.json', {})
+  endif
+  return g:yurii_pkm_hubs
+endfunction
+
+" 引数が数値でも文字列でも '1'..'9' の文字列に揃える（string() は引用符を付ける）
+function! s:hub_key(v) abort
+  return type(a:v) == v:t_number ? printf('%d', a:v) : trim(a:v)
+endfunction
+
+function! yurii_pkm#hub_set(...) abort
+  let l:n = a:0 > 0 ? s:hub_key(a:1) : ''
+  if empty(l:n)
+    echo 'ハブ番号 1-9: '
+    let l:c = getchar()
+    redraw
+    let l:n = type(l:c) == v:t_number ? nr2char(l:c) : l:c
+  endif
+  if l:n !~# '^[1-9]$'
+    echo 'yurii_PKM: 1-9 で指定して' | return
+  endif
+  let l:file = expand('%:p')
+  if empty(l:file) || !s:is_markdown_file(l:file)
+    echohl WarningMsg | echo 'yurii_PKM: ノート上で実行して' | echohl NONE | return
+  endif
+  let l:m = yurii_pkm#hub_map()
+  let l:m[l:n] = l:file
+  let g:yurii_pkm_hubs = l:m
+  call s:save_json_state('hubs.json', l:m)
+  echo printf('yurii_PKM: ハブ %s = %s', l:n, s:get_title(l:file))
+endfunction
+
+function! yurii_pkm#hub_jump(n) abort
+  let l:m = yurii_pkm#hub_map()
+  let l:p = get(l:m, s:hub_key(a:n), '')
+  if empty(l:p) || !filereadable(l:p)
+    echo printf('yurii_PKM: ハブ %s は未登録（\H%s で登録）', a:n, a:n)
+    return
+  endif
+  if fnamemodify(expand('%:p'), ':p') ==# fnamemodify(l:p, ':p') | return | endif
+  call yurii_pkm#push_history()
+  silent! execute 'hide edit ' . fnameescape(l:p)
+endfunction
+
+function! yurii_pkm#hub_list() abort
+  let l:m = yurii_pkm#hub_map()
+  let l:out = []
+  for l:n in map(range(1, 9), 'string(v:val)')
+    let l:p = get(l:m, l:n, '')
+    call add(l:out, printf('%s  %s', l:n,
+          \ empty(l:p) ? '(未登録)' : s:get_title(l:p)))
+  endfor
+  echo join(l:out, "\n")
+endfunction
+
 function! yurii_pkm#push_history() abort
   let l:file = yurii_pkm#current_file()
   if empty(l:file) | return | endif
@@ -3019,6 +3179,59 @@ function! yurii_pkm#push_history() abort
   if len(g:yurii_pkm_history) > g:yurii_pkm_history_max
     call remove(g:yurii_pkm_history, 0)
   endif
+  " 新しい移動が起きたら「進む」履歴は無効になる（ブラウザと同じ）
+  let g:yurii_pkm_forward = []
+  " 直前ノート（⌥ トグル用）
+  let g:yurii_pkm_alt = l:file
+  call s:recent_touch(l:file)
+endfunction
+
+" 直前に居たノートとの1キー往復。押すたび A→B→A→B。
+function! yurii_pkm#toggle_alternate() abort
+  let l:cur = expand('%:p')
+  let l:alt = get(g:, 'yurii_pkm_alt', '')
+  if empty(l:alt) && !empty(get(g:, 'yurii_pkm_history', []))
+    let l:alt = g:yurii_pkm_history[-1].file
+  endif
+  if empty(l:alt) || !filereadable(l:alt)
+    echo 'yurii_PKM: 直前のノートがない'
+    return
+  endif
+  if fnamemodify(l:alt, ':p') ==# fnamemodify(l:cur, ':p')
+    echo 'yurii_PKM: 直前のノートが自分自身'
+    return
+  endif
+  call add(g:yurii_pkm_history, {'file': l:cur, 'pos': getpos('.')})
+  if len(g:yurii_pkm_history) > g:yurii_pkm_history_max
+    call remove(g:yurii_pkm_history, 0)
+  endif
+  let g:yurii_pkm_forward = []
+  let g:yurii_pkm_alt = l:cur
+  silent! execute 'hide edit ' . fnameescape(l:alt)
+  call s:recent_touch(l:alt)
+endfunction
+
+" 履歴を前に進む（⌫ の対）。戻るが可逆になる。
+function! yurii_pkm#go_forward() abort
+  if !exists('g:yurii_pkm_forward') || empty(g:yurii_pkm_forward)
+    echo 'yurii_PKM: これ以上進めない'
+    return
+  endif
+  let l:item = remove(g:yurii_pkm_forward, -1)
+  if get(g:, 'yurii_pkm_sync_before_link_navigation', 0)
+    call s:write_current_and_sync_now()
+  elseif get(g:, 'yurii_pkm_save_before_link_navigation', 0) && &modified && &buftype ==# '' && &modifiable
+    silent update
+  endif
+  let l:cur = expand('%:p')
+  if !empty(l:cur)
+    call add(g:yurii_pkm_history, {'file': l:cur, 'pos': getpos('.')})
+    let g:yurii_pkm_alt = l:cur
+  endif
+  silent! execute 'hide edit ' . fnameescape(l:item.file)
+  call setpos('.', l:item.pos)
+  call s:snap_cursor_to_link()
+  call s:recent_touch(l:item.file)
 endfunction
 
 function! yurii_pkm#open_link_under_cursor() abort
@@ -3062,9 +3275,20 @@ function! yurii_pkm#go_back() abort
   elseif get(g:, 'yurii_pkm_save_before_link_navigation', 0) && &modified && &buftype ==# '' && &modifiable
     silent update
   endif
+  " 戻る前に「今いる場所」を進む履歴へ積む（戻りを可逆にする）
+  let l:cur = expand('%:p')
+  if !empty(l:cur)
+    if !exists('g:yurii_pkm_forward') | let g:yurii_pkm_forward = [] | endif
+    call add(g:yurii_pkm_forward, {'file': l:cur, 'pos': getpos('.')})
+    if len(g:yurii_pkm_forward) > g:yurii_pkm_history_max
+      call remove(g:yurii_pkm_forward, 0)
+    endif
+    let g:yurii_pkm_alt = l:cur
+  endif
   silent! execute 'hide edit ' . fnameescape(l:item.file)
   call setpos('.', l:item.pos)
   call s:snap_cursor_to_link()
+  call s:recent_touch(l:item.file)
 endfunction
 
 " 戻った直後、カーソルがリンク上でなければ一番近いリンクへ寄せる。
@@ -3321,6 +3545,20 @@ function! s:v2_insert_link(rel, linktext, ...) abort
   else
     let l:lo = l:up_m
     let l:hi = l:dn_m
+  endif
+
+  " 同じ相手が既にこの区間に居れば二重に足さない（c を2回押しても増えない）
+  let l:new_tgt = s:extract_target(a:linktext)
+  if !empty(l:new_tgt)
+    let l:new_fp = fnamemodify(yurii_pkm#resolve_link(l:new_tgt, expand('%:p:h')), ':p')
+    for l:i in range(l:lo + 1, min([l:hi - 1, line('$')]))
+      let l:old = s:extract_target(getline(l:i))
+      if empty(l:old) | continue | endif
+      if fnamemodify(yurii_pkm#resolve_link(l:old, expand('%:p:h')), ':p') ==# l:new_fp
+        echo 'yurii_PKM: すでに登録済み — ' . l:new_tgt
+        return 0
+      endif
+    endfor
   endif
 
   " 該当区間の `関係:` ヘッダを探す

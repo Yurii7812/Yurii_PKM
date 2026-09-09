@@ -77,7 +77,18 @@ function! s:hit_props(text, prefix_len, terms) abort
   return l:props
 endfunction
 
+" gs は yurii_PKM の統一ナビゲータ（global スコープ）に寄せた。
+" 一覧・プレビュー・キー体系が <Space> と同じになり、ヒットから l でそのまま
+" 潜れる。旧ポップアップに戻したい時だけ g:yurii_search_legacy = 1。
 function! yurii_search#run(...) abort
+  if !get(g:, 'yurii_search_legacy', 0) && exists('*yurii_pkm#note_navigator')
+    call yurii_pkm#note_navigator('global')
+    return
+  endif
+  return call('yurii_search#run_legacy', a:000)
+endfunction
+
+function! yurii_search#run_legacy(...) abort
   let l:idx = get(g:, 'yurii_search_index', '')
   if empty(l:idx) || !filereadable(l:idx)
     " python ヘルパーが無ければ旧 TUI
