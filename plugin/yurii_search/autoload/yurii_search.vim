@@ -39,18 +39,14 @@ function! s:fzf_run(initial) abort
   let l:preview = 'q={q}; f={1}; '
         \ . 'if [ -n "$q" ]; then '
         \ . 'p=$(printf "%s" "$q" | tr -s " " | tr " " "|"); '
-        \ . 'rg --color=always --colors "match:fg:16" --colors "match:bg:11" -n -C3 -e "$p" -- "$f" 2>/dev/null | head -400 '
+        \ . 'rg --color=always -n -C3 -e "$p" -- "$f" 2>/dev/null | head -400 '
         \ . '|| sed -n 1,300p -- "$f"; '
         \ . 'else sed -n 1,300p -- "$f"; fi'
-
-  let l:colors = 'fg+:-1,bg+:238,hl:11,hl+:11:bold,pointer:14,marker:14,'
-        \ . 'prompt:14,info:8,border:8,header:8,gutter:-1'
 
   let l:fzf = 'fzf --exact --ansi --layout=reverse --info=inline --cycle'
         \ . ' --delimiter=''\t'' --with-nth=''2..'''
         \ . ' --prompt=''検索 › '' --pointer=''▶'' --marker=''✓'''
         \ . ' --query=' . shellescape(a:initial)
-        \ . ' --color=' . shellescape(l:colors)
         \ . ' --header=' . shellescape('⏎ 開く   ⎋ 移動   / 検索   1-9 行へ   ^/ プレビュー')
         \ . ' --preview-window=right:58%:wrap:border-left'
         \ . ' --preview ' . shellescape(l:preview)
