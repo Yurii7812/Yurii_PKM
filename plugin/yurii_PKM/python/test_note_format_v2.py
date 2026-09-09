@@ -68,7 +68,7 @@ def test_parse_inline_and_block_roundtrip() -> None:
     check(n.up["論点"][0][2] == "メモ", "注釈を保持")
     check(n.down["関連"] == [("呼吸法", "20250107.md", None)], "下側インライン")
     out = v2.render_note(n)
-    check("所属: [瞑想](20250101.md)" in out, "1 本はインラインで出力")
+    check("所属:\n[瞑想](20250101.md)" in out, "1 本もブロックで出力")
     check("論点:\n[問い](20250111.md) — メモ" in out, "2 本はブロックで出力")
     check(UP_MARK in out and DOWN_MARK in out, "見張りコメントが両方ある")
     check(out.count("\n---\n") == 1, "--- は front matter の 1 箇所だけ（本文の --- は保持）")
@@ -86,7 +86,7 @@ def test_normalize_counts() -> None:
     n = v2.parse_note(Path("/x/A.md"), src)
     out = v2.render_note(n)
     check("論点:\n[x](20250101.md)\n[y](20250102.md)" in out, "2 本 → ブロックへ")
-    check("前提: [z](20250103.md)" in out, "1 本 → インラインへ")
+    check("前提:\n[z](20250103.md)" in out, "1 本もブロックのまま")
 
 
 def test_sync_generates_down() -> None:
@@ -97,7 +97,7 @@ def test_sync_generates_down() -> None:
         note(root / "20250111.md", "瞑想のコツがわからない")
         v2.sync_vault(root)
         _u, dn = regions((root / "20250111.md").read_text(encoding="utf-8"))
-        check("論点: [集中と気づき](20250104.md)" in dn, "B の下側に『論点: A』が入る")
+        check("論点:\n[集中と気づき](20250104.md)" in dn, "B の下側に『論点: A』が入る")
 
 
 def test_sync_symmetric_down_edit() -> None:
@@ -108,7 +108,7 @@ def test_sync_symmetric_down_edit() -> None:
         note(root / "20250120.md", "C", down="論点: [A](20250104.md)")
         v2.sync_vault(root)
         up, _dn = regions((root / "20250104.md").read_text(encoding="utf-8"))
-        check("論点: [C](20250120.md)" in up, "A の上側に『論点: C』が入る")
+        check("論点:\n[C](20250120.md)" in up, "A の上側に『論点: C』が入る")
 
 
 def test_kanren_down_edit_mirrors() -> None:
@@ -119,7 +119,7 @@ def test_kanren_down_edit_mirrors() -> None:
         note(root / "20250120.md", "C", down="関連: [A](20250104.md)")
         v2.sync_vault(root)
         _u, a_dn = regions((root / "20250104.md").read_text(encoding="utf-8"))
-        check("関連: [C](20250120.md)" in a_dn, "A の下側に 関連: C")
+        check("関連:\n[C](20250120.md)" in a_dn, "A の下側に 関連: C")
 
 
 def test_sync_delete_from_down_removes_up() -> None:
@@ -130,7 +130,7 @@ def test_sync_delete_from_down_removes_up() -> None:
         note(root / "20250111.md", "B")
         v2.sync_vault(root)
         b_path = root / "20250111.md"
-        check("論点: [A](20250104.md)" in regions(b_path.read_text(encoding="utf-8"))[1], "まず下側に生成")
+        check("論点:\n[A](20250104.md)" in regions(b_path.read_text(encoding="utf-8"))[1], "まず下側に生成")
         # ユーザが B の下側から論点行を削除
         b_path.write_text(
             "---\ntitle: B\n---\n\n# B\n\n本文。\n\n---\n", encoding="utf-8"
@@ -149,8 +149,8 @@ def test_kanren_is_symmetric() -> None:
         v2.sync_vault(root)
         a_up, a_dn = regions((root / "20250104.md").read_text(encoding="utf-8"))
         b_up, b_dn = regions((root / "20250111.md").read_text(encoding="utf-8"))
-        check("関連: [B](20250111.md)" in a_dn, "A の下側に 関連: B")
-        check("関連: [A](20250104.md)" in b_dn, "B の下側に 関連: A")
+        check("関連:\n[B](20250111.md)" in a_dn, "A の下側に 関連: B")
+        check("関連:\n[A](20250104.md)" in b_dn, "B の下側に 関連: A")
         check("関連" not in a_up and "関連" not in b_up, "どちらの上側にも 関連 は無い")
 
 
@@ -209,8 +209,8 @@ def test_migrate_legacy_v1_note() -> None:
         up, dn = regions(txt)
         check("Parent:" not in txt and "Child:" not in txt and "BackLink:" not in txt,
               "旧見出しが消える")
-        check("関連: [parent-note](260909061513.md)" in dn, "Parent リンク -> 関連:（対称なので下側・表示名は現タイトルへ）")
-        check("カテゴリー: [Index](index.md)" in up, "[Index] -> カテゴリー:")
+        check("関連:\n[parent-note](260909061513.md)" in dn, "Parent リンク -> 関連:（対称なので下側・表示名は現タイトルへ）")
+        check("カテゴリー:\n[Index](index.md)" in up, "[Index] -> カテゴリー:")
         check(UP_MARK in txt and DOWN_MARK in txt, "見張りコメント形式に変換される")
 
 
@@ -223,7 +223,7 @@ def test_kenkai_and_custom_type() -> None:
     check(n.up.get("見解") == [("x", "20250101.md", None)], "見解: を型として認識")
     check(n.up.get("補足") == [("y", "20250102.md", None)], "自由な語:( 補足 ) も型として保持")
     out = v2.render_note(n)
-    check("見解: [x](20250101.md)" in out and "補足: [y](20250102.md)" in out, "両方 round-trip")
+    check("見解:\n[x](20250101.md)" in out and "補足:\n[y](20250102.md)" in out, "両方 round-trip")
 
 
 def test_body_link_becomes_backlink() -> None:
@@ -236,7 +236,7 @@ def test_body_link_becomes_backlink() -> None:
         note(root / "20250111.md", "B")
         v2.sync_vault(root)
         up, dn = regions((root / "20250111.md").read_text(encoding="utf-8"))
-        check("バックリンク: [A](20250104.md)" in dn, "B の下側に バックリンク: A")
+        check("バックリンク:\n[A](20250104.md)" in dn, "B の下側に バックリンク: A")
         check("関連:" not in dn and "論点:" not in dn, "型セクションには入らない")
 
 
@@ -250,7 +250,7 @@ def test_typed_link_suppresses_backlink() -> None:
         note(root / "20250111.md", "B")
         v2.sync_vault(root)
         _up, dn = regions((root / "20250111.md").read_text(encoding="utf-8"))
-        check("論点: [A](20250104.md)" in dn, "論点: A は出る")
+        check("論点:\n[A](20250104.md)" in dn, "論点: A は出る")
         check("バックリンク" not in dn, "バックリンク: A は出さない（型で表示済み）")
 
 
@@ -268,7 +268,7 @@ def test_foreign_file_untouched() -> None:
         v2.sync_vault(root)
         check(diary.read_text(encoding="utf-8") == raw, "日記ファイルはバイト単位で不変")
         _up, dn = regions((root / "20250104.md").read_text(encoding="utf-8"))
-        check("バックリンク: [2024-05-01](diary/2024-05-01.md)" in dn,
+        check("バックリンク:\n[2024-05-01](diary/2024-05-01.md)" in dn,
               "日記からの本文リンクは PKM 側に バックリンク として出る")
 
 
@@ -299,7 +299,7 @@ def test_unmarked_notes_frozen_by_sync() -> None:
         v2.sync_vault(root)
         check(old.read_text(encoding="utf-8") == v1raw, "v1 形式ノートは sync で 1 バイト不変")
         up, _dn = regions((root / "20250104.md").read_text(encoding="utf-8"))
-        check("論点: [昔のメモ](diary/20200101120000.md)" in up, "リンクは打った通りに残る（表示名も固定）")
+        check("論点:\n[昔のメモ](diary/20200101120000.md)" in up, "リンクは打った通りに残る（表示名も固定）")
         # migrate を明示的に呼ぶと変換される
         conv = v2.migrate_note(v1raw, str(old))
         check(conv is not None and "<!-- している -->" in conv, "migrate は v2 化する")

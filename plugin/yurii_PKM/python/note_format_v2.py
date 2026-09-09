@@ -312,12 +312,16 @@ def _links_in(lines: list[str]) -> list[str]:
 # ---------------------------------------------------------------------------
 
 def _render_section(t: str, entries: list[tuple[str, str, str | None]]) -> list[str]:
+    """常にブロック形で書く。
+
+        ラベル:
+        [表示名](target.md)
+
+    1 本でもインラインにしない。増えたときに行の形が変わらず、追記が
+    「1 行足すだけ」で済むため。読み込み側はインライン形も受け付ける。
+    """
     if not entries:
         return []
-    if len(entries) == 1:
-        ti, tg, ann = entries[0]
-        s = f"{t}: [{ti}]({tg})"
-        return [s + f" — {ann}" if ann else s]
     out = [f"{t}:"]
     for ti, tg, ann in entries:
         s = f"[{ti}]({tg})"

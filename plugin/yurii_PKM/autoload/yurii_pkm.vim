@@ -2694,10 +2694,11 @@ function! s:v2_insert_link(rel, linktext, ...) abort
   endfor
 
   if l:hdr == 0
+    " 常にブロック形（『ラベル:』の次行にリンク）。1 本でもインラインにしない。
     if l:below
-      call append(line('$'), a:rel . ': ' . a:linktext)
+      call append(line('$'), [a:rel . ':', a:linktext])
     else
-      call append(l:hi - 1, a:rel . ': ' . a:linktext)
+      call append(l:hi - 1, [a:rel . ':', a:linktext])
     endif
     return 1
   endif
@@ -2797,12 +2798,13 @@ function! s:v2_new_related(below, is_cat, ...) abort
 
   " 新ノートを組み立てる。相手へのリンクを先に入れておく（sync が確認するだけ）。
   " nc: 相手は新ノートの している 側 / np: されている 側。
-  let l:backlink = l:back_rel . ': [' . l:cur_title . '](' . l:cur_name . ')'
+  " 常にブロック形（『ラベル:』の次行にリンク）
+  let l:backlink = [l:back_rel . ':', '[' . l:cur_title . '](' . l:cur_name . ')']
   let l:fm = ['---', 'time: ' . yurii_pkm#timestamp_yaml(), 'title: ' . l:ts]
   if a:is_cat | call add(l:fm, 'attribute: カテゴリー') | endif
   call add(l:fm, '---')
-  let l:up   = a:below ? [l:backlink] : []
-  let l:down = a:below ? [] : [l:backlink]
+  let l:up   = a:below ? l:backlink : []
+  let l:down = a:below ? [] : l:backlink
   let l:lines = l:fm + ['', '# ' . l:ts, '', '', '', '<!-- している -->']
         \ + l:up + ['<!-- されている -->'] + l:down
   call writefile(l:lines, l:file)
