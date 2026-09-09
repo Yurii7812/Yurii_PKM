@@ -1826,6 +1826,32 @@ let s:rlp_rowmap = {}         " ラベル文字 -> s:rlp_items のインデッ�
 let s:rlp_want_cursor_init = 0
 let s:rlp_labels = '1234567890asdfwertzxcvbnmuiop'
 
+" --- global スコープ（全ノート検索） ---
+let s:rlp_scope = 'local'     " 'local' | 'global'
+let s:rlp_gmode = 'input'     " global 時: 'input'（打つ=クエリ） | 'select'
+let s:rlp_query = ''
+let s:rlp_cands = []          " [{p,t,b}] 全ノート索引（popup セッション内キャッシュ）
+let s:rlp_ghits = []          " s:rlp_cands の index（クエリ一致）
+let s:rlp_gsel = 0
+let s:rlp_gtop = 0
+
+function! s:rlp_trunc_tail(s, w) abort
+  if strdisplaywidth(a:s) <= a:w | return a:s | endif
+  let l:s = a:s
+  while strchars(l:s) > 1 && strdisplaywidth(l:s) > a:w - 1
+    let l:s = strcharpart(l:s, 1)
+  endwhile
+  return '…' . l:s
+endfunction
+
+function! s:rlp_crumb_line(w) abort
+  let l:c = copy(s:rlp_crumbs)
+  if empty(l:c) | return '·' | endif
+  call map(l:c, {_, v -> strchars(v) > 16 ? strcharpart(v, 0, 15) . '…' : v})
+  let l:s = len(l:c) <= 2 ? join(l:c, ' › ') : l:c[0] . ' › … › ' . l:c[-1]
+  return s:rlp_trunc_tail(l:s, a:w)
+endfunction
+
 function! s:rlp_labels_str() abort
   return get(g:, 'yurii_pkm_space_labels', s:rlp_labels)
 endfunction
@@ -1903,7 +1929,7 @@ function! s:rlp_geometry() abort
     return {
           \ 'list_line': l:top, 'list_col': l:list_col, 'list_w': l:lw, 'h': l:h,
           \ 'pv_line': l:top, 'pv_col': l:pv_col, 'pv_w': l:pvw,
-          \ 'rows': max([l:h - 4, 3]),
+          \ 'rows': max([l:h - 6, 3]),
           \ }
   endif
   " 従来の中央小窓
@@ -1987,6 +2013,15 @@ function! s:rlp_walk_back() abort
   if !empty(s:rlp_crumbs) | call remove(s:rlp_crumbs, -1) | endif
   let s:rlp_filter = get(l:prev, 'filter', '')
   let s:rlp_filtering = 0
+  if get(l:prev, 'scope', 'local') ==# 'global'
+    " global 検索から潜っていた → 検索結果へ戻る（クエリ保持）
+    let s:rlp_scope = 'global'
+    let s:rlp_gmode = 'select'
+    let s:rlp_query = get(l:prev, 'query', '')
+    call s:rlp_grefilter()
+    call s:rlp_render()
+    return
+  endif
   call s:rlp_load(l:prev.path, l:prev.base, l:prev.sel, l:prev.top)
 endfunction
 
@@ -2006,6 +2041,13 @@ function! yurii_pkm#relation_link_popup() abort
   let s:rlp_crumbs = [fnamemodify(l:origin_path, ':t:r')]
   let s:rlp_filter = ''
   let s:rlp_filtering = 0
+  let s:rlp_scope = 'local'
+  let s:rlp_gmode = 'input'
+  let s:rlp_query = ''
+  let s:rlp_cands = []
+  let s:rlp_ghits = []
+  let s:rlp_gsel = 0
+  let s:rlp_gtop = 0
   let s:rlp_items = l:items0          " 中央小窓モードの高さ算出に使う
   let s:rlp_want_cursor_init = 1
 
@@ -2038,6 +2080,10 @@ endfunction
 
 function! s:rlp_render() abort
   if s:rlp_win < 0 | return | endif
+  if s:rlp_scope ==# 'global'
+    call s:rlp_render_global()
+    return
+  endif
   let l:total = len(s:rlp_items)
   " 本文幅 = 宣言幅 - padding(左右1)
   let l:sepw = max([get(s:rlp_geo, 'list_w', 46) - 2, 10])
@@ -2053,7 +2099,7 @@ function! s:rlp_render() abort
   endfor
   let l:lw = min([l:lw, 16])
 
-  let l:lines = []
+  let l:lines = [s:rlp_crumb_line(l:sepw), repeat('─', l:sepw)]
   let l:end = min([s:rlp_top + s:rlp_rows, l:total])
   let l:labels = s:rlp_labels_str()
   let l:lblnext = 0
@@ -2087,17 +2133,188 @@ function! s:rlp_render() abort
   else
     call add(l:lines, printf('%d/%d   %s', s:rlp_sel + 1, l:total, l:scroll))
   endif
-  call add(l:lines, 'l/字 潜る  h 戻る  ⏎ 選択へ  ␣ ここへ  / 絞込  ⎋ 取消')
+  call add(l:lines, 'l/字 潜る  h 戻る  ⏎ 選択へ  ␣ ここへ  / 絞込  ⇥ 検索  ⎋ 取消')
   call popup_settext(s:rlp_win, l:lines)
-
-  " パンくずをタイトルに
-  let l:crumb = join(s:rlp_crumbs, ' › ')
-  let l:maxc = max([get(s:rlp_geo, 'list_w', 46) - 2, 8])
-  if strchars(l:crumb) > l:maxc
-    let l:crumb = '…' . strcharpart(l:crumb, strchars(l:crumb) - l:maxc + 1)
-  endif
-  call popup_setoptions(s:rlp_win, {'title': ' ' . l:crumb . ' '})
+  call popup_setoptions(s:rlp_win, {'title': ' ローカル '})
   call s:rlp_preview()
+endfunction
+
+function! s:rlp_render_global() abort
+  if s:rlp_win < 0 | return | endif
+  let l:w = max([get(s:rlp_geo, 'list_w', 46) - 2, 10])
+  let l:n = len(s:rlp_ghits)
+  if s:rlp_gsel < s:rlp_gtop | let s:rlp_gtop = s:rlp_gsel | endif
+  if s:rlp_gsel >= s:rlp_gtop + s:rlp_rows | let s:rlp_gtop = s:rlp_gsel - s:rlp_rows + 1 | endif
+  if s:rlp_gtop < 0 | let s:rlp_gtop = 0 | endif
+
+  let l:lines = [(s:rlp_gmode ==# 'input' ? '検索▏' : '検索: ') . s:rlp_query,
+        \ repeat('─', l:w)]
+  let l:end = min([s:rlp_gtop + s:rlp_rows, l:n])
+  for l:i in range(s:rlp_gtop, l:end - 1)
+    let l:c = s:rlp_cands[s:rlp_ghits[l:i]]
+    let l:mark = (l:i == s:rlp_gsel) ? '▶ ' : '  '
+    call add(l:lines, l:mark . s:rlp_trunc_tail(l:c.t, l:w - 2))
+  endfor
+  call add(l:lines, repeat('─', l:w))
+  let l:below = max([0, l:n - l:end])
+  call add(l:lines, printf('%d/%d%s', l:n ? s:rlp_gsel + 1 : 0, l:n,
+        \ l:below > 0 ? '   ↓' . l:below : ''))
+  call add(l:lines, s:rlp_gmode ==# 'input'
+        \ ? '打つ 検索  ⏎ 選択へ  ⇥ ローカル  ⎋ 取消'
+        \ : 'jk 選択  fb プレ  l/␣ 潜る  ⏎ 開く  i 検索  ⇥/h ローカル  ⎋')
+  call popup_settext(s:rlp_win, l:lines)
+  call popup_setoptions(s:rlp_win, {'title': ' 検索（全ノート） '})
+  call s:rlp_preview_global()
+endfunction
+
+function! s:rlp_preview_global() abort
+  if s:rlp_pvwin < 0 | return | endif
+  if s:rlp_gsel < 0 || s:rlp_gsel >= len(s:rlp_ghits)
+    call popup_settext(s:rlp_pvwin, ['(該当なし)'])
+    return
+  endif
+  let l:c = s:rlp_cands[s:rlp_ghits[s:rlp_gsel]]
+  let l:body = filereadable(l:c.p)
+        \ ? readfile(l:c.p, '', get(g:, 'yurii_pkm_space_preview_lines', 400)) : []
+  if !empty(l:body) && l:body[0] =~# '^---\s*$'
+    let l:e = 1
+    while l:e < len(l:body) && l:body[l:e] !~# '^\%(---\|\.\.\.\)\s*$'
+      let l:e += 1
+    endwhile
+    let l:body = l:body[l:e + 1 :]
+  endif
+  while !empty(l:body) && l:body[0] =~# '^\s*$'
+    call remove(l:body, 0)
+  endwhile
+  let l:rule = repeat('─', max([get(s:rlp_geo, 'pv_w', 46) - 2, 10]))
+  call popup_settext(s:rlp_pvwin, [l:c.t, l:rule] + l:body)
+  call popup_setoptions(s:rlp_pvwin, {'firstline': 1})
+endfunction
+
+function! s:rlp_build_index() abort
+  let l:root = s:get_pkm_root()
+  if empty(l:root) || !isdirectory(l:root) | let l:root = getcwd() | endif
+  let l:idx = get(g:, 'yurii_search_index', '')
+  let s:rlp_cands = []
+  if !empty(l:idx) && filereadable(l:idx) && executable('python3')
+    for l:ln in systemlist('python3 ' . shellescape(l:idx) . ' ' . shellescape(l:root))
+      let l:f = split(l:ln, "\t", 1)
+      if len(l:f) >= 2
+        call add(s:rlp_cands, {'p': l:f[0], 't': l:f[1], 'b': get(l:f, 2, '')})
+      endif
+    endfor
+  endif
+  if empty(s:rlp_cands)
+    " フォールバック: *.md を舐めてタイトルだけ（本文検索は無し）
+    for l:p in split(globpath(l:root, '**/*.md', 0), "\n")
+      if l:p =~# '\v[\/]\.undo[\/]' | continue | endif
+      call add(s:rlp_cands, {'p': l:p, 't': s:get_title(l:p), 'b': ''})
+    endfor
+  endif
+endfunction
+
+function! s:rlp_grefilter() abort
+  let l:terms = filter(split(substitute(s:rlp_query, '　', ' ', 'g'), ' '), 'v:val !=# ""')
+  let s:rlp_ghits = []
+  let l:i = 0
+  for l:c in s:rlp_cands
+    let l:hay = l:c.t . ' ' . l:c.b
+    let l:ok = 1
+    for l:t in l:terms
+      if stridx(l:hay, l:t) < 0 | let l:ok = 0 | break | endif
+    endfor
+    if l:ok | call add(s:rlp_ghits, l:i) | endif
+    let l:i += 1
+  endfor
+  if s:rlp_gsel >= len(s:rlp_ghits) | let s:rlp_gsel = max([0, len(s:rlp_ghits) - 1]) | endif
+endfunction
+
+function! s:rlp_enter_global() abort
+  if empty(s:rlp_cands) | call s:rlp_build_index() | endif
+  let s:rlp_scope = 'global'
+  let s:rlp_gmode = 'input'
+  let s:rlp_gsel = 0
+  let s:rlp_gtop = 0
+  call s:rlp_grefilter()
+  call s:rlp_render()
+endfunction
+
+function! s:rlp_leave_global() abort
+  let s:rlp_scope = 'local'
+  call s:rlp_render()
+endfunction
+
+" global のヒットを『潜る』… その先の local ビューをスタックに積む
+function! s:rlp_global_dive() abort
+  if s:rlp_gsel < 0 || s:rlp_gsel >= len(s:rlp_ghits) | return | endif
+  let l:c = s:rlp_cands[s:rlp_ghits[s:rlp_gsel]]
+  if !filereadable(l:c.p) | return | endif
+  call add(s:rlp_stack, {'path': s:rlp_path, 'base': s:rlp_base,
+        \ 'sel': s:rlp_sel, 'top': s:rlp_top, 'filter': s:rlp_filter,
+        \ 'scope': 'global', 'query': s:rlp_query})
+  call add(s:rlp_crumbs, fnamemodify(l:c.p, ':t:r'))
+  let s:rlp_scope = 'local'
+  let s:rlp_filter = ''
+  let s:rlp_filtering = 0
+  call s:rlp_load(l:c.p, fnamemodify(l:c.p, ':h'))
+endfunction
+
+function! s:rlp_key_global(key) abort
+  if s:rlp_gmode ==# 'input'
+    if a:key ==# "\<CR>"
+      let s:rlp_gmode = 'select'
+    elseif a:key ==# "\<Esc>" || a:key ==# "\<C-c>"
+      call popup_close(s:rlp_win, {'cancel': 1})
+      return 1
+    elseif a:key ==# "\<Tab>"
+      call s:rlp_leave_global()
+      return 1
+    elseif a:key ==# "\<BS>" || a:key ==# "\<C-h>"
+      let s:rlp_query = strcharpart(s:rlp_query, 0, max([strchars(s:rlp_query) - 1, 0]))
+      call s:rlp_grefilter()
+    elseif a:key =~# '^.$' && a:key !~# '^[[:cntrl:]]$'
+      let s:rlp_query .= a:key
+      call s:rlp_grefilter()
+    endif
+    call s:rlp_render()
+    return 1
+  endif
+
+  " --- global select ---
+  let l:n = len(s:rlp_ghits)
+  if a:key ==# "\<Esc>" || a:key ==# "\<C-c>" || a:key ==# 'q'
+    call popup_close(s:rlp_win, {'cancel': 1})
+    return 1
+  elseif a:key ==# 'i'
+    let s:rlp_gmode = 'input'
+  elseif a:key ==# "\<Tab>" || a:key ==# 'h' || a:key ==# "\<Left>"
+    call s:rlp_leave_global()
+    return 1
+  elseif a:key ==# 'j' || a:key ==# "\<Down>"
+    let s:rlp_gsel = min([s:rlp_gsel + 1, l:n - 1])
+  elseif a:key ==# 'k' || a:key ==# "\<Up>"
+    let s:rlp_gsel = max([s:rlp_gsel - 1, 0])
+  elseif a:key ==# 'g'
+    let s:rlp_gsel = 0
+  elseif a:key ==# 'G'
+    let s:rlp_gsel = max([l:n - 1, 0])
+  elseif a:key ==# 'f'
+    if s:rlp_pvwin >= 0 | call win_execute(s:rlp_pvwin, "normal! \<C-f>") | endif
+    return 1
+  elseif a:key ==# 'b'
+    if s:rlp_pvwin >= 0 | call win_execute(s:rlp_pvwin, "normal! \<C-b>") | endif
+    return 1
+  elseif a:key ==# 'l' || a:key ==# "\<Right>" || a:key ==# ' '
+    call s:rlp_global_dive()
+    return 1
+  elseif a:key ==# "\<CR>"
+    call popup_close(s:rlp_win, {'gopen': s:rlp_gsel})
+    return 1
+  else
+    return 1
+  endif
+  call s:rlp_render()
+  return 1
 endfunction
 
 function! s:rlp_preview() abort
@@ -2155,8 +2372,16 @@ function! s:rlp_key(winid, key) abort
     return 1
   endif
 
+  " --- global スコープ（全ノート検索）は専用ハンドラへ ---
+  if s:rlp_scope ==# 'global'
+    return s:rlp_key_global(a:key)
+  endif
+
   if a:key ==# "\<Esc>" || a:key ==# "\<C-c>" || a:key ==# 'q'
     call popup_close(s:rlp_win, {'cancel': 1})
+    return 1
+  elseif a:key ==# "\<Tab>"
+    call s:rlp_enter_global()
     return 1
   elseif a:key ==# ' '
     " もう一度 <Space> … いま潜っているノート自体を開いて着地
@@ -2205,6 +2430,19 @@ function! s:rlp_done(winid, result) abort
     let s:rlp_pvwin = -1
   endif
   if type(a:result) != v:t_dict
+    return
+  endif
+
+  " global 検索から ⏎ … ヒットのノートを実際に開く
+  if has_key(a:result, 'gopen')
+    let l:gi = a:result.gopen
+    if l:gi >= 0 && l:gi < len(s:rlp_ghits)
+      let l:gp = s:rlp_cands[s:rlp_ghits[l:gi]].p
+      if filereadable(l:gp)
+        call yurii_pkm#push_history()
+        silent! execute 'hide edit ' . fnameescape(l:gp)
+      endif
+    endif
     return
   endif
 
