@@ -1609,6 +1609,86 @@ function! yurii_pkm#jump_last_link_before_up() abort
   normal! zv
 endfunction
 
+" --- v2: 文中リンク / 関係リンクの位置一覧 --------------------------------
+function! s:link_positions_in_range(lo, hi) abort
+  let l:pos = []
+  let l:lo = max([a:lo, 1])
+  let l:hi = min([a:hi, line('$')])
+  if l:lo > l:hi | return l:pos | endif
+  for l:lnum in range(l:lo, l:hi)
+    let l:line = getline(l:lnum)
+    let l:start = 0
+    while 1
+      let l:m = matchstrpos(l:line, s:link_pat, l:start)
+      if len(l:m) < 3 || l:m[1] < 0 | break | endif
+      call add(l:pos, {'lnum': l:lnum, 'col': l:m[1] + 1})
+      let l:start = l:m[2]
+    endwhile
+  endfor
+  return l:pos
+endfunction
+
+" 本文（している の見張りより前）のリンク。v2 ノート以外は空。
+function! s:v2_body_link_positions() abort
+  let [l:up_m, l:dn_m] = s:v2_boundaries()
+  if l:up_m <= 0 | return [] | endif
+  return s:link_positions_in_range(1, l:up_m - 1)
+endfunction
+
+" parent/child（している + されている）のリンク。
+" v2 なら見張りコメント基準、v1 なら旧セクション基準。
+function! s:v2_relation_link_positions() abort
+  let [l:up_m, l:dn_m] = s:v2_boundaries()
+  if l:up_m > 0
+    return s:link_positions_in_range(l:up_m + 1, line('$'))
+  endif
+  return s:section_link_positions('up') + s:section_link_positions('down')
+endfunction
+
+function! s:pos_after(a, b) abort
+  return a:a[0] > a:b[0] || (a:a[0] == a:b[0] && a:a[1] > a:b[1])
+endfunction
+
+" <Space> … parent/child（文中は対象外）のリンクを順に巡回。端で折り返す。
+function! yurii_pkm#jump_relation_link(forward) abort
+  let l:pos = s:v2_relation_link_positions()
+  if empty(l:pos)
+    " ノートじゃない／関係リンクなし → 通常の <Space>/<BS> 相当
+    execute 'normal! ' . (a:forward ? 'l' : 'h')
+    return
+  endif
+  let l:cur = [line('.'), col('.')]
+  let l:dest = []
+  if a:forward
+    for l:p in l:pos
+      if s:pos_after([l:p.lnum, l:p.col], l:cur)
+        let l:dest = l:p | break
+      endif
+    endfor
+    if empty(l:dest) | let l:dest = l:pos[0] | endif
+  else
+    for l:i in range(len(l:pos) - 1, 0, -1)
+      if s:pos_after(l:cur, [l:pos[l:i].lnum, l:pos[l:i].col])
+        let l:dest = l:pos[l:i] | break
+      endif
+    endfor
+    if empty(l:dest) | let l:dest = l:pos[-1] | endif
+  endif
+  call cursor(l:dest.lnum, l:dest.col)
+  normal! zv
+endfunction
+
+" 数字キー … 本文の N 番目のリンクへ。該当が無ければ通常のカウントとして送る。
+function! yurii_pkm#digit_key(d) abort
+  let l:pos = s:v2_body_link_positions()
+  if !empty(l:pos) && a:d >= 1 && a:d <= len(l:pos)
+    call cursor(l:pos[a:d - 1].lnum, l:pos[a:d - 1].col)
+    normal! zv
+    return
+  endif
+  call feedkeys((v:count > 0 ? v:count : '') . a:d, 'n')
+endfunction
+
 function! yurii_pkm#get_link_under_cursor() abort
   let l:line   = getline('.')
   let l:cursor = col('.') - 1

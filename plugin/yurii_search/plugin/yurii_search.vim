@@ -17,5 +17,7 @@ endif
 command! -nargs=0 FSearch call yurii_search#run()
 
 if !exists('g:yurii_search_no_mappings')
-  nnoremap <leader>fs :FSearch<CR>
+  " gs = go search（rg 感覚の 2 打）。g 始まりなので他キーを遅延させない。
+  nnoremap <silent> gs        <Cmd>FSearch<CR>
+  nnoremap <silent> <leader>fs <Cmd>FSearch<CR>
 endif
