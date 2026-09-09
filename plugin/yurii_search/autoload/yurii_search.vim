@@ -34,10 +34,33 @@ function! s:fzf_run(initial) abort
         \ . ' --preview ' . shellescape('sed -n 1,300p -- {1}')
         \ . ' --bind ' . shellescape('ctrl-/:toggle-preview,ctrl-d:preview-half-page-down,ctrl-u:preview-half-page-up,' . l:jump)
   let l:cmd = l:src . ' | ' . l:fzf . ' > ' . shellescape(l:tmp)
-  call term_start(['/bin/bash', '-c', l:cmd], {
-        \ 'term_finish': 'close',
-        \ 'exit_cb': function('s:fzf_done', [l:tmp]),
-        \ })
+
+  if get(g:, 'yurii_search_popup', 1) && has('popupwin') && has('terminal')
+    " 中央フローティングポップアップで fzf を表示（分割ウィンドウにしない）
+    " ポップアップでキー入力が効かない環境では let g:yurii_search_popup = 0
+    let l:w = float2nr(&columns * 0.86)
+    let l:h = float2nr(&lines * 0.78)
+    let l:buf = term_start(['/bin/bash', '-c', l:cmd], {
+          \ 'hidden': 1,
+          \ 'term_finish': 'close',
+          \ 'exit_cb': function('s:fzf_done', [l:tmp]),
+          \ })
+    let l:winid = popup_create(l:buf, {
+          \ 'minwidth': l:w, 'maxwidth': l:w,
+          \ 'minheight': l:h, 'maxheight': l:h,
+          \ 'border': [1, 1, 1, 1], 'borderchars': ['─', '│', '─', '│', '╭', '╮', '╯', '╰'],
+          \ 'borderhighlight': ['Comment'], 'highlight': 'Normal',
+          \ 'padding': [0, 1, 0, 1], 'zindex': 300,
+          \ })
+    call term_setsize(l:buf, l:h - 2, l:w - 4)
+    " fzf 終了でバッファが消えたらポップアップも閉じる
+    execute 'autocmd BufWipeout <buffer=' . l:buf . '> ++once call popup_close(' . l:winid . ')'
+  else
+    call term_start(['/bin/bash', '-c', l:cmd], {
+          \ 'term_finish': 'close',
+          \ 'exit_cb': function('s:fzf_done', [l:tmp]),
+          \ })
+  endif
 endfunction
 
 function! s:fzf_done(tmp, job, status) abort
