@@ -1678,29 +1678,32 @@ function! yurii_pkm#jump_relation_link(forward) abort
   normal! zv
 endfunction
 
-" parent/child のリンクを『ラベル: 表示名』付きで集める。
+" parent/child のリンクを『ラベル / 表示名 / している・されている』付きで集める。
 "   {lnum, col, side('up'|'down'), label, text, target}
-function! s:v2_relation_links_detailed() abort
+" 位置の取得元は s:v2_relation_link_positions() と同じ（v2 見張り優先、無ければ v1
+" セクション）なので、カーソル巡回で拾えるリンクは必ずここでも拾える。
+function! s:relation_links_detailed() abort
+  let l:pos = s:v2_relation_link_positions()
+  if empty(l:pos) | return [] | endif
   let [l:up_m, l:dn_m] = s:v2_boundaries()
-  if l:up_m <= 0 | return [] | endif
+  let l:down_start = l:dn_m > 0 ? l:dn_m : s:find_section_line('down')
   let l:out = []
-  for l:seg in [[l:up_m + 1, l:dn_m - 1, 'up'], [l:dn_m + 1, line('$'), 'down']]
+  for l:p in l:pos
+    " ラベル: その行 or 上方向で最初に見つかる『語:』行（リンク行は飛ばす）
     let l:label = ''
-    for l:lnum in range(max([l:seg[0], 1]), min([l:seg[1], line('$')]))
-      let l:line = getline(l:lnum)
-      if l:line !~# '^\s*\[' && l:line =~# '^\s*[^[:space:]:][^:]*:'
-        let l:label = trim(matchstr(l:line, '^\s*\zs[^:]\{-}\ze\s*:'))
-      endif
-      let l:start = 0
-      while 1
-        let l:m = matchstrpos(l:line, s:link_pat, l:start)
-        if len(l:m) < 3 || l:m[1] < 0 | break | endif
-        let l:parts = matchlist(l:m[0], '\v\[([^\]]*)\]\(([^)]*)\)')
-        call add(l:out, {'lnum': l:lnum, 'col': l:m[1] + 1, 'side': l:seg[2],
-              \ 'label': l:label, 'text': get(l:parts, 1, ''), 'target': get(l:parts, 2, '')})
-        let l:start = l:m[2]
-      endwhile
+    for l:ln in range(l:p.lnum, max([l:p.lnum - 20, 1]), -1)
+      let l:t = getline(l:ln)
+      if l:t =~# '^\s*\[' | continue | endif
+      let l:h = matchstr(l:t, '^\s*\zs[^[:space:]:][^:]\{-}\ze\s*:')
+      if !empty(l:h) | let l:label = trim(l:h) | break | endif
     endfor
+    let l:raw = matchstr(getline(l:p.lnum), s:link_pat, l:p.col - 1)
+    let l:parts = matchlist(l:raw, '\v\[([^\]]*)\]\(([^)]*)\)')
+    call add(l:out, {
+          \ 'lnum': l:p.lnum, 'col': l:p.col,
+          \ 'side': (l:down_start > 0 && l:p.lnum > l:down_start) ? 'down' : 'up',
+          \ 'label': l:label,
+          \ 'text': get(l:parts, 1, ''), 'target': get(l:parts, 2, '')})
   endfor
   return l:out
 endfunction
@@ -1712,9 +1715,9 @@ let s:rlp_last_digit = -1
 
 " <Space> … parent/child のリンクを一覧するポップアップ。番号 or ⏎ で開く。
 function! yurii_pkm#relation_link_popup() abort
-  let l:items = s:v2_relation_links_detailed()
+  let l:items = s:relation_links_detailed()
   if empty(l:items)
-    " v2 ノートでない等 → 従来のカーソル巡回にフォールバック
+    " parent/child のリンクが1つも無い → 従来のカーソル巡回にフォールバック
     call yurii_pkm#jump_relation_link(1)
     return
   endif
