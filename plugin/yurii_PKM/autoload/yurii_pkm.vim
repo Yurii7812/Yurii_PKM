@@ -1807,54 +1807,42 @@ function! s:space_flatten(groups) abort
   return l:items
 endfunction
 
+" ---------------------------------------------------------------------------
+" <Space> ナビゲータ
+"   スコープ  local（今のノートのリンク） / global（全ノート検索）
+"   サブモード input（打つ=絞り込み） / select（プレーンキーでナビ）
+" キーは両スコープ共通。ラベルキーは常に「選択」だけ。
+" ---------------------------------------------------------------------------
+
 let s:rlp_win = -1
 let s:rlp_pvwin = -1
-let s:rlp_items = []          " 表示中（フィルタ後）の項目
-let s:rlp_all = []            " フィルタ前の項目（区切り込み）
+let s:rlp_items = []          " 表示中の行（区切り込み）
 let s:rlp_sel = 0
 let s:rlp_top = 0
 let s:rlp_rows = 14
 let s:rlp_geo = {}
-let s:rlp_path = ''           " いま一覧を出しているノート
-let s:rlp_base = ''           " そのディレクトリ（リンク解決の基点）
-let s:rlp_stack = []          " [{path,base,sel,top,filter}] … h で戻る来歴
-let s:rlp_crumbs = []         " パンくず表示用の stem 一覧
-let s:rlp_origin = {}         " {bufnr,pos,path} … ⎋ で戻る起点
-let s:rlp_filter = ''         " 絞り込み文字列（'' = 無効）
-let s:rlp_filtering = 0       " / 絞り込みモード中か
-let s:rlp_rowmap = {}         " ラベル文字 -> s:rlp_items のインデックス
-let s:rlp_want_cursor_init = 0
-let s:rlp_labels = '1234567890asdfwertzxcvbnmuiop'
-
-" --- global スコープ（全ノート検索） ---
 let s:rlp_scope = 'local'     " 'local' | 'global'
-let s:rlp_gmode = 'input'     " global 時: 'input'（打つ=クエリ） | 'select'
+let s:rlp_mode = 'select'     " 'select' | 'input'
 let s:rlp_query = ''
-let s:rlp_cands = []          " [{p,t,b}] 全ノート索引（popup セッション内キャッシュ）
-let s:rlp_ghits = []          " s:rlp_cands の index（クエリ一致）
-let s:rlp_gsel = 0
-let s:rlp_gtop = 0
-
-function! s:rlp_trunc_tail(s, w) abort
-  if strdisplaywidth(a:s) <= a:w | return a:s | endif
-  let l:s = a:s
-  while strchars(l:s) > 1 && strdisplaywidth(l:s) > a:w - 1
-    let l:s = strcharpart(l:s, 1)
-  endwhile
-  return '…' . l:s
-endfunction
-
-function! s:rlp_crumb_line(w) abort
-  let l:c = copy(s:rlp_crumbs)
-  if empty(l:c) | return '·' | endif
-  call map(l:c, {_, v -> strchars(v) > 16 ? strcharpart(v, 0, 15) . '…' : v})
-  let l:s = len(l:c) <= 2 ? join(l:c, ' › ') : l:c[0] . ' › … › ' . l:c[-1]
-  return s:rlp_trunc_tail(l:s, a:w)
-endfunction
+let s:rlp_terms = []
+let s:rlp_path = ''           " アンカー = いま一覧を出しているノート
+let s:rlp_base = ''
+let s:rlp_groups = {}         " local: s:space_collect の結果
+let s:rlp_stack = []          " [{path,base,sel,top,scope,query,mode}]
+let s:rlp_crumbs = []
+let s:rlp_origin = {}         " {bufnr,pos,path}
+let s:rlp_cands = []          " [{p,t,b}] 全ノート索引
+let s:rlp_rowmap = {}         " ラベル文字 -> s:rlp_items のインデックス
+let s:rlp_marks = {}          " path -> 1（popup を閉じても残す）
+let s:rlp_want_cursor_init = 0
+" コマンド文字（j k l h g G f b i c p y a m n d q）を避けたラベル
+let s:rlp_labels = '1234567890esrtuvwxzo'
 
 function! s:rlp_labels_str() abort
   return get(g:, 'yurii_pkm_space_labels', s:rlp_labels)
 endfunction
+
+" --- 行の基本操作 -----------------------------------------------------------
 
 function! s:rlp_is_sel(i) abort
   return a:i >= 0 && a:i < len(s:rlp_items) && !get(s:rlp_items[a:i], 'sep', 0)
@@ -1884,31 +1872,113 @@ function! s:rlp_step_sel(dir) abort
   endwhile
 endfunction
 
-function! s:rlp_apply_filter() abort
-  if empty(s:rlp_filter)
-    let s:rlp_items = copy(s:rlp_all)
-  else
-    let l:f = tolower(s:rlp_filter)
-    let l:items = []
-    let l:pending = {}
-    for l:it in s:rlp_all
-      if get(l:it, 'sep', 0)
-        let l:pending = l:it
-        continue
-      endif
-      if stridx(tolower(l:it.label . ' ' . l:it.text), l:f) >= 0
-        if !empty(l:pending)
-          call add(l:items, l:pending) | let l:pending = {}
-        endif
-        call add(l:items, l:it)
-      endif
-    endfor
-    let s:rlp_items = l:items
+function! s:rlp_sel_item() abort
+  return s:rlp_is_sel(s:rlp_sel) ? s:rlp_items[s:rlp_sel] : {}
+endfunction
+
+" 行 -> 実ファイルパス（link 行はアンカー基準で解決、それ以外は path をそのまま）
+function! s:rlp_row_path(it) abort
+  if empty(a:it) | return '' | endif
+  if get(a:it, 'kind', '') ==# 'link'
+    return s:resolve_link_for_navigation(a:it.target, s:rlp_base)
   endif
+  return get(a:it, 'path', '')
+endfunction
+
+function! s:rlp_trunc_tail(s, w) abort
+  if a:w <= 1 | return a:s | endif
+  if strdisplaywidth(a:s) <= a:w | return a:s | endif
+  let l:s = a:s
+  while strchars(l:s) > 1 && strdisplaywidth(l:s) > a:w - 1
+    let l:s = strcharpart(l:s, 1)
+  endwhile
+  return '…' . l:s
+endfunction
+
+function! s:rlp_crumb_line(w) abort
+  let l:c = copy(s:rlp_crumbs)
+  if empty(l:c) | return '·' | endif
+  call map(l:c, {_, v -> strchars(v) > 16 ? strcharpart(v, 0, 15) . '…' : v})
+  let l:s = len(l:c) <= 2 ? join(l:c, ' › ') : l:c[0] . ' › … › ' . l:c[-1]
+  return s:rlp_trunc_tail(l:s, a:w)
+endfunction
+
+" --- 候補の組み立て ---------------------------------------------------------
+
+function! s:rlp_set_terms() abort
+  let s:rlp_terms = map(
+        \ filter(split(substitute(s:rlp_query, '　', ' ', 'g'), ' '), 'v:val !=# ""'),
+        \ 'tolower(v:val)')
+endfunction
+
+function! s:rlp_match(hay) abort
+  if empty(s:rlp_terms) | return 1 | endif
+  let l:h = tolower(a:hay)
+  for l:t in s:rlp_terms
+    if stridx(l:h, l:t) < 0 | return 0 | endif
+  endfor
+  return 1
+endfunction
+
+function! s:rlp_build_local() abort
+  let l:items = [{'kind': 'anchor', 'path': s:rlp_path, 'label': '',
+        \ 'text': s:get_title(s:rlp_path)}]
+  for [l:key, l:title] in [['body', '文中'], ['up', 'している'], ['down', 'されている']]
+    let l:g = get(s:rlp_groups, l:key, [])
+    let l:hit = filter(copy(l:g), 's:rlp_match(v:val.label . " " . v:val.text)')
+    if empty(l:hit) | continue | endif
+    call add(l:items, {'sep': 1, 'title': l:title})
+    for l:x in l:hit
+      let l:y = copy(l:x)
+      let l:y.kind = 'link'
+      call add(l:items, l:y)
+    endfor
+  endfor
+  return l:items
+endfunction
+
+function! s:rlp_build_global() abort
+  let l:items = []
+  for l:c in s:rlp_cands
+    if s:rlp_match(l:c.t . ' ' . l:c.b)
+      call add(l:items, {'kind': 'note', 'path': l:c.p, 'text': l:c.t, 'label': ''})
+    endif
+  endfor
+  return l:items
+endfunction
+
+function! s:rlp_refresh() abort
+  call s:rlp_set_terms()
+  let s:rlp_items = (s:rlp_scope ==# 'global')
+        \ ? s:rlp_build_global() : s:rlp_build_local()
   if !s:rlp_is_sel(s:rlp_sel)
     let s:rlp_sel = max([s:rlp_first_sel(), 0])
   endif
 endfunction
+
+function! s:rlp_build_index() abort
+  let l:root = s:get_pkm_root()
+  if empty(l:root) || !isdirectory(l:root) | let l:root = getcwd() | endif
+  let l:idx = get(g:, 'yurii_search_index', '')
+  let s:rlp_cands = []
+  if !empty(l:idx) && filereadable(l:idx) && executable('python3')
+    for l:ln in systemlist('python3 ' . shellescape(l:idx) . ' ' . shellescape(l:root))
+      let l:f = split(l:ln, "\t", 1)
+      if len(l:f) >= 2
+        call add(s:rlp_cands, {'p': l:f[0], 't': l:f[1], 'b': get(l:f, 2, '')})
+      endif
+    endfor
+  endif
+  if empty(s:rlp_cands)
+    " フォールバック: *.md を舐めてタイトルだけ（本文検索は効かない）
+    for l:p in split(globpath(l:root, '**/*.md', 0), "\n")
+      if l:p =~# '[\\/]\.undo[\\/]' | continue | endif
+      call add(s:rlp_cands, {'p': l:p, 't': s:get_title(l:p), 'b': ''})
+    endfor
+  endif
+endfunction
+
+" --- ジオメトリ -------------------------------------------------------------
 
 function! s:rlp_geometry() abort
   if get(g:, 'yurii_pkm_space_fullscreen', 1)
@@ -1932,9 +2002,8 @@ function! s:rlp_geometry() abort
           \ 'rows': max([l:h - 6, 3]),
           \ }
   endif
-  " 従来の中央小窓
   let l:rows = min([max([len(s:rlp_items), 1]), 10])
-  let l:h = l:rows + 3
+  let l:h = l:rows + 5
   let l:w = min([float2nr(&columns * 0.40), 56])
   let l:pv = min([float2nr(&columns * 0.46), 90])
   let l:col = max([(&columns - (l:w + 3 + l:pv)) / 2, 2])
@@ -1946,19 +2015,21 @@ function! s:rlp_geometry() abort
         \ }
 endfunction
 
-" path/base のノートを読み込み直して一覧を差し替える（バッファは開かない）
+" --- 読み込み / 移動 --------------------------------------------------------
+
 function! s:rlp_load(path, base, ...) abort
   let l:keep_sel = a:0 > 0 ? a:1 : -1
   let l:keep_top = a:0 > 1 ? a:2 : 0
   let s:rlp_path = a:path
   let s:rlp_base = a:base
+  let s:rlp_scope = 'local'
   if a:path ==# get(s:rlp_origin, 'path', '') && get(s:rlp_origin, 'bufnr', -1) > 0
     let l:lines = getbufline(s:rlp_origin.bufnr, 1, '$')
   else
     let l:lines = filereadable(a:path) ? readfile(a:path) : []
   endif
-  let s:rlp_all = s:space_flatten(s:space_collect(l:lines, a:base))
-  call s:rlp_apply_filter()
+  let s:rlp_groups = s:space_collect(l:lines, a:base)
+  call s:rlp_refresh()
 
   if s:rlp_want_cursor_init
     let s:rlp_want_cursor_init = 0
@@ -1966,7 +2037,7 @@ function! s:rlp_load(path, base, ...) abort
     let s:rlp_sel = max([s:rlp_first_sel(), 0])
     for l:i in range(len(s:rlp_items))
       let l:it = s:rlp_items[l:i]
-      if get(l:it, 'sep', 0) | continue | endif
+      if get(l:it, 'kind', '') !=# 'link' | continue | endif
       if s:pos_after([l:it.lnum, l:it.col], l:cur)
         let s:rlp_sel = l:i | break
       endif
@@ -1982,56 +2053,419 @@ function! s:rlp_load(path, base, ...) abort
   call s:rlp_render()
 endfunction
 
-" 選択行のリンク先へ『潜る』（ポップアップは開いたまま一覧を差し替え）
-function! s:rlp_walk_in(idx) abort
+function! s:rlp_toggle_scope() abort
+  if s:rlp_scope ==# 'local'
+    if empty(s:rlp_cands) | call s:rlp_build_index() | endif
+    let s:rlp_scope = 'global'
+    let s:rlp_mode = 'input'
+  else
+    let s:rlp_scope = 'local'
+    let s:rlp_mode = 'select'
+  endif
+  let s:rlp_query = ''
+  let s:rlp_sel = 0
+  let s:rlp_top = 0
+  call s:rlp_refresh()
+  let s:rlp_sel = max([s:rlp_first_sel(), 0])
+  call s:rlp_render()
+endfunction
+
+" 選択行のノートへ『潜る』（ポップアップは開いたまま local ビューを積む）
+function! s:rlp_dive(idx) abort
   if !s:rlp_is_sel(a:idx) | return | endif
   let l:it = s:rlp_items[a:idx]
-  let l:p = s:resolve_link_for_navigation(l:it.target, s:rlp_base)
-  if empty(l:p) || (!filereadable(l:p) && !isdirectory(l:p))
-    return
-  endif
+  if get(l:it, 'kind', '') ==# 'anchor' | return | endif
+  let l:p = s:rlp_row_path(l:it)
+  if empty(l:p) || (!filereadable(l:p) && !isdirectory(l:p)) | return | endif
   if isdirectory(l:p) || !s:is_markdown_file(l:p)
-    " ノートじゃない → 辿れないので着地扱い
-    call popup_close(s:rlp_win, {'commit': a:idx})
+    call popup_close(s:rlp_win, {'open': a:idx})
     return
   endif
   call add(s:rlp_stack, {'path': s:rlp_path, 'base': s:rlp_base,
-        \ 'sel': s:rlp_sel, 'top': s:rlp_top, 'filter': s:rlp_filter})
+        \ 'sel': s:rlp_sel, 'top': s:rlp_top,
+        \ 'scope': s:rlp_scope, 'query': s:rlp_query, 'mode': s:rlp_mode})
   call add(s:rlp_crumbs, fnamemodify(l:p, ':t:r'))
-  let s:rlp_filter = ''
-  let s:rlp_filtering = 0
+  let s:rlp_query = ''
+  let s:rlp_mode = 'select'
   call s:rlp_load(l:p, fnamemodify(l:p, ':h'))
 endfunction
 
-" 1つ前のノートへ『戻る』。来歴が無ければ取り消して閉じる
-function! s:rlp_walk_back() abort
+function! s:rlp_back() abort
   if empty(s:rlp_stack)
     call popup_close(s:rlp_win, {'cancel': 1})
     return
   endif
   let l:prev = remove(s:rlp_stack, -1)
   if !empty(s:rlp_crumbs) | call remove(s:rlp_crumbs, -1) | endif
-  let s:rlp_filter = get(l:prev, 'filter', '')
-  let s:rlp_filtering = 0
+  let s:rlp_query = get(l:prev, 'query', '')
+  let s:rlp_mode = get(l:prev, 'mode', 'select')
   if get(l:prev, 'scope', 'local') ==# 'global'
-    " global 検索から潜っていた → 検索結果へ戻る（クエリ保持）
     let s:rlp_scope = 'global'
-    let s:rlp_gmode = 'select'
-    let s:rlp_query = get(l:prev, 'query', '')
-    call s:rlp_grefilter()
+    call s:rlp_refresh()
+    let s:rlp_sel = l:prev.sel
+    let s:rlp_top = l:prev.top
+    if !s:rlp_is_sel(s:rlp_sel)
+      let s:rlp_sel = max([s:rlp_first_sel(), 0])
+    endif
     call s:rlp_render()
     return
   endif
   call s:rlp_load(l:prev.path, l:prev.base, l:prev.sel, l:prev.top)
 endfunction
 
-" <Space> … 文中 / している / されている のリンク一覧ポップアップ（右にプレビュー）。
-"   l/ラベル 潜る  h 戻る  jk 選択  ⏎ 着地  / 絞込  ⎋ 取消  ^F/^B プレビュー送り
+" --- マーク -----------------------------------------------------------------
+
+function! s:rlp_toggle_mark() abort
+  let l:p = s:rlp_row_path(s:rlp_sel_item())
+  if empty(l:p) | return | endif
+  if has_key(s:rlp_marks, l:p)
+    unlet s:rlp_marks[l:p]
+  else
+    let s:rlp_marks[l:p] = 1
+  endif
+endfunction
+
+" 適用対象: マークがあればマーク全部、無ければ選択行
+function! s:rlp_targets() abort
+  if !empty(s:rlp_marks) | return sort(keys(s:rlp_marks)) | endif
+  let l:p = s:rlp_row_path(s:rlp_sel_item())
+  return empty(l:p) ? [] : [l:p]
+endfunction
+
+" --- 描画 -------------------------------------------------------------------
+
+function! s:rlp_render() abort
+  if s:rlp_win < 0 | return | endif
+  let l:w = max([get(s:rlp_geo, 'list_w', 46) - 2, 10])
+  let l:total = len(s:rlp_items)
+  if s:rlp_sel < s:rlp_top | let s:rlp_top = s:rlp_sel | endif
+  if s:rlp_sel >= s:rlp_top + s:rlp_rows | let s:rlp_top = s:rlp_sel - s:rlp_rows + 1 | endif
+  if s:rlp_top < 0 | let s:rlp_top = 0 | endif
+
+  let l:lw = 0
+  for l:it in s:rlp_items
+    if get(l:it, 'sep', 0) | continue | endif
+    let l:lw = max([l:lw, strdisplaywidth(get(l:it, 'label', ''))])
+  endfor
+  let l:lw = min([l:lw, 14])
+
+  let l:lines = [s:rlp_crumb_line(l:w), repeat('─', l:w)]
+  let l:labels = s:rlp_labels_str()
+  let l:ln = 0
+  let s:rlp_rowmap = {}
+  let l:end = min([s:rlp_top + s:rlp_rows, l:total])
+  for l:i in range(s:rlp_top, l:end - 1)
+    let l:it = s:rlp_items[l:i]
+    if get(l:it, 'sep', 0)
+      let l:t = '── ' . l:it.title . ' '
+      call add(l:lines, l:t . repeat('─', max([l:w - strdisplaywidth(l:t), 0])))
+      continue
+    endif
+    let l:lbl = ' '
+    if l:ln < strchars(l:labels)
+      let l:lbl = strcharpart(l:labels, l:ln, 1)
+      let s:rlp_rowmap[l:lbl] = l:i
+      let l:ln += 1
+    endif
+    let l:cur = (l:i == s:rlp_sel) ? '▶' : ' '
+    let l:mk = has_key(s:rlp_marks, s:rlp_row_path(l:it)) ? '*' : ' '
+    let l:kind = get(l:it, 'kind', '')
+    if l:kind ==# 'anchor'
+      call add(l:lines, l:cur . l:lbl . l:mk . '◎ '
+            \ . s:rlp_trunc_tail(l:it.text, l:w - 5))
+    elseif l:kind ==# 'note'
+      call add(l:lines, l:cur . l:lbl . l:mk . '  '
+            \ . s:rlp_trunc_tail(l:it.text, l:w - 5))
+    else
+      let l:arw = (l:it.side ==# 'up') ? '→' : (l:it.side ==# 'down' ? '←' : '¶')
+      let l:pad = repeat(' ', max([l:lw - strdisplaywidth(l:it.label), 0]))
+      call add(l:lines, s:rlp_trunc_tail(printf('%s%s%s%s %s%s  %s',
+            \ l:cur, l:lbl, l:mk, l:arw, l:it.label, l:pad, l:it.text), l:w))
+    endif
+  endfor
+
+  call add(l:lines, repeat('─', l:w))
+  if s:rlp_mode ==# 'input'
+    call add(l:lines, (s:rlp_scope ==# 'global' ? '検索▏' : '絞込▏') . s:rlp_query)
+  else
+    let l:below = max([0, l:total - l:end])
+    let l:nmark = len(s:rlp_marks)
+    call add(l:lines, printf('%d/%d%s%s',
+          \ l:total ? s:rlp_sel + 1 : 0, l:total,
+          \ l:below > 0 ? '   ↓' . l:below : '',
+          \ l:nmark > 0 ? '   *' . l:nmark : ''))
+  endif
+  call add(l:lines, s:rlp_mode ==# 'input'
+        \ ? '打つ 絞る   ⏎ 選択へ   ⇥ 切替   ⎋ クリア'
+        \ : 'jk/字 選択  l 潜る  ⏎ 開く  fb プレ  c/p 子/親  y m a  i 絞込  ⇥ 全体')
+  call popup_settext(s:rlp_win, l:lines)
+  call popup_setoptions(s:rlp_win,
+        \ {'title': s:rlp_scope ==# 'global' ? ' 全ノート ' : ' ローカル '})
+  call s:rlp_preview()
+endfunction
+
+function! s:rlp_preview() abort
+  if s:rlp_pvwin < 0 | return | endif
+  let l:it = s:rlp_sel_item()
+  if empty(l:it)
+    call popup_settext(s:rlp_pvwin, ['(該当なし)'])
+    return
+  endif
+  let l:path = s:rlp_row_path(l:it)
+  if empty(l:path) || (!filereadable(l:path) && !isdirectory(l:path))
+    call popup_settext(s:rlp_pvwin,
+          \ ['(開けない: ' . get(l:it, 'target', get(l:it, 'path', '')) . ')'])
+    return
+  endif
+  if isdirectory(l:path)
+    call popup_settext(s:rlp_pvwin, ['(ディレクトリ)', l:path])
+    return
+  endif
+  let l:body = readfile(l:path, '', get(g:, 'yurii_pkm_space_preview_lines', 400))
+  if !empty(l:body) && l:body[0] =~# '^---\s*$'
+    let l:e = 1
+    while l:e < len(l:body) && l:body[l:e] !~# '^\%(---\|\.\.\.\)\s*$'
+      let l:e += 1
+    endwhile
+    let l:body = l:body[l:e + 1 :]
+  endif
+  while !empty(l:body) && l:body[0] =~# '^\s*$'
+    call remove(l:body, 0)
+  endwhile
+  let l:head = s:get_title(l:path) . '   ' . fnamemodify(l:path, ':t')
+  let l:rule = repeat('─', max([get(s:rlp_geo, 'pv_w', 46) - 2, 10]))
+  call popup_settext(s:rlp_pvwin, [l:head, l:rule] + l:body)
+  call popup_setoptions(s:rlp_pvwin, {'firstline': 1})
+endfunction
+
+" --- キー -------------------------------------------------------------------
+
+function! s:rlp_key(winid, key) abort
+  " === 入力サブモード ===
+  if s:rlp_mode ==# 'input'
+    if a:key ==# "\<CR>"
+      let s:rlp_mode = 'select'
+    elseif a:key ==# "\<Esc>" || a:key ==# "\<C-c>"
+      if empty(s:rlp_query)
+        let s:rlp_mode = 'select'
+      else
+        let s:rlp_query = ''
+        call s:rlp_refresh()
+      endif
+    elseif a:key ==# "\<Tab>"
+      call s:rlp_toggle_scope()
+      return 1
+    elseif a:key ==# "\<BS>" || a:key ==# "\<C-h>"
+      let s:rlp_query = strcharpart(s:rlp_query, 0,
+            \ max([strchars(s:rlp_query) - 1, 0]))
+      call s:rlp_refresh()
+    elseif a:key =~# '^.$' && a:key !~# '^[[:cntrl:]]$'
+      let s:rlp_query .= a:key
+      call s:rlp_refresh()
+    endif
+    call s:rlp_render()
+    return 1
+  endif
+
+  " === 選択サブモード（全部プレーンキー） ===
+  if a:key ==# "\<Esc>" || a:key ==# "\<C-c>" || a:key ==# 'q'
+    call popup_close(s:rlp_win, {'cancel': 1})
+    return 1
+  elseif a:key ==# "\<CR>"
+    call popup_close(s:rlp_win, {'open': s:rlp_sel})
+    return 1
+  elseif a:key ==# ' '
+    call popup_close(s:rlp_win, {'open_anchor': 1})
+    return 1
+  elseif a:key ==# "\<Tab>"
+    call s:rlp_toggle_scope()
+    return 1
+  elseif a:key ==# 'i' || a:key ==# '/'
+    let s:rlp_mode = 'input'
+  elseif a:key ==# 'j' || a:key ==# "\<Down>"
+    call s:rlp_step_sel(1)
+  elseif a:key ==# 'k' || a:key ==# "\<Up>"
+    call s:rlp_step_sel(-1)
+  elseif a:key ==# 'g'
+    let s:rlp_sel = max([s:rlp_first_sel(), 0])
+  elseif a:key ==# 'G'
+    let s:rlp_sel = max([s:rlp_last_sel(), 0])
+  elseif a:key ==# 'f'
+    if s:rlp_pvwin >= 0 | call win_execute(s:rlp_pvwin, "normal! \<C-f>") | endif
+    return 1
+  elseif a:key ==# 'b'
+    if s:rlp_pvwin >= 0 | call win_execute(s:rlp_pvwin, "normal! \<C-b>") | endif
+    return 1
+  elseif a:key ==# 'l' || a:key ==# "\<Right>"
+    call s:rlp_dive(s:rlp_sel)
+    return 1
+  elseif a:key ==# 'h' || a:key ==# "\<Left>"
+    call s:rlp_back()
+    return 1
+  elseif a:key ==# 'm'
+    call s:rlp_toggle_mark()
+  elseif a:key ==# 'M'
+    let s:rlp_marks = {}
+  elseif a:key ==# 'a'
+    " 選択行をアンカーにする（潜らずにリンク追加のターゲットだけ移す）
+    let l:p = s:rlp_row_path(s:rlp_sel_item())
+    if !empty(l:p) && filereadable(l:p) && s:is_markdown_file(l:p)
+      call s:rlp_dive(s:rlp_sel)
+    endif
+    return 1
+  elseif a:key ==# 'c'
+    call popup_close(s:rlp_win, {'link': 1, 'below': 1, 'targets': s:rlp_targets()})
+    return 1
+  elseif a:key ==# 'p'
+    call popup_close(s:rlp_win, {'link': 1, 'below': 0, 'targets': s:rlp_targets()})
+    return 1
+  elseif a:key ==# 'y'
+    call popup_close(s:rlp_win, {'yank': s:rlp_targets()})
+    return 1
+  elseif has_key(s:rlp_rowmap, a:key)
+    let s:rlp_sel = s:rlp_rowmap[a:key]
+  else
+    return 1
+  endif
+  call s:rlp_render()
+  return 1
+endfunction
+
+" --- 確定後の処理 -----------------------------------------------------------
+
+" アンカーノートへ関係付きリンクを足す。アンカーが別バッファなら一時的に切り替える。
+function! s:rlp_link_apply(targets, below, ...) abort
+  let l:anchor = s:rlp_path
+  if empty(l:anchor) || !filereadable(l:anchor)
+    echohl WarningMsg | echo 'yurii_PKM: アンカーが不正' | echohl NONE
+    return
+  endif
+  if empty(a:targets)
+    echo 'yurii_PKM: 対象なし'
+    return
+  endif
+  let l:rel = (a:0 > 0 && a:1 !=# '') ? a:1 : s:v2_pick_relation()
+  if empty(l:rel) | echo 'yurii_PKM: キャンセル' | return | endif
+  let l:side = s:v2_relation_side(l:rel)
+  let l:below = l:side >= 0 ? l:side : a:below
+
+  let l:cur_buf = bufnr('%')
+  let l:view = winsaveview()
+  let l:same = fnamemodify(expand('%:p'), ':p') ==# fnamemodify(l:anchor, ':p')
+  if !l:same
+    execute 'silent keepalt hide edit ' . fnameescape(l:anchor)
+  endif
+
+  let l:dir = expand('%:p:h')
+  let l:n = 0
+  let l:save_ai = &autoindent | let l:save_si = &smartindent
+  setlocal noautoindent nosmartindent
+  for l:t in a:targets
+    if fnamemodify(l:t, ':p') ==# fnamemodify(l:anchor, ':p') | continue | endif
+    let l:title = s:get_title(l:t)
+    if l:rel ==# 'キーワード'
+      let l:kw = s:v2_keyword_name(yurii_pkm#current_title())
+      if empty(l:kw) | continue | endif
+      let l:title = l:kw
+    endif
+    if s:v2_insert_link(l:rel, s:make_link_from_dir(l:t, l:title, l:dir), l:below)
+      let l:n += 1
+    endif
+  endfor
+  let &autoindent = l:save_ai | let &smartindent = l:save_si
+  if l:n > 0 | silent! write | endif
+
+  if !l:same
+    execute 'silent keepalt hide buffer ' . l:cur_buf
+    call winrestview(l:view)
+  endif
+  let s:rlp_marks = {}
+  echo printf('yurii_PKM: %s %s %s += %d 件',
+        \ fnamemodify(l:anchor, ':t'), l:rel, l:below ? '↓されている' : '↑している', l:n)
+endfunction
+
+function! s:rlp_open_path(path, ...) abort
+  let l:it = a:0 > 0 ? a:1 : {}
+  if empty(a:path) || (!filereadable(a:path) && !isdirectory(a:path))
+    echo 'yurii_PKM: 開けない: ' . a:path
+    return
+  endif
+  call yurii_pkm#push_history()
+  silent! execute 'hide edit ' . fnameescape(a:path)
+  if !empty(l:it) && get(l:it, 'kind', '') ==# 'link'
+        \ && (l:it.side ==# 'up' || l:it.side ==# 'down')
+    let l:rp = s:find_reciprocal_link_pos(a:path, fnamemodify(s:rlp_path, ':t'))
+    if get(l:rp, 0, 0) > 0
+      call cursor(l:rp[0], l:rp[1])
+      normal! zv
+    endif
+  endif
+endfunction
+
+function! s:rlp_done(winid, result) abort
+  let s:rlp_win = -1
+  if s:rlp_pvwin >= 0
+    call popup_close(s:rlp_pvwin)
+    let s:rlp_pvwin = -1
+  endif
+  if type(a:result) != v:t_dict | return | endif
+
+  " y … リンク記法でヤンク
+  if has_key(a:result, 'yank')
+    let l:links = []
+    for l:t in a:result.yank
+      call add(l:links, s:make_link_from_dir(l:t, s:get_title(l:t), expand('%:p:h')))
+    endfor
+    if empty(l:links) | echo 'yurii_PKM: 対象なし' | return | endif
+    let l:txt = join(l:links, "\n")
+    let @" = l:txt
+    if has('clipboard') | let @+ = l:txt | endif
+    let s:rlp_marks = {}
+    echo 'yurii_PKM: ヤンク ' . len(l:links) . ' 件'
+    return
+  endif
+
+  " c / p … アンカーへ関係付きリンクを追加
+  if has_key(a:result, 'link')
+    call s:rlp_link_apply(get(a:result, 'targets', []), get(a:result, 'below', 1))
+    return
+  endif
+
+  " ␣ … アンカーノート自体を開く
+  if has_key(a:result, 'open_anchor')
+    if empty(s:rlp_path) || s:rlp_path ==# get(s:rlp_origin, 'path', '') | return | endif
+    call s:rlp_open_path(s:rlp_path)
+    return
+  endif
+
+  " ⏎ … 選択行を開く
+  if !has_key(a:result, 'open') | return | endif
+  let l:idx = a:result.open
+  let l:it = s:rlp_is_sel(l:idx) ? s:rlp_items[l:idx] : {}
+  if empty(l:it)
+    if s:rlp_path !=# get(s:rlp_origin, 'path', '')
+      call s:rlp_open_path(s:rlp_path)
+    endif
+    return
+  endif
+  if get(l:it, 'kind', '') ==# 'anchor'
+    if s:rlp_path ==# get(s:rlp_origin, 'path', '') | return | endif
+    call s:rlp_open_path(s:rlp_path)
+    return
+  endif
+  call s:rlp_open_path(s:rlp_row_path(l:it), l:it)
+endfunction
+
+" --- 入口 -------------------------------------------------------------------
+
+" <Space> … 文中 / している / されている ＋ 全ノート検索のナビゲータ。
+"   jk/ラベル 選択  l 潜る  h 戻る  ⏎ 開く  ␣ アンカーを開く  fb プレビュー
+"   c/p 子/親に追加  y ヤンク  m マーク  a アンカー移動  i 絞込  ⇥ local⇄global
 function! yurii_pkm#relation_link_popup() abort
   let l:origin_path = expand('%:p')
-  let l:items0 = s:space_flatten(s:space_collect(getline(1, '$'), expand('%:p:h')))
-  if empty(l:items0)
-    " リンクが1つも無い → 従来のカーソル巡回にフォールバック
+  let l:groups0 = s:space_collect(getline(1, '$'), expand('%:p:h'))
+  if empty(get(l:groups0, 'body', [])) && empty(get(l:groups0, 'up', []))
+        \ && empty(get(l:groups0, 'down', []))
     call yurii_pkm#jump_relation_link(1)
     return
   endif
@@ -2039,24 +2473,23 @@ function! yurii_pkm#relation_link_popup() abort
   let s:rlp_origin = {'bufnr': bufnr('%'), 'pos': getpos('.'), 'path': l:origin_path}
   let s:rlp_stack = []
   let s:rlp_crumbs = [fnamemodify(l:origin_path, ':t:r')]
-  let s:rlp_filter = ''
-  let s:rlp_filtering = 0
   let s:rlp_scope = 'local'
-  let s:rlp_gmode = 'input'
+  let s:rlp_mode = 'select'
   let s:rlp_query = ''
+  let s:rlp_terms = []
   let s:rlp_cands = []
-  let s:rlp_ghits = []
-  let s:rlp_gsel = 0
-  let s:rlp_gtop = 0
-  let s:rlp_items = l:items0          " 中央小窓モードの高さ算出に使う
+  let s:rlp_path = l:origin_path
+  let s:rlp_base = expand('%:p:h')
+  let s:rlp_groups = l:groups0
   let s:rlp_want_cursor_init = 1
+  call s:rlp_refresh()
 
   let l:geo = s:rlp_geometry()
   let s:rlp_geo = l:geo
   let s:rlp_rows = l:geo.rows
 
   let s:rlp_win = popup_create([], {
-        \ 'title': ' Space ',
+        \ 'title': ' ローカル ',
         \ 'line': l:geo.list_line, 'col': l:geo.list_col,
         \ 'minwidth': l:geo.list_w, 'maxwidth': l:geo.list_w,
         \ 'minheight': l:geo.h, 'maxheight': l:geo.h,
@@ -2076,419 +2509,6 @@ function! yurii_pkm#relation_link_popup() abort
         \ 'borderhighlight': ['Comment'], 'padding': [0,1,0,1],
         \ })
   call s:rlp_load(l:origin_path, expand('%:p:h'))
-endfunction
-
-function! s:rlp_render() abort
-  if s:rlp_win < 0 | return | endif
-  if s:rlp_scope ==# 'global'
-    call s:rlp_render_global()
-    return
-  endif
-  let l:total = len(s:rlp_items)
-  " 本文幅 = 宣言幅 - padding(左右1)
-  let l:sepw = max([get(s:rlp_geo, 'list_w', 46) - 2, 10])
-  " 選択が見える範囲に s:rlp_top を寄せる
-  if s:rlp_sel < s:rlp_top | let s:rlp_top = s:rlp_sel | endif
-  if s:rlp_sel >= s:rlp_top + s:rlp_rows | let s:rlp_top = s:rlp_sel - s:rlp_rows + 1 | endif
-  if s:rlp_top < 0 | let s:rlp_top = 0 | endif
-
-  let l:lw = 0
-  for l:it in s:rlp_items
-    if get(l:it, 'sep', 0) | continue | endif
-    let l:lw = max([l:lw, strdisplaywidth(l:it.label)])
-  endfor
-  let l:lw = min([l:lw, 16])
-
-  let l:lines = [s:rlp_crumb_line(l:sepw), repeat('─', l:sepw)]
-  let l:end = min([s:rlp_top + s:rlp_rows, l:total])
-  let l:labels = s:rlp_labels_str()
-  let l:lblnext = 0
-  let s:rlp_rowmap = {}
-  for l:i in range(s:rlp_top, l:end - 1)
-    let l:it = s:rlp_items[l:i]
-    if get(l:it, 'sep', 0)
-      let l:tw = strdisplaywidth('── ' . l:it.title . ' ')
-      call add(l:lines, '── ' . l:it.title . ' ' . repeat('─', max([l:sepw - l:tw, 0])))
-      continue
-    endif
-    let l:lbl = ' '
-    if l:lblnext < strchars(l:labels)
-      let l:lbl = strcharpart(l:labels, l:lblnext, 1)
-      let s:rlp_rowmap[l:lbl] = l:i
-      let l:lblnext += 1
-    endif
-    let l:mark = (l:i == s:rlp_sel) ? '▶' : ' '
-    let l:arrow = (l:it.side ==# 'up') ? '→' : (l:it.side ==# 'down' ? '←' : '¶')
-    let l:pad = repeat(' ', max([l:lw - strdisplaywidth(l:it.label), 0]))
-    call add(l:lines, printf('%s%s %s %s%s  %s',
-          \ l:mark, l:lbl, l:arrow, l:it.label, l:pad, l:it.text))
-  endfor
-  let l:above = s:rlp_top
-  let l:below = max([0, l:total - l:end])
-  let l:scroll = (l:above > 0 ? '↑' . l:above . '  ' : '')
-        \ . (l:below > 0 ? '↓' . l:below : '')
-  call add(l:lines, repeat('─', max([l:sepw, 10])))
-  if s:rlp_filtering || !empty(s:rlp_filter)
-    call add(l:lines, printf('/%s%s', s:rlp_filter, s:rlp_filtering ? '▏' : ''))
-  else
-    call add(l:lines, printf('%d/%d   %s', s:rlp_sel + 1, l:total, l:scroll))
-  endif
-  call add(l:lines, 'l/字 潜る  h 戻る  ⏎ 選択へ  ␣ ここへ  / 絞込  ⇥ 検索  ⎋ 取消')
-  call popup_settext(s:rlp_win, l:lines)
-  call popup_setoptions(s:rlp_win, {'title': ' ローカル '})
-  call s:rlp_preview()
-endfunction
-
-function! s:rlp_render_global() abort
-  if s:rlp_win < 0 | return | endif
-  let l:w = max([get(s:rlp_geo, 'list_w', 46) - 2, 10])
-  let l:n = len(s:rlp_ghits)
-  if s:rlp_gsel < s:rlp_gtop | let s:rlp_gtop = s:rlp_gsel | endif
-  if s:rlp_gsel >= s:rlp_gtop + s:rlp_rows | let s:rlp_gtop = s:rlp_gsel - s:rlp_rows + 1 | endif
-  if s:rlp_gtop < 0 | let s:rlp_gtop = 0 | endif
-
-  let l:lines = [(s:rlp_gmode ==# 'input' ? '検索▏' : '検索: ') . s:rlp_query,
-        \ repeat('─', l:w)]
-  let l:end = min([s:rlp_gtop + s:rlp_rows, l:n])
-  for l:i in range(s:rlp_gtop, l:end - 1)
-    let l:c = s:rlp_cands[s:rlp_ghits[l:i]]
-    let l:mark = (l:i == s:rlp_gsel) ? '▶ ' : '  '
-    call add(l:lines, l:mark . s:rlp_trunc_tail(l:c.t, l:w - 2))
-  endfor
-  call add(l:lines, repeat('─', l:w))
-  let l:below = max([0, l:n - l:end])
-  call add(l:lines, printf('%d/%d%s', l:n ? s:rlp_gsel + 1 : 0, l:n,
-        \ l:below > 0 ? '   ↓' . l:below : ''))
-  call add(l:lines, s:rlp_gmode ==# 'input'
-        \ ? '打つ 検索  ⏎ 選択へ  ⇥ ローカル  ⎋ 取消'
-        \ : 'jk 選択  fb プレ  l/␣ 潜る  ⏎ 開く  i 検索  ⇥/h ローカル  ⎋')
-  call popup_settext(s:rlp_win, l:lines)
-  call popup_setoptions(s:rlp_win, {'title': ' 検索（全ノート） '})
-  call s:rlp_preview_global()
-endfunction
-
-function! s:rlp_preview_global() abort
-  if s:rlp_pvwin < 0 | return | endif
-  if s:rlp_gsel < 0 || s:rlp_gsel >= len(s:rlp_ghits)
-    call popup_settext(s:rlp_pvwin, ['(該当なし)'])
-    return
-  endif
-  let l:c = s:rlp_cands[s:rlp_ghits[s:rlp_gsel]]
-  let l:body = filereadable(l:c.p)
-        \ ? readfile(l:c.p, '', get(g:, 'yurii_pkm_space_preview_lines', 400)) : []
-  if !empty(l:body) && l:body[0] =~# '^---\s*$'
-    let l:e = 1
-    while l:e < len(l:body) && l:body[l:e] !~# '^\%(---\|\.\.\.\)\s*$'
-      let l:e += 1
-    endwhile
-    let l:body = l:body[l:e + 1 :]
-  endif
-  while !empty(l:body) && l:body[0] =~# '^\s*$'
-    call remove(l:body, 0)
-  endwhile
-  let l:rule = repeat('─', max([get(s:rlp_geo, 'pv_w', 46) - 2, 10]))
-  call popup_settext(s:rlp_pvwin, [l:c.t, l:rule] + l:body)
-  call popup_setoptions(s:rlp_pvwin, {'firstline': 1})
-endfunction
-
-function! s:rlp_build_index() abort
-  let l:root = s:get_pkm_root()
-  if empty(l:root) || !isdirectory(l:root) | let l:root = getcwd() | endif
-  let l:idx = get(g:, 'yurii_search_index', '')
-  let s:rlp_cands = []
-  if !empty(l:idx) && filereadable(l:idx) && executable('python3')
-    for l:ln in systemlist('python3 ' . shellescape(l:idx) . ' ' . shellescape(l:root))
-      let l:f = split(l:ln, "\t", 1)
-      if len(l:f) >= 2
-        call add(s:rlp_cands, {'p': l:f[0], 't': l:f[1], 'b': get(l:f, 2, '')})
-      endif
-    endfor
-  endif
-  if empty(s:rlp_cands)
-    " フォールバック: *.md を舐めてタイトルだけ（本文検索は無し）
-    for l:p in split(globpath(l:root, '**/*.md', 0), "\n")
-      if l:p =~# '\v[\/]\.undo[\/]' | continue | endif
-      call add(s:rlp_cands, {'p': l:p, 't': s:get_title(l:p), 'b': ''})
-    endfor
-  endif
-endfunction
-
-function! s:rlp_grefilter() abort
-  let l:terms = filter(split(substitute(s:rlp_query, '　', ' ', 'g'), ' '), 'v:val !=# ""')
-  let s:rlp_ghits = []
-  let l:i = 0
-  for l:c in s:rlp_cands
-    let l:hay = l:c.t . ' ' . l:c.b
-    let l:ok = 1
-    for l:t in l:terms
-      if stridx(l:hay, l:t) < 0 | let l:ok = 0 | break | endif
-    endfor
-    if l:ok | call add(s:rlp_ghits, l:i) | endif
-    let l:i += 1
-  endfor
-  if s:rlp_gsel >= len(s:rlp_ghits) | let s:rlp_gsel = max([0, len(s:rlp_ghits) - 1]) | endif
-endfunction
-
-function! s:rlp_enter_global() abort
-  if empty(s:rlp_cands) | call s:rlp_build_index() | endif
-  let s:rlp_scope = 'global'
-  let s:rlp_gmode = 'input'
-  let s:rlp_gsel = 0
-  let s:rlp_gtop = 0
-  call s:rlp_grefilter()
-  call s:rlp_render()
-endfunction
-
-function! s:rlp_leave_global() abort
-  let s:rlp_scope = 'local'
-  call s:rlp_render()
-endfunction
-
-" global のヒットを『潜る』… その先の local ビューをスタックに積む
-function! s:rlp_global_dive() abort
-  if s:rlp_gsel < 0 || s:rlp_gsel >= len(s:rlp_ghits) | return | endif
-  let l:c = s:rlp_cands[s:rlp_ghits[s:rlp_gsel]]
-  if !filereadable(l:c.p) | return | endif
-  call add(s:rlp_stack, {'path': s:rlp_path, 'base': s:rlp_base,
-        \ 'sel': s:rlp_sel, 'top': s:rlp_top, 'filter': s:rlp_filter,
-        \ 'scope': 'global', 'query': s:rlp_query})
-  call add(s:rlp_crumbs, fnamemodify(l:c.p, ':t:r'))
-  let s:rlp_scope = 'local'
-  let s:rlp_filter = ''
-  let s:rlp_filtering = 0
-  call s:rlp_load(l:c.p, fnamemodify(l:c.p, ':h'))
-endfunction
-
-function! s:rlp_key_global(key) abort
-  if s:rlp_gmode ==# 'input'
-    if a:key ==# "\<CR>"
-      let s:rlp_gmode = 'select'
-    elseif a:key ==# "\<Esc>" || a:key ==# "\<C-c>"
-      call popup_close(s:rlp_win, {'cancel': 1})
-      return 1
-    elseif a:key ==# "\<Tab>"
-      call s:rlp_leave_global()
-      return 1
-    elseif a:key ==# "\<BS>" || a:key ==# "\<C-h>"
-      let s:rlp_query = strcharpart(s:rlp_query, 0, max([strchars(s:rlp_query) - 1, 0]))
-      call s:rlp_grefilter()
-    elseif a:key =~# '^.$' && a:key !~# '^[[:cntrl:]]$'
-      let s:rlp_query .= a:key
-      call s:rlp_grefilter()
-    endif
-    call s:rlp_render()
-    return 1
-  endif
-
-  " --- global select ---
-  let l:n = len(s:rlp_ghits)
-  if a:key ==# "\<Esc>" || a:key ==# "\<C-c>" || a:key ==# 'q'
-    call popup_close(s:rlp_win, {'cancel': 1})
-    return 1
-  elseif a:key ==# 'i'
-    let s:rlp_gmode = 'input'
-  elseif a:key ==# "\<Tab>" || a:key ==# 'h' || a:key ==# "\<Left>"
-    call s:rlp_leave_global()
-    return 1
-  elseif a:key ==# 'j' || a:key ==# "\<Down>"
-    let s:rlp_gsel = min([s:rlp_gsel + 1, l:n - 1])
-  elseif a:key ==# 'k' || a:key ==# "\<Up>"
-    let s:rlp_gsel = max([s:rlp_gsel - 1, 0])
-  elseif a:key ==# 'g'
-    let s:rlp_gsel = 0
-  elseif a:key ==# 'G'
-    let s:rlp_gsel = max([l:n - 1, 0])
-  elseif a:key ==# 'f'
-    if s:rlp_pvwin >= 0 | call win_execute(s:rlp_pvwin, "normal! \<C-f>") | endif
-    return 1
-  elseif a:key ==# 'b'
-    if s:rlp_pvwin >= 0 | call win_execute(s:rlp_pvwin, "normal! \<C-b>") | endif
-    return 1
-  elseif a:key ==# 'l' || a:key ==# "\<Right>" || a:key ==# ' '
-    call s:rlp_global_dive()
-    return 1
-  elseif a:key ==# "\<CR>"
-    call popup_close(s:rlp_win, {'gopen': s:rlp_gsel})
-    return 1
-  else
-    return 1
-  endif
-  call s:rlp_render()
-  return 1
-endfunction
-
-function! s:rlp_preview() abort
-  if s:rlp_pvwin < 0 | return | endif
-  if empty(s:rlp_items) || !s:rlp_is_sel(s:rlp_sel)
-    call popup_settext(s:rlp_pvwin, ['(該当なし)'])
-    return
-  endif
-  let l:it = s:rlp_items[s:rlp_sel]
-  let l:path = s:resolve_link_for_navigation(l:it.target, s:rlp_base)
-  if empty(l:path) || (!filereadable(l:path) && !isdirectory(l:path))
-    call popup_settext(s:rlp_pvwin, ['(開けない: ' . l:it.target . ')'])
-    return
-  endif
-  if isdirectory(l:path)
-    call popup_settext(s:rlp_pvwin, ['(ディレクトリ)', l:path])
-    return
-  endif
-  let l:body = readfile(l:path, '', get(g:, 'yurii_pkm_space_preview_lines', 400))
-  " front matter を落とす
-  if !empty(l:body) && l:body[0] =~# '^---\s*$'
-    let l:e = 1
-    while l:e < len(l:body) && l:body[l:e] !~# '^\%(---\|\.\.\.\)\s*$'
-      let l:e += 1
-    endwhile
-    let l:body = l:body[l:e + 1 :]
-  endif
-  while !empty(l:body) && l:body[0] =~# '^\s*$'
-    call remove(l:body, 0)
-  endwhile
-  let l:arw = (l:it.side ==# 'up') ? '→' : (l:it.side ==# 'down' ? '←' : '¶')
-  let l:head = printf('%s   %s %s', fnamemodify(l:path, ':t'), l:arw, l:it.label)
-  let l:rule = repeat('─', max([get(s:rlp_geo, 'pv_w', 46) - 2, 10]))
-  call popup_settext(s:rlp_pvwin, [l:head, l:rule] + l:body)
-  call popup_setoptions(s:rlp_pvwin, {'firstline': 1})
-endfunction
-
-function! s:rlp_key(winid, key) abort
-  " --- / 絞り込みモード ---
-  if s:rlp_filtering
-    if a:key ==# "\<CR>"
-      let s:rlp_filtering = 0
-    elseif a:key ==# "\<Esc>" || a:key ==# "\<C-c>"
-      let s:rlp_filtering = 0
-      let s:rlp_filter = ''
-      call s:rlp_apply_filter()
-    elseif a:key ==# "\<BS>" || a:key ==# "\<C-h>"
-      let s:rlp_filter = strcharpart(s:rlp_filter, 0, max([strchars(s:rlp_filter) - 1, 0]))
-      call s:rlp_apply_filter()
-    elseif a:key =~# '^.$' && a:key !~# '^[[:cntrl:]]$'
-      let s:rlp_filter .= a:key
-      call s:rlp_apply_filter()
-    endif
-    call s:rlp_render()
-    return 1
-  endif
-
-  " --- global スコープ（全ノート検索）は専用ハンドラへ ---
-  if s:rlp_scope ==# 'global'
-    return s:rlp_key_global(a:key)
-  endif
-
-  if a:key ==# "\<Esc>" || a:key ==# "\<C-c>" || a:key ==# 'q'
-    call popup_close(s:rlp_win, {'cancel': 1})
-    return 1
-  elseif a:key ==# "\<Tab>"
-    call s:rlp_enter_global()
-    return 1
-  elseif a:key ==# ' '
-    " もう一度 <Space> … いま潜っているノート自体を開いて着地
-    call popup_close(s:rlp_win, {'here': 1})
-    return 1
-  elseif a:key ==# "\<CR>"
-    call popup_close(s:rlp_win, {'commit': s:rlp_sel})
-    return 1
-  elseif a:key ==# 'j' || a:key ==# "\<Down>" || a:key ==# "\<C-n>"
-    call s:rlp_step_sel(1)
-  elseif a:key ==# 'k' || a:key ==# "\<Up>" || a:key ==# "\<C-p>"
-    call s:rlp_step_sel(-1)
-  elseif a:key ==# 'l' || a:key ==# "\<Right>"
-    call s:rlp_walk_in(s:rlp_sel)
-    return 1
-  elseif a:key ==# 'h' || a:key ==# "\<Left>"
-    call s:rlp_walk_back()
-    return 1
-  elseif a:key ==# 'g'
-    let s:rlp_sel = max([s:rlp_first_sel(), 0])
-  elseif a:key ==# 'G'
-    let s:rlp_sel = max([s:rlp_last_sel(), 0])
-  elseif a:key ==# '/'
-    let s:rlp_filtering = 1
-    let s:rlp_filter = ''
-  elseif a:key ==# "\<C-f>" || a:key ==# "\<C-d>" || a:key ==# "\<PageDown>"
-    if s:rlp_pvwin >= 0 | call win_execute(s:rlp_pvwin, "normal! \<C-d>") | endif
-    return 1
-  elseif a:key ==# "\<C-b>" || a:key ==# "\<C-u>" || a:key ==# "\<PageUp>"
-    if s:rlp_pvwin >= 0 | call win_execute(s:rlp_pvwin, "normal! \<C-u>") | endif
-    return 1
-  elseif has_key(s:rlp_rowmap, a:key)
-    call s:rlp_walk_in(s:rlp_rowmap[a:key])
-    return 1
-  else
-    return 1
-  endif
-  call s:rlp_render()
-  return 1
-endfunction
-
-function! s:rlp_done(winid, result) abort
-  let s:rlp_win = -1
-  if s:rlp_pvwin >= 0
-    call popup_close(s:rlp_pvwin)
-    let s:rlp_pvwin = -1
-  endif
-  if type(a:result) != v:t_dict
-    return
-  endif
-
-  " global 検索から ⏎ … ヒットのノートを実際に開く
-  if has_key(a:result, 'gopen')
-    let l:gi = a:result.gopen
-    if l:gi >= 0 && l:gi < len(s:rlp_ghits)
-      let l:gp = s:rlp_cands[s:rlp_ghits[l:gi]].p
-      if filereadable(l:gp)
-        call yurii_pkm#push_history()
-        silent! execute 'hide edit ' . fnameescape(l:gp)
-      endif
-    endif
-    return
-  endif
-
-  " <Space> 再押し / 選択リンク無し … いま潜っているノート自体へ着地。
-  " 起点のまま（潜っていない）なら何もしない ＝ ⎋ と同じ。
-  if has_key(a:result, 'here')
-    if empty(s:rlp_stack) || s:rlp_path ==# get(s:rlp_origin, 'path', '')
-      return
-    endif
-    call yurii_pkm#push_history()
-    silent! execute 'hide edit ' . fnameescape(s:rlp_path)
-    return
-  endif
-
-  " ⎋ 取消 … ウォーク中に実バッファは開いていないので起点はそのまま。何もしない。
-  if !has_key(a:result, 'commit')
-    return
-  endif
-
-  let l:idx = a:result.commit
-  let l:it = s:rlp_is_sel(l:idx) ? s:rlp_items[l:idx] : {}
-  if empty(l:it)
-    " 選択できるリンクが無い … 潜った先のノート自体へ着地（起点なら何もしない）
-    if empty(s:rlp_stack) || s:rlp_path ==# get(s:rlp_origin, 'path', '')
-      return
-    endif
-    call yurii_pkm#push_history()
-    silent! execute 'hide edit ' . fnameescape(s:rlp_path)
-    return
-  endif
-
-  let l:path = s:resolve_link_for_navigation(l:it.target, s:rlp_base)
-  if empty(l:path) || (!filereadable(l:path) && !isdirectory(l:path))
-    echo 'Link target not found: ' . l:it.target
-    return
-  endif
-  call yurii_pkm#push_history()
-  silent! execute 'hide edit ' . fnameescape(l:path)
-  " parent/child は相手ノート内の逆リンク位置へ寄せる（本文リンクは先頭のまま）
-  if l:it.side ==# 'up' || l:it.side ==# 'down'
-    let l:rp = s:find_reciprocal_link_pos(l:path, fnamemodify(s:rlp_path, ':t'))
-    if get(l:rp, 0, 0) > 0
-      call cursor(l:rp[0], l:rp[1])
-      normal! zv
-    endif
-  endif
 endfunction
 
 " 数字キー … 本文の N 番目のリンクへ。該当が無ければ通常のカウントとして送る。
@@ -3200,7 +3220,29 @@ endfunction
 " 逆側は書かない。sync が相方ノートの下側に生成する。
 " ---------------------------------------------------------------------------
 
-let s:v2_relations = ['キーワード', '前提', '論点', '見解', '関連', 'なし']
+" ピッカーで選べる関係。論点 / 見解 は廃止（ノート に集約）。
+" 既存ノートの 論点: / 見解: はそのまま残り、sync の並び替えでも壊れない。
+let s:v2_relations = ['カテゴリー', 'キーワード', '前提', 'ノート', '関連']
+
+" 関係ごとの向きの制約。0 = している側のみ / 1 = されている側のみ / -1 = 制約なし
+function! s:v2_relation_side(rel) abort
+  if a:rel ==# 'キーワード' | return 1 | endif
+  if a:rel ==# '前提'       | return 0 | endif
+  if a:rel ==# 'カテゴリー' | return 0 | endif
+  if a:rel ==# '関連'       | return 1 | endif
+  return -1
+endfunction
+
+" キーワードは「このノートを索引する語」なので、相手のタイトルではなく打った語を使う。
+" どのノートに足しているのか見失わないよう、プロンプトにそのノートのタイトルを出す。
+function! s:v2_keyword_name(owner_title) abort
+  let l:label = empty(a:owner_title) ? 'キーワード: ' : '[' . a:owner_title . '] キーワード: '
+  try
+    return trim(input(l:label))
+  catch /^Vim:Interrupt$/
+    return ''
+  endtry
+endfunction
 
 " 数字で 1 項目選ぶ共通ピッカー。末尾は「入力」= 自由入力。'' = キャンセル（Esc/q）。
 function! s:v2_pick(label, items) abort
@@ -3237,6 +3279,7 @@ endfunction
 
 function! s:v2_pick_relation() abort
   let l:r = s:v2_pick('relation', s:v2_relations)
+  " 旧ピッカーの『なし』互換
   return l:r ==# 'なし' ? 'ノート' : l:r
 endfunction
 
@@ -3342,10 +3385,16 @@ function! yurii_pkm#v2_add_link(...) abort
   endif
   let l:rel = a:0 > 1 && a:2 !=# '' ? a:2 : s:v2_pick_relation()
   if l:rel ==# '' | echo 'yurii_PKM: キャンセル' | return | endif
-  " 関連 は対称なので必ず下側へ
-  let l:below = (l:rel ==# '関連') ? 1 : (a:0 > 2 ? a:3 : 0)
+  " 関係ごとの向きの制約（キーワード=されている / 前提・カテゴリー=している / 関連=対称）
+  let l:side = s:v2_relation_side(l:rel)
+  let l:below = l:side >= 0 ? l:side : (a:0 > 2 ? a:3 : 0)
 
   let l:title = s:v2_title_for(l:tgt)
+  if l:rel ==# 'キーワード'
+    let l:kw = s:v2_keyword_name(yurii_pkm#current_title())
+    if empty(l:kw) | echo 'yurii_PKM: キャンセル' | return | endif
+    let l:title = l:kw
+  endif
   if s:v2_insert_link(l:rel, '[' . l:title . '](' . l:tgt . ')', l:below)
     silent! write
     echo 'yurii_PKM: ' . l:rel . (l:below ? ' ↓ ' : ' ') . '+= ' . l:title
@@ -3370,7 +3419,9 @@ function! s:v2_new_related(below, is_cat, ...) abort
   endif
   let l:rel = (a:0 > 0 && a:1 !=# '') ? a:1 : s:v2_pick_relation()
   if l:rel ==# '' | echo 'yurii_PKM: キャンセル' | return | endif
-  let l:below = (l:rel ==# '関連') ? 1 : a:below
+  " 関係ごとの向きの制約（キーワード=されている / 前提・カテゴリー=している / 関連=対称）
+  let l:side = s:v2_relation_side(l:rel)
+  let l:below = l:side >= 0 ? l:side : a:below
 
   " 現ノート（＝新ノートの相手）の情報
   let l:cur_name  = expand('%:t')

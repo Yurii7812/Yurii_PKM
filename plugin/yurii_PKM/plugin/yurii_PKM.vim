@@ -199,13 +199,14 @@ nnoremap <silent> <S-Tab>  <Cmd>call yurii_pkm#jump_link(0)<CR>
 silent! execute "nnoremap <silent> \<Esc>[Z <Cmd>call yurii_pkm#jump_link(0)<CR>"
 nnoremap <silent> <CR>     <Cmd>call yurii_pkm#open_link_under_cursor()<CR>
 nnoremap <silent> <BS>     <Cmd>call yurii_pkm#go_back()<CR>
-" <Space> … 文中 / している / されている のリンク一覧ポップアップ（右に大きめプレビュー）。
-"           jk 選択 / l・ラベルキー（数字＋英字）で潜る（ポップアップは開いたまま
-"           一覧が飛び先の関係リンクに差し替わる）/ h 戻る / ⏎ 選択リンク先へ着地 /
-"           もう一度 <Space> でいま潜っているノート自体を開く /
-"           ⇥ で全ノート検索（グローバル）へ切替。検索して選択→そのノートを潜る /
-"           / 絞り込み / ⎋ 全部取り消して元へ / ^F ^B プレビュー送り。
-"           リンクが無ければカーソル巡回にフォールバック。
+" <Space> … ノートナビゲータ。スコープ = ローカル（今のノートのリンク）/
+"           グローバル（全ノート検索）、サブモード = 入力（打つと絞り込み）/
+"           選択（プレーンキー）。キーは両スコープ共通で Ctrl は使わない。
+"   一覧の1行目は常にアンカー ◎（いま潜っているノート。リンク追加はここに効く）
+"   選択: jk・ラベル(1-0/英字)=選択だけ / l 潜る / h 戻る / ⏎ 開く / ␣ アンカーを開く
+"         f b プレビュー / c p 子・親に追加 / y ヤンク / m マーク / a アンカー移動
+"         i(/) 入力へ / ⇥ ローカル⇄グローバル / ⎋ 全部取り消して元へ
+"   入力: 打つ=絞り込み / ⌫ / ⏎ 選択へ / ⎋ クリア / ⇥ 切替
 " <S-Space> … ポップアップを出さずカーソルだけ次の関係リンクへ（従来動作）。
 nnoremap <silent> <Space>   <Cmd>call yurii_pkm#relation_link_popup()<CR>
 nnoremap <silent> <S-Space> <Cmd>call yurii_pkm#jump_relation_link(1)<CR>
