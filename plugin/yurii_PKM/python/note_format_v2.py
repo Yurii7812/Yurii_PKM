@@ -7,7 +7,9 @@
 - 本文の後、``<!-- している -->`` 見張り行から上側（このノートが「している」こと）。
 - ``<!-- されている -->`` 見張り行から下側（「されている」こと）。
   HTML コメントなのでレンダラで不可視・見出し化しない・本文と衝突しない。
-- 既知の関係: カテゴリー / 前提 / 論点 / 見解 / キーワード / 関連。他の ``語:`` も可（自由入力）。
+- 関係: キーワード / 前提 / 論点 / 見解 / 関連 / ノート（既定）/ 自由入力。
+  `カテゴリー` は選ばない ── 相手が `attribute: カテゴリー` なら自動でそのラベルになる。
+  `関連` は対称。並び順は カテゴリー → キーワード → 前提 → 論点 → 見解 → 関連 → ノート。
   `関連` は対称。相手が `attribute: カテゴリー` のノートなら、自分側のラベルは
   常に `カテゴリー:` になる（相手側の されている は書かれた関係のまま）。
 - 唯一のノード属性は front matter の `attribute: カテゴリー`（容器ノートの印）。無ければただのノート。
@@ -37,7 +39,7 @@ import re
 import sys
 from pathlib import Path
 
-RELATIONS: tuple[str, ...] = ("カテゴリー", "前提", "論点", "見解", "キーワード", "関連")
+RELATIONS: tuple[str, ...] = ("カテゴリー", "キーワード", "前提", "論点", "見解", "関連", "ノート")
 # 関係名の読み替え（既定は無し。カテゴリー: はそのまま残す）
 RELATION_ALIASES: dict[str, str] = {"ワード": "キーワード"}
 # 唯一のノード属性: `attribute: カテゴリー`（容器ノートの印）。他の値は使わない。
@@ -562,7 +564,7 @@ def sync_vault(root) -> int:
     }
 
     def far_label(pair: tuple[str, str]) -> str:
-        return down_label.get(pair) or up_label.get(pair) or "関連"
+        return down_label.get(pair) or up_label.get(pair) or "ノート"
 
     # --- 上側を再構築。相手がカテゴリーなら自分側ラベルは常に `カテゴリー:` ---
     incoming: dict[str, list[tuple[str, str]]] = {}  # to_id -> [(from_id, label)]

@@ -2282,7 +2282,7 @@ endfunction
 " 逆側は書かない。sync が相方ノートの下側に生成する。
 " ---------------------------------------------------------------------------
 
-let s:v2_relations = ['論点', '見解', '関連', '前提', 'キーワード', 'カテゴリー']
+let s:v2_relations = ['キーワード', '前提', '論点', '見解', '関連', 'なし']
 
 " 数字で 1 項目選ぶ共通ピッカー。末尾は「入力」= 自由入力。'' = キャンセル（Esc/q）。
 function! s:v2_pick(label, items) abort
@@ -2318,7 +2318,8 @@ function! s:v2_pick(label, items) abort
 endfunction
 
 function! s:v2_pick_relation() abort
-  return s:v2_pick('relation', s:v2_relations)
+  let l:r = s:v2_pick('relation', s:v2_relations)
+  return l:r ==# 'なし' ? 'ノート' : l:r
 endfunction
 
 " y/n で「カテゴリーにするか」だけ聞く（既定 n）。戻り値: 1 = カテゴリー
