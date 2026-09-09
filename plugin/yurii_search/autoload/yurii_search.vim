@@ -1,6 +1,8 @@
 " autoload/yurii_search.vim
 " ファイル単位のキーワード AND 検索。ネイティブのポップアップ。
 " 一度に 10 件だけ表示し、下に「他 N 件」を出す。
+" ヒット語は一覧・プレビュー（ポップアップ内）だけで強調する。
+" 開いた先のバッファには一切ハイライトを残さない（最初のヒット行へ寄せるだけ）。
 "
 " 入力モード（既定）:
 "   打つ            … 絞り込み（タイトル+本文、全角スペースも区切り）
@@ -27,12 +29,12 @@ let s:win   = -1
 let s:pvwin = -1
 let s:rows  = 15
 let s:mode  = 'input'   " 'input' = 打つと絞り込み / 'pick' = 数字で行を開く
-let s:hl    = []        " 開いた先のハイライト [[winid, matchid], ...]
-let s:pending_hl = ''   " timer で貼るパターン
-
-" 目立つハイライト群を用意（配色に埋もれないよう自前で色指定）
+" ポップアップ内のヒット強調用。reverse なら配色を問わず必ず見える。
 function! yurii_search#ensure_hl_group() abort
-  highlight YuriiSearchHit cterm=bold gui=bold ctermfg=16 ctermbg=226 guifg=#000000 guibg=#FFD24A
+  highlight default YuriiSearchMatch term=reverse cterm=reverse gui=reverse
+  if empty(prop_type_get('yuriiSearchMatch'))
+    call prop_type_add('yuriiSearchMatch', {'highlight': 'YuriiSearchMatch', 'combine': v:true})
+  endif
 endfunction
 call yurii_search#ensure_hl_group()
 augroup yurii_search_hl
@@ -40,39 +42,39 @@ augroup yurii_search_hl
   autocmd ColorScheme * call yurii_search#ensure_hl_group()
 augroup END
 
-" 検索語を「いずれか」パターンにする（各語リテラル、全角スペース区切り）
-function! s:query_pattern() abort
-  let l:q = substitute(s:query, '　', ' ', 'g')
-  let l:terms = filter(split(l:q, ' '), 'v:val !=# ""')
-  if empty(l:terms) | return '' | endif
-  call map(l:terms, {_, v -> '\V' . escape(v, '\')})
-  return '\%(' . join(l:terms, '\m\|') . '\m\)'
+" 現在の検索語（全角スペースも区切り）
+function! s:terms() abort
+  return filter(split(substitute(s:query, '　', ' ', 'g'), ' '), 'v:val !=# ""')
 endfunction
 
-" 直前に付けたハイライトを消す
-function! yurii_search#clear_hl() abort
-  for l:pair in s:hl
-    if win_id2win(l:pair[0]) > 0
-      silent! call matchdelete(l:pair[1], l:pair[0])
-    endif
-  endfor
-  let s:hl = []
-endfunction
-
-" popup が完全に閉じてから、実ウィンドウでハイライトを貼る
-function! s:apply_hl(timer) abort
-  if empty(s:pending_hl) | return | endif
-  let l:pat = s:pending_hl
-  let s:pending_hl = ''
-  call yurii_search#clear_hl()
-  call yurii_search#ensure_hl_group()
-  call add(s:hl, [win_getid(), matchadd('YuriiSearchHit', l:pat, 20)])
-  let @/ = l:pat
-  call cursor(1, 1)
-  if search(l:pat, 'cW') > 0
-    normal! zvzz
+" popup_settext は「全部文字列」か「全部 Dict」でないと弾く。混在を正す。
+function! s:settext(winid, lines) abort
+  if a:winid < 0 | return | endif
+  if empty(filter(copy(a:lines), 'type(v:val) == v:t_dict'))
+    call popup_settext(a:winid, a:lines)
+  else
+    call popup_settext(a:winid, map(copy(a:lines),
+          \ 'type(v:val) == v:t_dict ? v:val : {"text": v:val}'))
   endif
-  redraw
+endfunction
+
+" a:text 内の各語の出現位置を text-property のリストにする。
+" a:prefix_len … 行頭に既に付けた接頭辞のバイト数（番号など）。
+function! s:hit_props(text, prefix_len, terms) abort
+  let l:props = []
+  for l:t in a:terms
+    let l:tl = strlen(l:t)
+    if l:tl == 0 | continue | endif
+    let l:from = 0
+    while 1
+      let l:idx = stridx(a:text, l:t, l:from)
+      if l:idx < 0 | break | endif
+      call add(l:props, {'col': a:prefix_len + l:idx + 1, 'length': l:tl,
+            \ 'type': 'yuriiSearchMatch'})
+      let l:from = l:idx + l:tl
+    endwhile
+  endfor
+  return l:props
 endfunction
 
 function! yurii_search#run(...) abort
@@ -160,6 +162,7 @@ function! s:render() abort
   if s:win < 0 | return | endif
   let l:tag = (s:mode ==# 'pick') ? '[選択] ' : ''
   let l:bar = repeat('─', 58)
+  let l:terms = s:terms()
   let l:lines = [l:tag . '> ' . s:query . '▏', l:bar]
   if empty(s:hits)
     call add(l:lines, '  (該当なし)')
@@ -172,7 +175,11 @@ function! s:render() abort
       let l:c = s:cands[s:hits[l:vi]]
       let l:num = (l:n <= 9) ? l:n : (l:n == 10 ? 0 : ' ')
       let l:mark = (l:vi == s:sel) ? '▶' : ' '
-      call add(l:lines, printf('%s%s %s', l:mark, l:num, l:c.t))
+      let l:pfx = printf('%s%s ', l:mark, l:num)
+      let l:props = s:hit_props(l:c.t, strlen(l:pfx), l:terms)
+      call add(l:lines, empty(l:props)
+            \ ? l:pfx . l:c.t
+            \ : {'text': l:pfx . l:c.t, 'props': l:props})
       let l:n += 1
     endfor
     call extend(l:lines, repeat([''], s:rows - (l:end - s:top)))
@@ -189,7 +196,7 @@ function! s:render() abort
   call add(l:lines, printf('%d/%d  %s', empty(s:hits) ? 0 : s:sel + 1, len(s:hits),
         \ empty(l:ctx) ? l:hint : l:ctx))
   call add(l:lines, l:hint)
-  call popup_settext(s:win, l:lines)
+  call s:settext(s:win, l:lines)
   call popup_setoptions(s:win, {'title': s:mode ==# 'pick' ? ' 選択 ' : ' 検索 '})
   call s:preview()
 endfunction
@@ -231,10 +238,14 @@ function! s:preview() abort
   let l:prev = -2
   for l:j in l:show
     if l:j > l:prev + 1 && !empty(l:out) | call add(l:out, '  ⋯') | endif
-    call add(l:out, printf('%4d %s', l:j + 1, l:body[l:j]))
+    let l:pfx = printf('%4d ', l:j + 1)
+    let l:props = s:hit_props(l:body[l:j], strlen(l:pfx), l:terms)
+    call add(l:out, empty(l:props)
+          \ ? l:pfx . l:body[l:j]
+          \ : {'text': l:pfx . l:body[l:j], 'props': l:props})
     let l:prev = l:j
   endfor
-  call popup_settext(s:pvwin, l:out)
+  call s:settext(s:pvwin, l:out)
 endfunction
 
 " --- キー処理 -----------------------------------------------------------------
@@ -316,12 +327,32 @@ function! s:done(winid, result) abort
   if type(a:result) != v:t_number || a:result < 0 || a:result >= len(s:cands)
     return
   endif
-  let l:pat = s:query_pattern()
+  let l:terms = s:terms()
   execute 'edit ' . fnameescape(s:cands[a:result].p)
-  " popup の callback 中は実ウィンドウがまだ確定していないことがあるので、
-  " ハイライトは timer で 1 tick 遅らせて貼る。
-  let s:pending_hl = l:pat
-  call timer_start(0, function('s:apply_hl'))
+  " ハイライトはしない（ポップアップ内だけ）。最初のヒット行へ寄せるだけ。
+  if empty(l:terms) | return | endif
+  let l:fallback = 0
+  for l:lnum in range(1, line('$'))
+    let l:ln = getline(l:lnum)
+    let l:all = 1
+    for l:t in l:terms
+      if stridx(l:ln, l:t) < 0 | let l:all = 0 | break | endif
+    endfor
+    if l:all
+      call cursor(l:lnum, 1)
+      execute 'normal! zvzz'
+      return
+    endif
+    if l:fallback == 0
+      for l:t in l:terms
+        if stridx(l:ln, l:t) >= 0 | let l:fallback = l:lnum | break | endif
+      endfor
+    endif
+  endfor
+  if l:fallback > 0
+    call cursor(l:fallback, 1)
+    execute 'normal! zvzz'
+  endif
 endfunction
 
 " --- 旧 curses TUI（python ヘルパーが無い時のみ）----------------------------

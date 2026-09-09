@@ -15,12 +15,9 @@ if !exists('g:yurii_search_index')
 endif
 
 command! -nargs=0 FSearch call yurii_search#run()
-command! -nargs=0 FSearchClearHl call yurii_search#clear_hl()
 
 if !exists('g:yurii_search_no_mappings')
   " gs = go search（rg 感覚の 2 打）。g 始まりなので他キーを遅延させない。
   nnoremap <silent> gs        <Cmd>FSearch<CR>
   nnoremap <silent> <leader>fs <Cmd>FSearch<CR>
-  " gS = 開いた先に付いた検索ハイライトを消す
-  nnoremap <silent> gS        <Cmd>FSearchClearHl<CR>
 endif
