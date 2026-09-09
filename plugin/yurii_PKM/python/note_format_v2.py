@@ -8,8 +8,8 @@
 - ``<!-- されている -->`` 見張り行から下側（「されている」こと）。
   HTML コメントなのでレンダラで不可視・見出し化しない・本文と衝突しない。
 - 既知の関係: 所属 / 前提 / ワード / 関連（`関連` は対称）。他の ``語:`` も可（自由入力）。
-- 論点 / 見解 / カテゴリー / 日記 は「関係」ではなくノードの属性 = front matter `attribute:`。
-  `attribute: 日記` のノートは sync が一切触らない。
+- 唯一のノード属性は front matter の `attribute: カテゴリー`（容器ノートの印）。無ければただのノート。
+  論点 / 見解 等は宣言しない（関係とタイトルから分かる）。
 - リンク 1 本は ``関係: [t](x.md)`` のインライン、2 本以上は ``関係:`` 改行のブロック。
 - 上側が真実。下側は他ノートの上側から導出。上下どちらも編集でき、
   片面の追加 / 削除はもう片面へ反映される（``.pkm_sync_state_v2.json`` で判定）。
@@ -38,9 +38,9 @@ from pathlib import Path
 RELATIONS: tuple[str, ...] = ("所属", "前提", "ワード", "関連")
 # 関係名の読み替え（既定は無し。カテゴリー: はそのまま残す）
 RELATION_ALIASES: dict[str, str] = {}
-# ノードの属性（front matter `attribute:`）。関係ではない。
+# 唯一のノード属性: `attribute: カテゴリー`（容器ノートの印）。他の値は使わない。
 ATTR_KEYS = ("attribute", "属性")
-FREEZE_ATTR = "日記"  # この属性のノートは sync が一切触らない
+CATEGORY_ATTR = "カテゴリー"
 # 対称関係: 上側には出さず、両ノートの下側に現れる。
 SYMMETRIC: frozenset[str] = frozenset({"関連"})
 BACKLINK = "バックリンク"
@@ -233,7 +233,7 @@ def parse_note(path, text: str | None = None) -> Note:
     # sync が触るのは見張りコメント 2 行を持つファイルだけ。
     # それ以外（旧 v1 / 旧 --- / 日記 / 素の散文）は managed=False で読むだけ。
     marked = UP_MARK in stripped and DOWN_MARK in stripped
-    frozen = _fm_attr(fm) == FREEZE_ATTR or bool(re.search(
+    frozen = bool(re.search(
         r"^\s*(pkm\s*:\s*raw|sync\s*:\s*(?:false|off|no))\s*$",
         "\n".join(fm), re.I | re.M))
 
