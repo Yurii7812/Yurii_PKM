@@ -115,8 +115,8 @@ function! s:render() abort
     endfor
   endif
   let l:hint = (s:mode ==# 'pick')
-        \ ? '1-9/0 開く  jk 移動  ⇥ 入力へ  ⏎ 開く  ⎋ 閉じる'
-        \ : '打つ=絞込  ⇥ 選択へ  ^J^K 移動  ⏎ 開く  ⎋ 閉じる'
+        \ ? '数字=その行へ 同じ数字=開く  jk 1行  ^J^K ページ  ⇥ 入力  ⎋ 閉じる'
+        \ : '打つ=絞込  ⇥ 選択へ  ^J^K ページ送り  ↑↓ 1行  ⏎ 開く  ⎋ 閉じる'
   call add(l:lines, repeat('─', 60))
   call add(l:lines, printf('%d/%d   %s', empty(s:hits) ? 0 : s:sel + 1, len(s:hits), l:hint))
   call popup_settext(s:win, l:lines)
@@ -175,32 +175,36 @@ function! s:key(winid, key) abort
   elseif a:key ==# "\<CR>"
     call popup_close(a:winid, empty(s:hits) ? -1 : s:hits[s:sel])
     return 1
-  elseif a:key ==# "\<C-j>" || a:key ==# "\<Down>"
+  elseif a:key ==# "\<C-j>" || a:key ==# "\<C-f>" || a:key ==# "\<PageDown>"
+    " 1 ページ送り（表示範囲ごと進める）
+    if s:top + s:rows < len(s:hits)
+      let s:top += s:rows
+    endif
+    let s:sel = s:top
+  elseif a:key ==# "\<C-k>" || a:key ==# "\<C-b>" || a:key ==# "\<PageUp>"
+    let s:top = max([s:top - s:rows, 0])
+    let s:sel = s:top
+  elseif a:key ==# "\<Down>"
     let s:sel = min([s:sel + 1, max([0, len(s:hits) - 1])])
-  elseif a:key ==# "\<C-k>" || a:key ==# "\<Up>"
+  elseif a:key ==# "\<Up>"
     let s:sel = max([s:sel - 1, 0])
-  elseif a:key ==# "\<C-f>" || a:key ==# "\<PageDown>"
-    let s:sel = min([s:sel + s:rows, max([0, len(s:hits) - 1])])
-  elseif a:key ==# "\<C-b>" || a:key ==# "\<PageUp>"
-    let s:sel = max([s:sel - s:rows, 0])
-  elseif a:key ==# "\<C-d>"
-    let s:sel = min([s:sel + s:rows / 2, max([0, len(s:hits) - 1])])
-  elseif a:key ==# "\<C-u>"
-    let s:sel = max([s:sel - s:rows / 2, 0])
   elseif a:key ==# "\<Tab>"
     let s:mode = (s:mode ==# 'pick') ? 'input' : 'pick'
   elseif a:key ==# "\<BS>" || a:key ==# "\<C-h>"
     let s:query = strcharpart(s:query, 0, strchars(s:query) - 1)
     let s:sel = 0 | let s:top = 0
-  elseif a:key ==# "\<C-w>"
+  elseif a:key ==# "\<C-w>" || a:key ==# "\<C-u>"
     let s:query = '' | let s:sel = 0 | let s:top = 0
   elseif s:mode ==# 'pick' && a:key =~# '^[0-9]$'
-    " 選択モード: 数字で行を開く
+    " 選択モード: 数字 1 回目=その行へ（プレビュー）、同じ数字 2 回目=開く
     let l:row = (a:key ==# '0') ? 10 : str2nr(a:key)
     let l:target = s:top + l:row - 1
     if l:target >= 0 && l:target < len(s:hits)
-      call popup_close(a:winid, s:hits[l:target])
-      return 1
+      if s:sel == l:target
+        call popup_close(a:winid, s:hits[l:target])
+        return 1
+      endif
+      let s:sel = l:target
     endif
   elseif s:mode ==# 'pick' && (a:key ==# 'j' || a:key ==# 'k' || a:key ==# 'g')
     if a:key ==# 'j'
