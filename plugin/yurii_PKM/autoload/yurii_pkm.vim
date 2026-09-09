@@ -2453,6 +2453,13 @@ function! s:v2_new_related(below, is_cat, ...) abort
   if l:rel ==# '' | echo 'yurii_PKM: キャンセル' | return | endif
   let l:below = (l:rel ==# '関連') ? 1 : a:below
 
+  " 現ノート（＝新ノートの相手）の情報
+  let l:cur_name  = expand('%:t')
+  let l:cur_title = yurii_pkm#current_title()
+  if l:cur_title ==# '' | let l:cur_title = fnamemodify(l:cur, ':t:r') | endif
+  " 現ノートがカテゴリーなら、新ノート側のラベルは カテゴリー
+  let l:back_rel = s:v2_buf_is_category() ? 'カテゴリー' : l:rel
+
   let l:dir = expand('%:p:h')
   let l:ts  = yurii_pkm#timestamp_filename()
   let l:file = s:join_path(l:dir, l:ts . '.md')
@@ -2465,10 +2472,34 @@ function! s:v2_new_related(below, is_cat, ...) abort
     return  " 現ノートが v2 形式でない（見張りなし）
   endif
 
-  call writefile(yurii_pkm#note_template(l:ts, a:is_cat), l:file)
+  " 新ノートを組み立てる。相手へのリンクを先に入れておく（sync が確認するだけ）。
+  " nc: 相手は新ノートの している 側 / np: されている 側。
+  let l:backlink = l:back_rel . ': [' . l:cur_title . '](' . l:cur_name . ')'
+  let l:fm = ['---', 'time: ' . yurii_pkm#timestamp_yaml(), 'title: ' . l:ts]
+  if a:is_cat | call add(l:fm, 'attribute: カテゴリー') | endif
+  call add(l:fm, '---')
+  let l:up   = a:below ? [l:backlink] : []
+  let l:down = a:below ? [] : [l:backlink]
+  let l:lines = l:fm + ['', '# ' . l:ts, '', '', '', '<!-- している -->']
+        \ + l:up + ['<!-- されている -->'] + l:down
+  call writefile(l:lines, l:file)
   silent noautocmd write
   call s:run_update_one_for(l:cur)
   execute 'edit ' . fnameescape(l:file)
+  " 本文入力位置（H1 の 2 行下）へ
+  let l:h1 = search('^#\s', 'nw')
+  if l:h1 > 0 | call cursor(l:h1 + 2, 1) | endif
+  startinsert
+endfunction
+
+" 現在バッファが attribute: カテゴリー か
+function! s:v2_buf_is_category() abort
+  if getline(1) !~# '^---\s*$' | return 0 | endif
+  for l:i in range(2, min([25, line('$')]))
+    if getline(l:i) =~# '^---\s*$' | break | endif
+    if getline(l:i) =~# '^\s*\%(attribute\|属性\)\s*:\s*カテゴリー\s*$' | return 1 | endif
+  endfor
+  return 0
 endfunction
 
 " nc: 子ノート（リンクは現ノートの されている 側）
