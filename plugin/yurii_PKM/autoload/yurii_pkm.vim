@@ -1799,7 +1799,7 @@ function! s:rlp_render() abort
         \ . (l:below > 0 ? '残り ' . l:below . ' 件' : '')
   call add(l:lines, repeat('─', 46))
   call add(l:lines, printf('%d/%d   %s', s:rlp_sel + 1, l:total, l:scroll))
-  call add(l:lines, 'jk 上下  l/⏎ 開く  h/⎋ 閉じる  数字 選択  ^F^B プレ送り  (→し ←され)')
+  call add(l:lines, 'jk 1件  hl 区間送り  ⏎/同数字 開く  ⎋ 閉じる  ^F^B プレ  (→し ←され)')
   call popup_settext(s:rlp_win, l:lines)
   call s:rlp_preview()
 endfunction
@@ -1836,17 +1836,23 @@ endfunction
 
 function! s:rlp_key(winid, key) abort
   let l:n = len(s:rlp_items)
-  if a:key ==# "\<Esc>" || a:key ==# "\<C-c>" || a:key ==# 'q'
-        \ || a:key ==# ' ' || a:key ==# 'h' || a:key ==# "\<Left>"
+  if a:key ==# "\<Esc>" || a:key ==# "\<C-c>" || a:key ==# 'q' || a:key ==# ' '
     call popup_close(a:winid, -1)
     return 1
-  elseif a:key ==# "\<CR>" || a:key ==# 'l' || a:key ==# "\<Right>"
+  elseif a:key ==# "\<CR>"
     call popup_close(a:winid, s:rlp_sel)
     return 1
   elseif a:key ==# 'j' || a:key ==# "\<Down>" || a:key ==# "\<C-n>"
     let s:rlp_sel = min([s:rlp_sel + 1, l:n - 1])
   elseif a:key ==# 'k' || a:key ==# "\<Up>" || a:key ==# "\<C-p>"
     let s:rlp_sel = max([s:rlp_sel - 1, 0])
+  elseif a:key ==# 'l' || a:key ==# "\<Right>"
+    " 区間送り（10 件ぶん先へ）
+    if s:rlp_top + s:rlp_rows < l:n | let s:rlp_top += s:rlp_rows | endif
+    let s:rlp_sel = min([s:rlp_top, l:n - 1])
+  elseif a:key ==# 'h' || a:key ==# "\<Left>"
+    let s:rlp_top = max([s:rlp_top - s:rlp_rows, 0])
+    let s:rlp_sel = s:rlp_top
   elseif a:key ==# 'g'
     let s:rlp_sel = 0
   elseif a:key ==# 'G'
