@@ -25,15 +25,18 @@ function! s:fzf_run(initial) abort
   let l:tmp = tempname()
   let l:src = 'python3 ' . shellescape(l:idx) . ' ' . shellescape(l:root)
 
-  " 移動モードで使うキー
+  " ⎋ / ^C はいつでも閉じる。⇥ で 検索⇄移動 を切替。
+  "   検索モード: 打つと絞り込み（数字も打てる）。^J/^K で上下、⏎ で開く。
+  "   移動モード: 検索OFF。1-9 で行へジャンプ&オープン、j/k 上下、q でも閉じる。
   let l:mkeys = '1,2,3,4,5,6,7,8,9,j,k,g,q'
   let l:movebinds = '1:pos(1)+accept,2:pos(2)+accept,3:pos(3)+accept,4:pos(4)+accept,'
         \ . '5:pos(5)+accept,6:pos(6)+accept,7:pos(7)+accept,8:pos(8)+accept,9:pos(9)+accept,'
         \ . 'j:down,k:up,g:first,q:abort'
-  " ⎋ = 移動モード（検索OFF・数字/jk有効） / / = 検索モードへ戻る
   let l:modal = 'start:unbind(' . l:mkeys . '),'
-        \ . 'esc:disable-search+rebind(' . l:mkeys . ')+change-prompt(移動 › ),'
-        \ . '/:enable-search+unbind(' . l:mkeys . ')+change-prompt(検索 › )'
+        \ . 'esc:abort,ctrl-c:abort,ctrl-g:abort,'
+        \ . 'ctrl-j:down,ctrl-k:up,'
+        \ . 'tab:disable-search+rebind(' . l:mkeys . ')+change-prompt(移動 › ),'
+        \ . 'shift-tab:enable-search+unbind(' . l:mkeys . ')+change-prompt(検索 › )'
 
   " ヒット箇所を色付きで（rg で該当行＋前後3行、無ければ全文）
   let l:preview = 'q={q}; f={1}; '
@@ -47,7 +50,7 @@ function! s:fzf_run(initial) abort
         \ . ' --delimiter=''\t'' --with-nth=''2..'''
         \ . ' --prompt=''検索 › '' --pointer=''▶'' --marker=''✓'''
         \ . ' --query=' . shellescape(a:initial)
-        \ . ' --header=' . shellescape('⏎ 開く   ⎋ 移動   / 検索   1-9 行へ   ^/ プレビュー')
+        \ . ' --header=' . shellescape('⏎ 開く   ⇥ 移動⇄検索   1-9 行へ   ⎋/^C 閉じる   ^/ プレビュー')
         \ . ' --preview-window=right:58%:wrap:border-left'
         \ . ' --preview ' . shellescape(l:preview)
         \ . ' --bind ' . shellescape('ctrl-/:toggle-preview,ctrl-d:preview-half-page-down,ctrl-u:preview-half-page-up')
@@ -67,7 +70,7 @@ function! s:fzf_run(initial) abort
           \ 'term_finish': 'close',
           \ 'exit_cb': function('s:fzf_done', [l:tmp]),
           \ })
-    let l:winid = popup_create(l:buf, {
+    let s:fzf_popup = popup_create(l:buf, {
           \ 'minwidth': l:w, 'maxwidth': l:w,
           \ 'minheight': l:h, 'maxheight': l:h,
           \ 'border': [1, 1, 1, 1], 'borderchars': ['─', '│', '─', '│', '╭', '╮', '╯', '╰'],
@@ -75,8 +78,6 @@ function! s:fzf_run(initial) abort
           \ 'padding': [0, 1, 0, 1], 'zindex': 300,
           \ })
     call term_setsize(l:buf, l:h - 2, l:w - 4)
-    " fzf 終了でバッファが消えたらポップアップも閉じる
-    execute 'autocmd BufWipeout <buffer=' . l:buf . '> ++once call popup_close(' . l:winid . ')'
   else
     call term_start(['/bin/bash', '-c', l:cmd], {
           \ 'term_finish': 'close',
@@ -86,6 +87,11 @@ function! s:fzf_run(initial) abort
 endfunction
 
 function! s:fzf_done(tmp, job, status) abort
+  " fzf が終了したら（開く/閉じる どちらでも）ポップアップを畳む
+  if exists('s:fzf_popup')
+    try | call popup_close(s:fzf_popup) | catch | endtry
+    unlet s:fzf_popup
+  endif
   if !filereadable(a:tmp)
     return
   endif
