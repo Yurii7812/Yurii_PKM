@@ -199,9 +199,11 @@ nnoremap <silent> <S-Tab>  <Cmd>call yurii_pkm#jump_link(0)<CR>
 silent! execute "nnoremap <silent> \<Esc>[Z <Cmd>call yurii_pkm#jump_link(0)<CR>"
 nnoremap <silent> <CR>     <Cmd>call yurii_pkm#open_link_under_cursor()<CR>
 nnoremap <silent> <BS>     <Cmd>call yurii_pkm#go_back()<CR>
-" <Space> … parent/child のリンク一覧ポップアップ（右にプレビュー）。
-"           jk 1件 / hl 区間（10件）送り / ⏎・同数字 開く / ⎋ 閉じる /
-"           ^F ^B プレビュー送り。関係リンクが無ければカーソル巡回にフォールバック。
+" <Space> … 文中 / している / されている のリンク一覧ポップアップ（右に大きめプレビュー）。
+"           jk 選択 / l・ラベルキー（数字＋英字）で潜る（ポップアップは開いたまま
+"           一覧が飛び先の関係リンクに差し替わる）/ h 戻る / ⏎ 選択リンク先へ着地 /
+"           / 絞り込み / ⎋ 全部取り消して元へ / ^F ^B プレビュー送り。
+"           リンクが無ければカーソル巡回にフォールバック。
 " <S-Space> … ポップアップを出さずカーソルだけ次の関係リンクへ（従来動作）。
 nnoremap <silent> <Space>   <Cmd>call yurii_pkm#relation_link_popup()<CR>
 nnoremap <silent> <S-Space> <Cmd>call yurii_pkm#jump_relation_link(1)<CR>
