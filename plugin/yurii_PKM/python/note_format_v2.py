@@ -569,7 +569,8 @@ def sync_vault(root) -> int:
     # --- 上側を再構築。相手がカテゴリーなら自分側ラベルは常に `カテゴリー:` ---
     incoming: dict[str, list[tuple[str, str]]] = {}  # to_id -> [(from_id, label)]
     for (a, b) in present:
-        lbl = far_label((a, b))
+        # from がカテゴリーノート = サブ容器 → 相手の されている では `カテゴリー:`
+        lbl = CATEGORY_ATTR if a in is_cat else far_label((a, b))
         incoming.setdefault(b, []).append((a, lbl))
 
     for k, n in by_path.items():

@@ -114,7 +114,6 @@ command!          NA         call yurii_pkm#new_here_typed('A')
 command! -nargs=? NP         call yurii_pkm#v2_new_parent(<q-args>)
 command! -nargs=? NC         call yurii_pkm#v2_new_child(<q-args>)
 command!          NH         call yurii_pkm#v2_new_here()
-command!          V2Cat      call yurii_pkm#v2_toggle_category()
 command! -nargs=? V2Migrate  call yurii_pkm#v2_migrate(<q-args>)
 command! -nargs=* CA         call yurii_pkm#add_clipboard_to_branch()
 command! -nargs=* CU         call yurii_pkm#add_clipboard_before_up()
@@ -222,10 +221,8 @@ nnoremap <nowait> <silent> na  <Cmd>call yurii_pkm#new_here_typed('A')<CR>
 nnoremap <nowait> <silent> nc  <Cmd>call yurii_pkm#v2_new_child()<CR>
 nnoremap <nowait> <silent> np  <Cmd>call yurii_pkm#v2_new_parent()<CR>
 nnoremap <nowait> <silent> nh  <Cmd>call yurii_pkm#v2_new_here()<CR>
-" nk : カテゴリーノート（attribute: カテゴリー）を作る
+" nk : カテゴリーノートを作る（child/parent を聞く）。カテゴリーは nk でのみ作れる
 nnoremap <nowait> <silent> nk  <Cmd>call yurii_pkm#v2_new_category()<CR>
-" \pc : カテゴリー印をトグル
-nnoremap <silent> \pc <Cmd>call yurii_pkm#v2_toggle_category()<CR>
 " cu: クリップボードのリンクを Parent: セクションへ追加
 nnoremap <nowait> <silent> cu  <Cmd>call yurii_pkm#add_clipboard_to_branch()<CR>
 " ca: クリップボードのリンクを Child: に追加し、リンク先の Parent: に現在ノートを追加

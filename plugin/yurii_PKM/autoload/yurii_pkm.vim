@@ -2322,25 +2322,6 @@ function! s:v2_pick_relation() abort
   return l:r ==# 'なし' ? 'ノート' : l:r
 endfunction
 
-" y/n で「カテゴリーにするか」だけ聞く（既定 n）。戻り値: 1 = カテゴリー
-function! s:v2_ask_category() abort
-  echo 'カテゴリー（容器）ノートにする?  y / n  (既定 n)'
-  let l:c = getchar()
-  redraw
-  let l:ch = type(l:c) == v:t_number ? nr2char(l:c) : l:c
-  return l:ch ==? 'y'
-endfunction
-
-" 現在バッファがカテゴリーノートか
-function! s:v2_is_category() abort
-  if getline(1) !~# '^---\s*$' | return 0 | endif
-  for l:i in range(2, min([20, line('$')]))
-    if getline(l:i) =~# '^---\s*$' | break | endif
-    if getline(l:i) =~# '^\s*\%(attribute\|属性\)\s*:\s*カテゴリー\s*$' | return 1 | endif
-  endfor
-  return 0
-endfunction
-
 " front matter 終端行と、本文側で末尾寄りの --- 2 本（上側開始 / 下側開始）を返す。
 " 2 本無ければ EOF に補って返す。本文中の --- は末尾 2 本にならないので無視される。
 let s:v2_up_mark   = '<!-- している -->'
@@ -2501,8 +2482,16 @@ function! yurii_pkm#v2_new_parent(...) abort
 endfunction
 
 " nk: カテゴリーノートを作る（attribute: カテゴリー）。関係は数字で選ぶ
+" nk: カテゴリーノートを作る。まず child / parent を聞く
 function! yurii_pkm#v2_new_category(...) abort
-  call call('s:v2_new_related', [1, 1] + a:000)
+  echo '新カテゴリーを  c=子（現ノートの されている 側） / p=親（している 側）  (既定 c, Esc/q キャンセル)'
+  let l:ch = nr2char(getchar())
+  redraw
+  if l:ch ==? 'q' || char2nr(l:ch) == 27 || char2nr(l:ch) == 3
+    echo 'yurii_PKM: キャンセル' | return
+  endif
+  let l:below = (l:ch ==? 'p') ? 0 : 1
+  call call('s:v2_new_related', [l:below, 1] + a:000)
 endfunction
 
 " カーソル直下ノート（nh）: 新ノートを作り、そのリンクをカーソル行の直下（本文）に置く。
@@ -2527,37 +2516,6 @@ function! yurii_pkm#v2_new_here() abort
   silent noautocmd write
   call s:run_update_one_for(l:cur)
   execute 'edit ' . fnameescape(l:file)
-endfunction
-
-" 現在ノートのカテゴリー印をトグル（:V2Cat / \pc）
-function! yurii_pkm#v2_toggle_category() abort
-  if s:pkm_format() !=# 'v2'
-    echo 'yurii_PKM: v2 専用' | return
-  endif
-  if getline(1) !~# '^---\s*$'
-    echohl WarningMsg | echo 'yurii_PKM: front matter が無い' | echohl NONE | return
-  endif
-  let l:fm_end = 0
-  for l:i in range(2, min([40, line('$')]))
-    if getline(l:i) =~# '^---\s*$' | let l:fm_end = l:i | break | endif
-  endfor
-  if l:fm_end == 0 | echohl WarningMsg | echo 'yurii_PKM: front matter が閉じてない' | echohl NONE | return | endif
-  let l:line = 0
-  for l:i in range(2, l:fm_end - 1)
-    if getline(l:i) =~# '^\s*\%(attribute\|属性\)\s*:' | let l:line = l:i | break | endif
-  endfor
-  if l:line > 0
-    execute l:line . 'delete _'
-    echo 'yurii_PKM: カテゴリー印を外した'
-  else
-    let l:at = l:fm_end - 1
-    for l:i in range(2, l:fm_end - 1)
-      if getline(l:i) =~# '^\s*title\s*:' | let l:at = l:i | endif
-    endfor
-    call append(l:at, 'attribute: カテゴリー')
-    echo 'yurii_PKM: カテゴリーにした'
-  endif
-  silent! write
 endfunction
 
 " 旧形式（v1 の Parent:/Child: / 旧 `---`）を v2 へ明示変換。
