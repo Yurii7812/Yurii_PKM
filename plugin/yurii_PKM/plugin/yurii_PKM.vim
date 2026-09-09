@@ -199,8 +199,9 @@ nnoremap <silent> <S-Tab>  <Cmd>call yurii_pkm#jump_link(0)<CR>
 silent! execute "nnoremap <silent> \<Esc>[Z <Cmd>call yurii_pkm#jump_link(0)<CR>"
 nnoremap <silent> <CR>     <Cmd>call yurii_pkm#open_link_under_cursor()<CR>
 nnoremap <silent> <BS>     <Cmd>call yurii_pkm#go_back()<CR>
-" <Space> … parent/child（している/されている）のリンク一覧ポップアップ。
-"           番号 or ⏎ で開く。v2 ノートでなければカーソル巡回にフォールバック。
+" <Space> … parent/child のリンク一覧ポップアップ（右にプレビュー）。
+"           jk 上下 / l・⏎ 開く / h・⎋ 閉じる / 数字 選択(同数字で開く) /
+"           ^F ^B プレビュー送り。関係リンクが無ければカーソル巡回にフォールバック。
 " <S-Space> … ポップアップを出さずカーソルだけ次の関係リンクへ（従来動作）。
 nnoremap <silent> <Space>   <Cmd>call yurii_pkm#relation_link_popup()<CR>
 nnoremap <silent> <S-Space> <Cmd>call yurii_pkm#jump_relation_link(1)<CR>

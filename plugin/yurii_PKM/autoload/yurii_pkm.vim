@@ -1709,11 +1709,15 @@ function! s:relation_links_detailed() abort
 endfunction
 
 let s:rlp_win = -1
+let s:rlp_pvwin = -1
 let s:rlp_items = []
 let s:rlp_sel = 0
+let s:rlp_top = 0
+let s:rlp_rows = 14
 let s:rlp_last_digit = -1
 
-" <Space> … parent/child のリンクを一覧するポップアップ。番号 or ⏎ で開く。
+" <Space> … parent/child のリンク一覧ポップアップ（右にプレビュー）。
+"   j/k 上下  h 閉じる  l/⏎ 開く  数字=選択(同数字で開く)  ^F/^B プレビュー送り
 function! yurii_pkm#relation_link_popup() abort
   let l:items = s:relation_links_detailed()
   if empty(l:items)
@@ -1723,6 +1727,7 @@ function! yurii_pkm#relation_link_popup() abort
   endif
   let s:rlp_items = l:items
   let s:rlp_last_digit = -1
+  let s:rlp_top = 0
   " カーソル位置以降の最初の項目を初期選択
   let l:cur = [line('.'), col('.')]
   let s:rlp_sel = 0
@@ -1733,63 +1738,126 @@ function! yurii_pkm#relation_link_popup() abort
     endif
     let l:i += 1
   endfor
+
+  let s:rlp_rows = min([len(l:items), max([&lines - 9, 4])])
+  let l:h = s:rlp_rows + 3
+  let l:w = min([float2nr(&columns * 0.40), 56])
+  let l:pv = min([float2nr(&columns * 0.46), 90])
+  let l:col = max([(&columns - (l:w + 3 + l:pv)) / 2, 2])
+  let l:line = max([(&lines - l:h) / 2, 1])
+
   let s:rlp_win = popup_create([], {
         \ 'title': ' parent / child ',
-        \ 'pos': 'center', 'zindex': 300,
+        \ 'line': l:line, 'col': l:col,
+        \ 'minwidth': l:w, 'maxwidth': l:w,
+        \ 'minheight': l:h, 'maxheight': l:h,
+        \ 'zindex': 300,
         \ 'border': [], 'borderchars': ['─','│','─','│','╭','╮','╯','╰'],
         \ 'borderhighlight': ['Comment'], 'padding': [0,1,0,1],
         \ 'mapping': 0,
         \ 'filter': function('s:rlp_key'), 'callback': function('s:rlp_done'),
+        \ })
+  let s:rlp_pvwin = popup_create([], {
+        \ 'title': ' プレビュー ',
+        \ 'line': l:line, 'col': l:col + l:w + 3,
+        \ 'minwidth': l:pv, 'maxwidth': l:pv,
+        \ 'minheight': l:h, 'maxheight': l:h,
+        \ 'zindex': 299,
+        \ 'border': [], 'borderchars': ['─','│','─','│','╭','╮','╯','╰'],
+        \ 'borderhighlight': ['Comment'], 'padding': [0,1,0,1],
         \ })
   call s:rlp_render()
 endfunction
 
 function! s:rlp_render() abort
   if s:rlp_win < 0 | return | endif
+  let l:total = len(s:rlp_items)
+  " 選択が見える範囲に s:rlp_top を寄せる
+  if s:rlp_sel < s:rlp_top | let s:rlp_top = s:rlp_sel | endif
+  if s:rlp_sel >= s:rlp_top + s:rlp_rows | let s:rlp_top = s:rlp_sel - s:rlp_rows + 1 | endif
+  if s:rlp_top < 0 | let s:rlp_top = 0 | endif
+
   let l:lw = 0
   for l:it in s:rlp_items
     let l:lw = max([l:lw, strdisplaywidth(l:it.label)])
   endfor
+
   let l:lines = []
-  let l:side = ''
-  let l:n = 0
-  for l:it in s:rlp_items
-    if l:it.side !=# l:side
-      let l:side = l:it.side
-      call add(l:lines, (l:side ==# 'up' ? ' している（parent）' : ' されている（child）'))
-    endif
-    let l:n += 1
-    let l:num = (l:n <= 9) ? l:n : (l:n == 10 ? 0 : ' ')
-    let l:mark = ((l:n - 1) == s:rlp_sel) ? '▶' : ' '
+  let l:end = min([s:rlp_top + s:rlp_rows, l:total])
+  for l:i in range(s:rlp_top, l:end - 1)
+    let l:it = s:rlp_items[l:i]
+    let l:num = (l:i + 1 <= 9) ? (l:i + 1) : (l:i + 1 == 10 ? 0 : ' ')
+    let l:mark = (l:i == s:rlp_sel) ? '▶' : ' '
+    let l:arrow = (l:it.side ==# 'up') ? '→' : '←'
     let l:pad = repeat(' ', l:lw - strdisplaywidth(l:it.label))
-    call add(l:lines, printf('%s%s  %s%s  %s', l:mark, l:num, l:it.label, l:pad, l:it.text))
+    call add(l:lines, printf('%s%s %s %s%s  %s',
+          \ l:mark, l:num, l:arrow, l:it.label, l:pad, l:it.text))
   endfor
-  call add(l:lines, repeat('─', 40))
-  call add(l:lines, printf('%d/%d   数字/jk 選択・⏎/同数字 開く・⎋ 閉じる',
-        \ s:rlp_sel + 1, len(s:rlp_items)))
+  call add(l:lines, repeat('─', 46))
+  call add(l:lines, printf('%d/%d  → している / ← されている', s:rlp_sel + 1, l:total))
+  call add(l:lines, 'jk 上下  l/⏎ 開く  h/⎋ 閉じる  数字 選択  ^F^B プレ送り')
   call popup_settext(s:rlp_win, l:lines)
+  call s:rlp_preview()
+endfunction
+
+function! s:rlp_preview() abort
+  if s:rlp_pvwin < 0 | return | endif
+  let l:it = s:rlp_items[s:rlp_sel]
+  let l:path = s:resolve_link_for_navigation(l:it.target)
+  if empty(l:path) || (!filereadable(l:path) && !isdirectory(l:path))
+    call popup_settext(s:rlp_pvwin, ['(開けない: ' . l:it.target . ')'])
+    return
+  endif
+  if isdirectory(l:path)
+    call popup_settext(s:rlp_pvwin, ['(ディレクトリ)', l:path])
+    return
+  endif
+  let l:body = readfile(l:path, '', 300)
+  " front matter を落とす
+  if !empty(l:body) && l:body[0] =~# '^---\s*$'
+    let l:e = 1
+    while l:e < len(l:body) && l:body[l:e] !~# '^\%(---\|\.\.\.\)\s*$'
+      let l:e += 1
+    endwhile
+    let l:body = l:body[l:e + 1 :]
+  endif
+  while !empty(l:body) && l:body[0] =~# '^\s*$'
+    call remove(l:body, 0)
+  endwhile
+  let l:head = printf('%s   %s %s', fnamemodify(l:path, ':t'),
+        \ (l:it.side ==# 'up' ? '→' : '←'), l:it.label)
+  call popup_settext(s:rlp_pvwin, [l:head, repeat('─', 46)] + l:body)
+  call popup_setoptions(s:rlp_pvwin, {'firstline': 1})
 endfunction
 
 function! s:rlp_key(winid, key) abort
-  if a:key ==# "\<Esc>" || a:key ==# "\<C-c>" || a:key ==# 'q' || a:key ==# ' '
+  let l:n = len(s:rlp_items)
+  if a:key ==# "\<Esc>" || a:key ==# "\<C-c>" || a:key ==# 'q'
+        \ || a:key ==# ' ' || a:key ==# 'h' || a:key ==# "\<Left>"
     call popup_close(a:winid, -1)
     return 1
-  elseif a:key ==# "\<CR>"
+  elseif a:key ==# "\<CR>" || a:key ==# 'l' || a:key ==# "\<Right>"
     call popup_close(a:winid, s:rlp_sel)
     return 1
   elseif a:key ==# 'j' || a:key ==# "\<Down>" || a:key ==# "\<C-n>"
-    let s:rlp_sel = (s:rlp_sel + 1) % len(s:rlp_items)
+    let s:rlp_sel = min([s:rlp_sel + 1, l:n - 1])
     let s:rlp_last_digit = -1
   elseif a:key ==# 'k' || a:key ==# "\<Up>" || a:key ==# "\<C-p>"
-    let s:rlp_sel = (s:rlp_sel - 1 + len(s:rlp_items)) % len(s:rlp_items)
+    let s:rlp_sel = max([s:rlp_sel - 1, 0])
     let s:rlp_last_digit = -1
   elseif a:key ==# 'g'
     let s:rlp_sel = 0 | let s:rlp_last_digit = -1
   elseif a:key ==# 'G'
-    let s:rlp_sel = len(s:rlp_items) - 1 | let s:rlp_last_digit = -1
+    let s:rlp_sel = l:n - 1 | let s:rlp_last_digit = -1
+  elseif a:key ==# "\<C-f>" || a:key ==# "\<C-d>" || a:key ==# "\<PageDown>"
+    if s:rlp_pvwin >= 0 | call win_execute(s:rlp_pvwin, "normal! \<C-d>") | endif
+    return 1
+  elseif a:key ==# "\<C-b>" || a:key ==# "\<C-u>" || a:key ==# "\<PageUp>"
+    if s:rlp_pvwin >= 0 | call win_execute(s:rlp_pvwin, "normal! \<C-u>") | endif
+    return 1
   elseif a:key =~# '^[0-9]$'
     let l:row = (a:key ==# '0') ? 10 : str2nr(a:key)
-    if l:row >= 1 && l:row <= len(s:rlp_items)
+    if l:row >= 1 && l:row <= l:n
       if s:rlp_last_digit == l:row
         call popup_close(a:winid, l:row - 1)
         return 1
@@ -1806,6 +1874,10 @@ endfunction
 
 function! s:rlp_done(winid, result) abort
   let s:rlp_win = -1
+  if s:rlp_pvwin >= 0
+    call popup_close(s:rlp_pvwin)
+    let s:rlp_pvwin = -1
+  endif
   if type(a:result) != v:t_number || a:result < 0 || a:result >= len(s:rlp_items)
     return
   endif
