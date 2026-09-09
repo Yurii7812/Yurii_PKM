@@ -1678,6 +1678,140 @@ function! yurii_pkm#jump_relation_link(forward) abort
   normal! zv
 endfunction
 
+" parent/child のリンクを『ラベル: 表示名』付きで集める。
+"   {lnum, col, side('up'|'down'), label, text, target}
+function! s:v2_relation_links_detailed() abort
+  let [l:up_m, l:dn_m] = s:v2_boundaries()
+  if l:up_m <= 0 | return [] | endif
+  let l:out = []
+  for l:seg in [[l:up_m + 1, l:dn_m - 1, 'up'], [l:dn_m + 1, line('$'), 'down']]
+    let l:label = ''
+    for l:lnum in range(max([l:seg[0], 1]), min([l:seg[1], line('$')]))
+      let l:line = getline(l:lnum)
+      if l:line !~# '^\s*\[' && l:line =~# '^\s*[^[:space:]:][^:]*:'
+        let l:label = trim(matchstr(l:line, '^\s*\zs[^:]\{-}\ze\s*:'))
+      endif
+      let l:start = 0
+      while 1
+        let l:m = matchstrpos(l:line, s:link_pat, l:start)
+        if len(l:m) < 3 || l:m[1] < 0 | break | endif
+        let l:parts = matchlist(l:m[0], '\v\[([^\]]*)\]\(([^)]*)\)')
+        call add(l:out, {'lnum': l:lnum, 'col': l:m[1] + 1, 'side': l:seg[2],
+              \ 'label': l:label, 'text': get(l:parts, 1, ''), 'target': get(l:parts, 2, '')})
+        let l:start = l:m[2]
+      endwhile
+    endfor
+  endfor
+  return l:out
+endfunction
+
+let s:rlp_win = -1
+let s:rlp_items = []
+let s:rlp_sel = 0
+let s:rlp_last_digit = -1
+
+" <Space> … parent/child のリンクを一覧するポップアップ。番号 or ⏎ で開く。
+function! yurii_pkm#relation_link_popup() abort
+  let l:items = s:v2_relation_links_detailed()
+  if empty(l:items)
+    " v2 ノートでない等 → 従来のカーソル巡回にフォールバック
+    call yurii_pkm#jump_relation_link(1)
+    return
+  endif
+  let s:rlp_items = l:items
+  let s:rlp_last_digit = -1
+  " カーソル位置以降の最初の項目を初期選択
+  let l:cur = [line('.'), col('.')]
+  let s:rlp_sel = 0
+  let l:i = 0
+  for l:it in l:items
+    if s:pos_after([l:it.lnum, l:it.col], l:cur)
+      let s:rlp_sel = l:i | break
+    endif
+    let l:i += 1
+  endfor
+  let s:rlp_win = popup_create([], {
+        \ 'title': ' parent / child ',
+        \ 'pos': 'center', 'zindex': 300,
+        \ 'border': [], 'borderchars': ['─','│','─','│','╭','╮','╯','╰'],
+        \ 'borderhighlight': ['Comment'], 'padding': [0,1,0,1],
+        \ 'mapping': 0,
+        \ 'filter': function('s:rlp_key'), 'callback': function('s:rlp_done'),
+        \ })
+  call s:rlp_render()
+endfunction
+
+function! s:rlp_render() abort
+  if s:rlp_win < 0 | return | endif
+  let l:lw = 0
+  for l:it in s:rlp_items
+    let l:lw = max([l:lw, strdisplaywidth(l:it.label)])
+  endfor
+  let l:lines = []
+  let l:side = ''
+  let l:n = 0
+  for l:it in s:rlp_items
+    if l:it.side !=# l:side
+      let l:side = l:it.side
+      call add(l:lines, (l:side ==# 'up' ? ' している（parent）' : ' されている（child）'))
+    endif
+    let l:n += 1
+    let l:num = (l:n <= 9) ? l:n : (l:n == 10 ? 0 : ' ')
+    let l:mark = ((l:n - 1) == s:rlp_sel) ? '▶' : ' '
+    let l:pad = repeat(' ', l:lw - strdisplaywidth(l:it.label))
+    call add(l:lines, printf('%s%s  %s%s  %s', l:mark, l:num, l:it.label, l:pad, l:it.text))
+  endfor
+  call add(l:lines, repeat('─', 40))
+  call add(l:lines, printf('%d/%d   数字/jk 選択・⏎/同数字 開く・⎋ 閉じる',
+        \ s:rlp_sel + 1, len(s:rlp_items)))
+  call popup_settext(s:rlp_win, l:lines)
+endfunction
+
+function! s:rlp_key(winid, key) abort
+  if a:key ==# "\<Esc>" || a:key ==# "\<C-c>" || a:key ==# 'q' || a:key ==# ' '
+    call popup_close(a:winid, -1)
+    return 1
+  elseif a:key ==# "\<CR>"
+    call popup_close(a:winid, s:rlp_sel)
+    return 1
+  elseif a:key ==# 'j' || a:key ==# "\<Down>" || a:key ==# "\<C-n>"
+    let s:rlp_sel = (s:rlp_sel + 1) % len(s:rlp_items)
+    let s:rlp_last_digit = -1
+  elseif a:key ==# 'k' || a:key ==# "\<Up>" || a:key ==# "\<C-p>"
+    let s:rlp_sel = (s:rlp_sel - 1 + len(s:rlp_items)) % len(s:rlp_items)
+    let s:rlp_last_digit = -1
+  elseif a:key ==# 'g'
+    let s:rlp_sel = 0 | let s:rlp_last_digit = -1
+  elseif a:key ==# 'G'
+    let s:rlp_sel = len(s:rlp_items) - 1 | let s:rlp_last_digit = -1
+  elseif a:key =~# '^[0-9]$'
+    let l:row = (a:key ==# '0') ? 10 : str2nr(a:key)
+    if l:row >= 1 && l:row <= len(s:rlp_items)
+      if s:rlp_last_digit == l:row
+        call popup_close(a:winid, l:row - 1)
+        return 1
+      endif
+      let s:rlp_sel = l:row - 1
+      let s:rlp_last_digit = l:row
+    endif
+  else
+    return 1
+  endif
+  call s:rlp_render()
+  return 1
+endfunction
+
+function! s:rlp_done(winid, result) abort
+  let s:rlp_win = -1
+  if type(a:result) != v:t_number || a:result < 0 || a:result >= len(s:rlp_items)
+    return
+  endif
+  let l:it = s:rlp_items[a:result]
+  call cursor(l:it.lnum, l:it.col)
+  normal! zv
+  call yurii_pkm#open_link_under_cursor()
+endfunction
+
 " 数字キー … 本文の N 番目のリンクへ。該当が無ければ通常のカウントとして送る。
 function! yurii_pkm#digit_key(d) abort
   let l:pos = s:v2_body_link_positions()

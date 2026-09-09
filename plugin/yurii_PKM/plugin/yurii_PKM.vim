@@ -199,9 +199,11 @@ nnoremap <silent> <S-Tab>  <Cmd>call yurii_pkm#jump_link(0)<CR>
 silent! execute "nnoremap <silent> \<Esc>[Z <Cmd>call yurii_pkm#jump_link(0)<CR>"
 nnoremap <silent> <CR>     <Cmd>call yurii_pkm#open_link_under_cursor()<CR>
 nnoremap <silent> <BS>     <Cmd>call yurii_pkm#go_back()<CR>
-" <Space> … parent/child（している/されている）のリンクだけを巡回。文中は対象外。
-nnoremap <silent> <Space>   <Cmd>call yurii_pkm#jump_relation_link(1)<CR>
-nnoremap <silent> <S-Space> <Cmd>call yurii_pkm#jump_relation_link(0)<CR>
+" <Space> … parent/child（している/されている）のリンク一覧ポップアップ。
+"           番号 or ⏎ で開く。v2 ノートでなければカーソル巡回にフォールバック。
+" <S-Space> … ポップアップを出さずカーソルだけ次の関係リンクへ（従来動作）。
+nnoremap <silent> <Space>   <Cmd>call yurii_pkm#relation_link_popup()<CR>
+nnoremap <silent> <S-Space> <Cmd>call yurii_pkm#jump_relation_link(1)<CR>
 " 数字 1-9 … 本文（している の見張りより前）の N 番目のリンクへ。
 " 本文リンクが無い所ではそのままカウント（5j 等）として働く。
 for s:n in range(1, 9)
