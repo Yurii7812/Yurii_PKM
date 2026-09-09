@@ -2231,7 +2231,9 @@ function! s:rlp_render() abort
   if s:rlp_input
     call add(l:lines, '打つ 絞る  ↑↓ 選択  → 潜る  ⏎ 入力終了  ⌫ 消す  ⎋ 消して終了')
   else
-    call add(l:lines, '字 潜る  jk 選択  ⏎ 開く  ⌫ 戻る  ␣ ここ  fb プレ  cp 子親  ym  i 打つ  ⇥ 切替')
+    call add(l:lines, s:rlp_scope ==# 'global'
+          \ ? '字 移動  ⏎ 開く  l 潜る  ⌫ 戻る  fb プレ  cp 子親  ym  i 打つ  ⇥ 切替'
+          \ : '字 潜る  jk 選択  ⏎ 開く  ⌫ 戻る  ␣ ここ  fb プレ  cp 子親  ym  i 打つ  ⇥ 切替')
   endif
   call popup_settext(s:rlp_win, l:lines)
   call popup_setoptions(s:rlp_win,
@@ -2269,8 +2271,60 @@ function! s:rlp_preview() abort
   endwhile
   let l:head = s:get_title(l:path) . '   ' . fnamemodify(l:path, ':t')
   let l:rule = repeat('─', max([get(s:rlp_geo, 'pv_w', 46) - 2, 10]))
-  call popup_settext(s:rlp_pvwin, [l:head, l:rule] + l:body)
-  call popup_setoptions(s:rlp_pvwin, {'firstline': 1})
+
+  " 検索語を強調し、最初のヒット行が見えるところまでスクロールする。
+  " ヒットが見えないと「なぜこれが出てきたのか」が分からず判断できない。
+  if empty(s:rlp_terms)
+    call popup_settext(s:rlp_pvwin, [l:head, l:rule] + l:body)
+    call popup_setoptions(s:rlp_pvwin, {'firstline': 1})
+    return
+  endif
+  call s:rlp_ensure_hl()
+  let l:lines = [{'text': l:head}, {'text': l:rule}]
+  let l:first = 0
+  let l:n = 2
+  for l:b in l:body
+    let l:n += 1
+    let l:props = s:rlp_hit_props(l:b)
+    if empty(l:props)
+      call add(l:lines, {'text': l:b})
+    else
+      if l:first == 0 | let l:first = l:n | endif
+      call add(l:lines, {'text': l:b, 'props': l:props})
+    endif
+  endfor
+  call popup_settext(s:rlp_pvwin, l:lines)
+  " ヒット行の少し上から見せる（文脈が要るので 2 行手前）
+  call popup_setoptions(s:rlp_pvwin,
+        \ {'firstline': l:first > 0 ? max([l:first - 2, 1]) : 1})
+endfunction
+
+" プレビュー内のヒット強調用。reverse なので配色を問わず必ず見える。
+function! s:rlp_ensure_hl() abort
+  highlight default YuriiNavMatch term=reverse cterm=reverse gui=reverse
+  if empty(prop_type_get('yuriiNavMatch'))
+    call prop_type_add('yuriiNavMatch',
+          \ {'highlight': 'YuriiNavMatch', 'combine': v:true})
+  endif
+endfunction
+
+" 1 行の中の検索語一致に付ける text-property のリスト
+function! s:rlp_hit_props(text) abort
+  let l:props = []
+  if empty(a:text) | return l:props | endif
+  let l:hay = tolower(a:text)
+  for l:t in s:rlp_terms
+    if empty(l:t) | continue | endif
+    let l:len = strlen(l:t)
+    let l:start = 0
+    while 1
+      let l:i = stridx(l:hay, l:t, l:start)
+      if l:i < 0 | break | endif
+      call add(l:props, {'col': l:i + 1, 'length': l:len, 'type': 'yuriiNavMatch'})
+      let l:start = l:i + l:len
+    endwhile
+  endfor
+  return l:props
 endfunction
 
 " --- キー -------------------------------------------------------------------
@@ -2420,10 +2474,16 @@ function! s:rlp_key(winid, key) abort
     call s:rlp_dive(s:rlp_sel)
     return 1
   elseif has_key(s:rlp_rowmap, a:key)
-    " ラベル1タップでそのまま潜る。潜ってもノートはアンカー行 ◎ とプレビューに
-    " 出続けるし ⌫ で即戻れる（＝非破壊）ので、確認の1打は要らない。
-    call s:rlp_dive(s:rlp_rowmap[a:key])
-    return 1
+    if s:rlp_scope ==# 'global'
+      " 検索結果ではラベルは「移動だけ」。7 番を見たいのに ↓ を 7 回は野暮なので
+      " 1 打で飛び、プレビューで中身を見てから ⏎ 開く / l 潜る を選ぶ。
+      let s:rlp_sel = s:rlp_rowmap[a:key]
+    else
+      " ローカルは相手が既に分かっているので1タップでそのまま潜る。
+      " 潜ってもアンカー行 ◎ とプレビューに出続け ⌫ で即戻れる（＝非破壊）。
+      call s:rlp_dive(s:rlp_rowmap[a:key])
+      return 1
+    endif
   else
     return 1
   endif
