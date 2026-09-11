@@ -4,14 +4,14 @@
 詳細仕様は repo ルートの NOTE_FORMAT.md。要点:
 
 - ファイル名 = タイムスタンプのみ。front matter は time / title。
-- 本文の後、``<!-- している -->`` 見張り行から上側（このノートが「している」こと）。
-- ``<!-- されている -->`` 見張り行から下側（「されている」こと）。
+- 本文の後、``<!-- こっちにとって -->`` 見張り行から上側（これ＝このノートにとって そのノートが○○）。
+- ``<!-- そっちにとって -->`` 見張り行から下側（それ＝そのノートにとって このノートが○○）。
   HTML コメントなのでレンダラで不可視・見出し化しない・本文と衝突しない。
 - 関係: キーワード / 前提 / 論点 / 見解 / 関連 / ノート（既定）/ 自由入力。
   `カテゴリー` は選ばない ── 相手が `attribute: カテゴリー` なら自動でそのラベルになる。
   `関連` は対称。並び順は カテゴリー → キーワード → 前提 → 論点 → 見解 → 関連 → ノート。
   `関連` は対称。相手が `attribute: カテゴリー` のノートなら、自分側のラベルは
-  常に `カテゴリー:` になる（相手側の されている は書かれた関係のまま）。
+  常に `カテゴリー:` になる（相手側の そっちにとって は書かれた関係のまま）。
 - 唯一のノード属性は front matter の `attribute: カテゴリー`（容器ノートの印）。無ければただのノート。
   論点 / 見解 等は宣言しない（関係とタイトルから分かる）。
 - リンク 1 本は ``関係: [t](x.md)`` のインライン、2 本以上は ``関係:`` 改行のブロック。
@@ -49,8 +49,11 @@ CATEGORY_ATTR = "カテゴリー"  # attribute の唯一の値 / 関係名でも
 SYMMETRIC: frozenset[str] = frozenset({"関連"})
 BACKLINK = "バックリンク"
 
-UP_MARK = "<!-- している -->"
-DOWN_MARK = "<!-- されている -->"
+UP_MARK = "<!-- こっちにとって -->"
+DOWN_MARK = "<!-- そっちにとって -->"
+# 旧見張り（している/されている）。parse だけが読む。render は新表記に統一する。
+LEGACY_UP_MARK = "<!-- している -->"
+LEGACY_DOWN_MARK = "<!-- されている -->"
 
 DIVIDER_RE = re.compile(r"^-{3,}\s*$")
 # 任意の `語:` 見出し（先頭が空白 / # / : でない）。散文除けは _looks_like_header で行う。
@@ -236,7 +239,11 @@ def parse_note(path, text: str | None = None) -> Note:
 
     # sync が触るのは見張りコメント 2 行を持つファイルだけ。
     # それ以外（旧 v1 / 旧 --- / 日記 / 素の散文）は managed=False で読むだけ。
-    marked = UP_MARK in stripped and DOWN_MARK in stripped
+    # 見張りは新表記（こっちにとって/そっちにとって）・旧表記（している/されている）
+    # のどちらでも読める。render は常に新表記で書き直す（＝次の sync で自動移行）。
+    up_mark = UP_MARK if UP_MARK in stripped else (LEGACY_UP_MARK if LEGACY_UP_MARK in stripped else None)
+    down_mark = DOWN_MARK if DOWN_MARK in stripped else (LEGACY_DOWN_MARK if LEGACY_DOWN_MARK in stripped else None)
+    marked = up_mark is not None and down_mark is not None
     frozen = bool(re.search(
         r"^\s*(pkm\s*:\s*raw|sync\s*:\s*(?:false|off|no))\s*$",
         "\n".join(fm), re.I | re.M))
@@ -247,10 +254,10 @@ def parse_note(path, text: str | None = None) -> Note:
             body.pop()
         return Note(p, fm, title, body, {}, {}, managed=False)
 
-    u = len(stripped) - 1 - stripped[::-1].index(UP_MARK)
-    d = len(stripped) - 1 - stripped[::-1].index(DOWN_MARK)
+    u = len(stripped) - 1 - stripped[::-1].index(up_mark)
+    d = len(stripped) - 1 - stripped[::-1].index(down_mark)
     if u > d:
-        u = stripped.index(UP_MARK)
+        u = stripped.index(up_mark)
     # 本文は 1 行も削らない。見張りの直前に空いている行は「書くための余白」で、
     # テンプレートが意図して置いたもの（カーソルはそこに来る）。
     body = list(rest[:u])
@@ -267,7 +274,8 @@ def migrate_note(text: str, path: str = "note.md") -> str | None:
     raw = text.split("\n")
     fm, rest = _split_front_matter(raw)
     stripped = [ln.strip() for ln in rest]
-    if UP_MARK in stripped and DOWN_MARK in stripped:
+    if (UP_MARK in stripped and DOWN_MARK in stripped) or (
+            LEGACY_UP_MARK in stripped and LEGACY_DOWN_MARK in stripped):
         return None
     title = _fm_title(fm) or Path(path).stem
     div_idx = [i for i, s in enumerate(stripped) if DIVIDER_RE.match(s)]
@@ -373,7 +381,7 @@ def render_note(note: Note) -> str:
         out.append("")
     out += body
 
-    # 本文 → している見張り → 上側 → されている見張り → 下側
+    # 本文 → こっちにとって見張り → 上側 → そっちにとって見張り → 下側
     # 本文が空行で終わっていなければ 1 行だけ空ける（余白があるならそのまま）
     if out and out[-1].strip() != "":
         out.append("")
@@ -497,8 +505,8 @@ def sync_vault(root) -> int:
         return ids.get(tp.resolve()) if tp is not None else None
 
     # 有向関係の同一性は (from_id, to_id) のペア。ラベルは別管理（表示のみ）。
-    up_label: dict[tuple[str, str], str] = {}    # (A,B) <- A の している 行 `label: [B]`
-    down_label: dict[tuple[str, str], str] = {}  # (A,B) <- B の されている 行 `label: [A]`
+    up_label: dict[tuple[str, str], str] = {}    # (A,B) <- A の こっちにとって 行 `label: [B]`
+    down_label: dict[tuple[str, str], str] = {}  # (A,B) <- B の そっちにとって 行 `label: [A]`
     up_ann: dict[tuple[str, str], str] = {}
     up_unresolved: dict[Path, dict[str, list]] = {k: {} for k in by_path}
     body_links: dict[str, set[str]] = {}
@@ -582,7 +590,7 @@ def sync_vault(root) -> int:
     # --- 上側を再構築。相手がカテゴリーなら自分側ラベルは常に `カテゴリー:` ---
     incoming: dict[str, list[tuple[str, str]]] = {}  # to_id -> [(from_id, label)]
     for (a, b) in present:
-        # from がカテゴリーノート = サブ容器 → 相手の されている では `カテゴリー:`
+        # from がカテゴリーノート = サブ容器 → 相手の そっちにとって では `カテゴリー:`
         lbl = CATEGORY_ATTR if a in is_cat else far_label((a, b))
         incoming.setdefault(b, []).append((a, lbl))
 

@@ -22,8 +22,8 @@ def check(cond: bool, msg: str) -> None:
         _FAILED.append(msg)
 
 
-UP_MARK = "<!-- している -->"
-DOWN_MARK = "<!-- されている -->"
+UP_MARK = "<!-- こっちにとって -->"
+DOWN_MARK = "<!-- そっちにとって -->"
 
 
 def regions(text: str) -> tuple[str, str]:
@@ -54,10 +54,10 @@ def test_parse_inline_and_block_roundtrip() -> None:
     src = (
         "---\ntime: 2026-01-01 00:00:00\ntitle: A\n---\n\n# A\n\n"
         "散文。ここに ワード: と書いても本文。ここに --- も書ける。\n\n"
-        "<!-- している -->\n"
+        "<!-- こっちにとって -->\n"
         "所属: [瞑想](20250101.md)\n"
         "論点:\n[問い](20250111.md) — メモ\n[別の問い](20250112.md)\n"
-        "<!-- されている -->\n"
+        "<!-- そっちにとって -->\n"
         "関連: [呼吸法](20250107.md)\n"
     )
     n = v2.parse_note(Path("/x/A.md"), src)
@@ -78,10 +78,10 @@ def test_normalize_counts() -> None:
     print("normalize: 本数に応じた整形")
     src = (
         "---\ntitle: A\n---\n\n# A\n\n"
-        "<!-- している -->\n"
+        "<!-- こっちにとって -->\n"
         "論点: [x](20250101.md)\n[y](20250102.md)\n"  # インライン記法だが 2 本
         "前提:\n[z](20250103.md)\n"                     # ブロック記法だが 1 本
-        "<!-- されている -->\n"
+        "<!-- そっちにとって -->\n"
     )
     n = v2.parse_note(Path("/x/A.md"), src)
     out = v2.render_note(n)
@@ -193,7 +193,7 @@ def test_migrate_legacy_v1_note() -> None:
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
         (root / "260909061513.md").write_text(
-            "---\ntitle: parent-note\n---\n\n# parent-note\n\n<!-- している -->\n<!-- されている -->\n", encoding="utf-8")
+            "---\ntitle: parent-note\n---\n\n# parent-note\n\n<!-- こっちにとって -->\n<!-- そっちにとって -->\n", encoding="utf-8")
         legacy = (
             "---\ntime: 2026-09-09 06:15:21\ntitle: 260909061521\n---\n\n"
             "# 260909061521\n\n\n\nParent:\n[260909061513](260909061513.md)\n"
@@ -217,8 +217,8 @@ def test_migrate_legacy_v1_note() -> None:
 
 def test_kenkai_and_custom_type() -> None:
     print("type: 見解 と自由入力の型")
-    src = ("---\ntitle: A\n---\n\n# A\n\n本文。\n\n<!-- している -->\n"
-           "見解: [x](20250101.md)\n補足: [y](20250102.md)\n<!-- されている -->\n")
+    src = ("---\ntitle: A\n---\n\n# A\n\n本文。\n\n<!-- こっちにとって -->\n"
+           "見解: [x](20250101.md)\n補足: [y](20250102.md)\n<!-- そっちにとって -->\n")
     n = v2.parse_note(Path("/x/A.md"), src)
     check(n.up.get("見解") == [("x", "20250101.md", None)], "見解: を型として認識")
     check(n.up.get("補足") == [("y", "20250102.md", None)], "自由な語:( 補足 ) も型として保持")
@@ -231,7 +231,7 @@ def test_body_link_becomes_backlink() -> None:
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
         (root / "20250104.md").write_text(
-            "---\ntitle: A\n---\n\n# A\n\n詳しくは [B の話](20250111.md) を参照。\n\n<!-- している -->\n<!-- されている -->\n",
+            "---\ntitle: A\n---\n\n# A\n\n詳しくは [B の話](20250111.md) を参照。\n\n<!-- こっちにとって -->\n<!-- そっちにとって -->\n",
             encoding="utf-8")
         note(root / "20250111.md", "B")
         v2.sync_vault(root)
@@ -245,8 +245,8 @@ def test_typed_link_suppresses_backlink() -> None:
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
         (root / "20250104.md").write_text(
-            "---\ntitle: A\n---\n\n# A\n\n本文で [B](20250111.md) に触れる。\n\n<!-- している -->\n"
-            "論点: [B](20250111.md)\n<!-- されている -->\n", encoding="utf-8")
+            "---\ntitle: A\n---\n\n# A\n\n本文で [B](20250111.md) に触れる。\n\n<!-- こっちにとって -->\n"
+            "論点: [B](20250111.md)\n<!-- そっちにとって -->\n", encoding="utf-8")
         note(root / "20250111.md", "B")
         v2.sync_vault(root)
         _up, dn = regions((root / "20250111.md").read_text(encoding="utf-8"))
@@ -277,7 +277,7 @@ def test_pkm_raw_optout() -> None:
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
         raw = ("---\ntitle: 生ログ\npkm: raw\n---\n\n# 生ログ\n\n"
-               "<!-- している -->\n所属: [x](20250104.md)\n<!-- されている -->\n")
+               "<!-- こっちにとって -->\n所属: [x](20250104.md)\n<!-- そっちにとって -->\n")
         p = root / "20250101.md"
         p.write_text(raw, encoding="utf-8")
         note(root / "20250104.md", "X")
@@ -302,7 +302,26 @@ def test_unmarked_notes_frozen_by_sync() -> None:
         check("論点:\n[昔のメモ](diary/20200101120000.md)" in up, "リンクは打った通りに残る（表示名も固定）")
         # migrate を明示的に呼ぶと変換される
         conv = v2.migrate_note(v1raw, str(old))
-        check(conv is not None and "<!-- している -->" in conv, "migrate は v2 化する")
+        check(conv is not None and "<!-- こっちにとって -->" in conv, "migrate は v2 化する")
+
+
+def test_legacy_marks_upgraded_by_sync() -> None:
+    print("integrate: 旧見張り（している/されている）は sync で新表記へ書き換わる")
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        legacy = (
+            "---\ntime: 2026-01-01 00:00:00\ntitle: A\n---\n\n# A\n\n本文。\n\n"
+            f"{v2.LEGACY_UP_MARK}\n論点: [B](20250111.md)\n{v2.LEGACY_DOWN_MARK}\n"
+        )
+        p = root / "20250104.md"
+        p.write_text(legacy, encoding="utf-8")
+        note(root / "20250111.md", "B")
+        v2.sync_vault(root)
+        txt = p.read_text(encoding="utf-8")
+        check(v2.LEGACY_UP_MARK not in txt and v2.LEGACY_DOWN_MARK not in txt,
+              "旧見張りは残らない")
+        check(UP_MARK in txt and DOWN_MARK in txt, "新見張りに書き換わる")
+        check("論点:\n[B](20250111.md)" in txt, "関係の中身は保持される")
 
 
 def main() -> int:

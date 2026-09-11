@@ -378,7 +378,7 @@ function! s:index_template() abort
         \ '',
         \ ]
   if s:pkm_format() ==# 'v2'
-    return l:head + ['<!-- している -->', '<!-- されている -->']
+    return l:head + [s:v2_up_mark, s:v2_down_mark]
   endif
   return l:head
 endfunction
@@ -1628,14 +1628,14 @@ function! s:link_positions_in_range(lo, hi) abort
   return l:pos
 endfunction
 
-" 本文（している の見張りより前）のリンク。v2 ノート以外は空。
+" 本文（こっちにとって の見張りより前）のリンク。v2 ノート以外は空。
 function! s:v2_body_link_positions() abort
   let [l:up_m, l:dn_m] = s:v2_boundaries()
   if l:up_m <= 0 | return [] | endif
   return s:link_positions_in_range(1, l:up_m - 1)
 endfunction
 
-" parent/child（している + されている）のリンク。
+" parent/child（こっちにとって + そっちにとって）のリンク。
 " v2 なら見張りコメント基準、v1 なら旧セクション基準。
 function! s:v2_relation_link_positions() abort
   let [l:up_m, l:dn_m] = s:v2_boundaries()
@@ -1704,8 +1704,8 @@ function! s:v2_boundaries_in_lines(lines) abort
   let l:up_m = 0 | let l:dn_m = 0
   for l:i in range(0, len(a:lines) - 1)
     let l:s = trim(a:lines[l:i])
-    if l:s ==# s:v2_up_mark   | let l:up_m = l:i + 1 | endif
-    if l:s ==# s:v2_down_mark | let l:dn_m = l:i + 1 | endif
+    if l:s ==# s:v2_up_mark || l:s ==# s:v2_up_mark_legacy     | let l:up_m = l:i + 1 | endif
+    if l:s ==# s:v2_down_mark || l:s ==# s:v2_down_mark_legacy | let l:dn_m = l:i + 1 | endif
   endfor
   if l:up_m > 0 && l:dn_m > l:up_m
     return [l:up_m, l:dn_m]
@@ -1731,7 +1731,7 @@ function! s:v2_relation_link_positions_in_lines(lines) abort
         \ + s:section_link_positions_in_lines(a:lines, 'down')
 endfunction
 
-" parent/child のリンクを『ラベル / 表示名 / している・されている』付きで集める。
+" parent/child のリンクを『ラベル / 表示名 / こっちにとって・そっちにとって』付きで集める。
 "   {lnum, col, side('up'|'down'), label, text, target}
 function! s:relation_links_from_lines(lines, base_dir) abort
   let l:pos = s:v2_relation_link_positions_in_lines(a:lines)
@@ -1760,7 +1760,7 @@ function! s:relation_links_from_lines(lines, base_dir) abort
   return l:out
 endfunction
 
-" 本文（している 見張りより前）のリンクを、直近の見出しを label にして集める。
+" 本文（こっちにとって 見張りより前）のリンクを、直近の見出しを label にして集める。
 "   {lnum, col, side('body'), label, text, target}
 function! s:body_links_from_lines(lines, base_dir) abort
   let [l:up_m, l:dn_m] = s:v2_boundaries_in_lines(a:lines)
@@ -1785,7 +1785,7 @@ function! s:body_links_from_lines(lines, base_dir) abort
   return l:out
 endfunction
 
-" 文中 / している / されている の3グループにまとめる
+" 文中 / こっちにとって / そっちにとって の3グループにまとめる
 function! s:space_collect(lines, base_dir) abort
   let l:rel = s:relation_links_from_lines(a:lines, a:base_dir)
   return {
@@ -1798,7 +1798,7 @@ endfunction
 " グループを区切り行付きの平坦な一覧にする（区切りは {sep:1, title:...}）
 function! s:space_flatten(groups) abort
   let l:items = []
-  for [l:key, l:title] in [['body', '文中'], ['up', 'している'], ['down', 'されている']]
+  for [l:key, l:title] in [['body', '文中'], ['up', 'こっちにとって'], ['down', 'そっちにとって']]
     let l:g = get(a:groups, l:key, [])
     if empty(l:g) | continue | endif
     call add(l:items, {'sep': 1, 'title': l:title})
@@ -1938,7 +1938,7 @@ function! s:rlp_build_local() abort
     call add(l:items, {'kind': 'anchor', 'path': s:rlp_path, 'label': '',
           \ 'text': s:get_title(s:rlp_path)})
   endif
-  for [l:key, l:title] in [['body', '文中'], ['up', 'している'], ['down', 'されている']]
+  for [l:key, l:title] in [['body', '文中'], ['up', 'こっちにとって'], ['down', 'そっちにとって']]
     let l:g = get(s:rlp_groups, l:key, [])
     let l:hit = filter(copy(l:g), 's:rlp_match(v:val.label . " " . v:val.text)')
     if empty(l:hit) | continue | endif
@@ -2569,7 +2569,7 @@ function! s:rlp_link_apply(targets, below, ...) abort
   endif
   let s:rlp_marks = {}
   echo printf('yurii_PKM: %s %s %s += %d 件',
-        \ fnamemodify(l:anchor, ':t'), l:rel, l:below ? '↓されている' : '↑している', l:n)
+        \ fnamemodify(l:anchor, ':t'), l:rel, l:below ? '↓そっちにとって' : '↑こっちにとって', l:n)
 endfunction
 
 function! s:rlp_open_path(path, ...) abort
@@ -2646,7 +2646,7 @@ endfunction
 
 " --- 入口 -------------------------------------------------------------------
 
-" <Space> … 文中 / している / されている ＋ 全ノート検索のナビゲータ。
+" <Space> … 文中 / こっちにとって / そっちにとって ＋ 全ノート検索のナビゲータ。
 "   jk/ラベル 選択  l 潜る  h 戻る  ⏎ 開く  ␣ アンカーを開く  fb プレビュー
 "   c/p 子/親に追加  y ヤンク  m マーク  a アンカー移動  i 絞込  ⇥ local⇄global
 function! yurii_pkm#relation_link_popup() abort
@@ -3499,8 +3499,8 @@ function! s:k_note_template(title) abort
           \ '# ' . a:title,
           \ '',
           \ '',
-          \ '<!-- している -->',
-          \ '<!-- されている -->' ]
+          \ s:v2_up_mark,
+          \ s:v2_down_mark ]
   endif
   return [
         \ '---',
@@ -3582,8 +3582,8 @@ function! yurii_pkm#note_template(title, ...) abort
           \ '# ' . a:title,
           \ '',
           \ '',
-          \ '<!-- している -->',
-          \ '<!-- されている -->',
+          \ s:v2_up_mark,
+          \ s:v2_down_mark,
           \ ]
   endif
   return l:header + [
@@ -3601,7 +3601,7 @@ endfunction
 
 
 " ---------------------------------------------------------------------------
-" v2: 関係(relation)付きリンク追加（--- より上の「している」側へ 1 行だけ挿入）
+" v2: 関係(relation)付きリンク追加（--- より上の「こっちにとって」側へ 1 行だけ挿入）
 " 逆側は書かない。sync が相方ノートの下側に生成する。
 " ---------------------------------------------------------------------------
 
@@ -3609,7 +3609,7 @@ endfunction
 " 既存ノートの 論点: / 見解: / 前提: はそのまま残り、sync の並び替えでも壊れない。
 let s:v2_relations = ['カテゴリー', 'キーワード', 'ノート', '関連', '補足', '資料']
 
-" 関係ごとの向きの制約。0 = している側のみ / 1 = されている側のみ / -1 = 制約なし
+" 関係ごとの向きの制約。0 = こっちにとって側のみ / 1 = そっちにとって側のみ / -1 = 制約なし
 function! s:v2_relation_side(rel) abort
   if a:rel ==# 'キーワード' | return 1 | endif
   if a:rel ==# 'カテゴリー' | return 0 | endif
@@ -3669,18 +3669,22 @@ endfunction
 
 " front matter 終端行と、本文側で末尾寄りの --- 2 本（上側開始 / 下側開始）を返す。
 " 2 本無ければ EOF に補って返す。本文中の --- は末尾 2 本にならないので無視される。
-let s:v2_up_mark   = '<!-- している -->'
-let s:v2_down_mark = '<!-- されている -->'
+let s:v2_up_mark   = '<!-- こっちにとって -->'
+let s:v2_down_mark = '<!-- そっちにとって -->'
+" 旧見張り（している/されている）。まだ移行していないノートも読めるように残す。
+" sync（note_format_v2.py）が保存時に新表記へ書き換える。
+let s:v2_up_mark_legacy   = '<!-- している -->'
+let s:v2_down_mark_legacy = '<!-- されている -->'
 
-" している / されている の見張り行の行番号を返す。
+" こっちにとって / そっちにとって の見張り行の行番号を返す。
 " 見張りはノート作成時（テンプレート）にだけ入る。無ければ [0, 0] を返し、
 " 呼び出し側が処理を中止する（後から見張りを追加することは決してしない）。
 function! s:v2_boundaries() abort
   let l:up_m = 0 | let l:dn_m = 0
   for l:i in range(1, line('$'))
     let l:s = trim(getline(l:i))
-    if l:s ==# s:v2_up_mark   | let l:up_m = l:i | endif
-    if l:s ==# s:v2_down_mark | let l:dn_m = l:i | endif
+    if l:s ==# s:v2_up_mark || l:s ==# s:v2_up_mark_legacy     | let l:up_m = l:i | endif
+    if l:s ==# s:v2_down_mark || l:s ==# s:v2_down_mark_legacy | let l:dn_m = l:i | endif
   endfor
   if l:up_m > 0 && l:dn_m > l:up_m
     return [l:up_m, l:dn_m]
@@ -3688,7 +3692,7 @@ function! s:v2_boundaries() abort
   return [0, 0]
 endfunction
 
-" a:below … 0 = 上側（している、見張りの間）、1 = 下側（されている、最後の見張り以降）
+" a:below … 0 = 上側（こっちにとって、見張りの間）、1 = 下側（そっちにとって、最後の見張り以降）
 function! s:v2_insert_link(rel, linktext, ...) abort
   let l:below = a:0 > 0 ? a:1 : 0
   let [l:up_m, l:dn_m] = s:v2_boundaries()
@@ -3770,7 +3774,7 @@ endfunction
 " クリップボード / 無名レジスタの `.md` ファイル名 or `[t](x.md)` を関係付きで取り込む。
 "   a:1 … 取り込む対象（空ならレジスタから）
 "   a:2 … 関係(relation)（省略時は数字で選択）
-"   a:3 … 1 なら --- より下（されている）へ。既定は上
+"   a:3 … 1 なら --- より下（そっちにとって）へ。既定は上
 function! yurii_pkm#v2_add_link(...) abort
   let l:raw = a:0 > 0 && a:1 !=# '' ? a:1 : trim(getreg('+'))
   if l:raw ==# '' | let l:raw = trim(getreg('"')) | endif
@@ -3783,7 +3787,7 @@ function! yurii_pkm#v2_add_link(...) abort
   endif
   let l:rel = a:0 > 1 && a:2 !=# '' ? a:2 : s:v2_pick_relation()
   if l:rel ==# '' | echo 'yurii_PKM: キャンセル' | return | endif
-  " 関係ごとの向きの制約（キーワード=されている / カテゴリー=している / 関連=対称）
+  " 関係ごとの向きの制約（キーワード=そっちにとって / カテゴリー=こっちにとって / 関連=対称）
   let l:side = s:v2_relation_side(l:rel)
   let l:below = l:side >= 0 ? l:side : (a:0 > 2 ? a:3 : 0)
 
@@ -3803,7 +3807,7 @@ endfunction
 "   a:below … 1 = 現ノートの --- より下（子: 相手が上側に載る）
 "             0 = 現ノートの --- より上（親: 相手の下側に載る）
 "   a:1     … 関係(relation)（省略時は数字で選択）
-" a:below … 0 = 現ノートの している 側 / 1 = されている 側
+" a:below … 0 = 現ノートの こっちにとって 側 / 1 = そっちにとって 側
 " a:is_cat … 1 なら新ノートを attribute: カテゴリー で作る
 " a:1(可変) … 関係名（省略時は数字ピッカー）
 function! s:v2_new_related(below, is_cat, ...) abort
@@ -3817,7 +3821,7 @@ function! s:v2_new_related(below, is_cat, ...) abort
   endif
   let l:rel = (a:0 > 0 && a:1 !=# '') ? a:1 : s:v2_pick_relation()
   if l:rel ==# '' | echo 'yurii_PKM: キャンセル' | return | endif
-  " 関係ごとの向きの制約（キーワード=されている / カテゴリー=している / 関連=対称）
+  " 関係ごとの向きの制約（キーワード=そっちにとって / カテゴリー=こっちにとって / 関連=対称）
   let l:side = s:v2_relation_side(l:rel)
   let l:below = l:side >= 0 ? l:side : a:below
 
@@ -3841,7 +3845,7 @@ function! s:v2_new_related(below, is_cat, ...) abort
   endif
 
   " 新ノートを組み立てる。相手へのリンクを先に入れておく（sync が確認するだけ）。
-  " nc: 相手は新ノートの している 側 / np: されている 側。
+  " nc: 相手は新ノートの こっちにとって 側 / np: そっちにとって 側。
   " 常にブロック形（『ラベル:』の次行にリンク）
   let l:backlink = [l:back_rel . ':', '[' . l:cur_title . '](' . l:cur_name . ')']
   let l:fm = ['---', 'time: ' . yurii_pkm#timestamp_yaml(), 'title: ' . l:ts]
@@ -3849,8 +3853,8 @@ function! s:v2_new_related(below, is_cat, ...) abort
   call add(l:fm, '---')
   let l:up   = a:below ? l:backlink : []
   let l:down = a:below ? [] : l:backlink
-  let l:lines = l:fm + ['', '# ' . l:ts, '', '', '', '<!-- している -->']
-        \ + l:up + ['<!-- されている -->'] + l:down
+  let l:lines = l:fm + ['', '# ' . l:ts, '', '', '', s:v2_up_mark]
+        \ + l:up + [s:v2_down_mark] + l:down
   call writefile(l:lines, l:file)
   silent noautocmd write
   call s:run_update_one_for(l:cur)
@@ -3871,12 +3875,12 @@ function! s:v2_buf_is_category() abort
   return 0
 endfunction
 
-" nc: 子ノート（リンクは現ノートの されている 側）
+" nc: 子ノート（リンクは現ノートの そっちにとって 側）
 function! yurii_pkm#v2_new_child(...) abort
   call call('s:v2_new_related', [1, 0] + a:000)
 endfunction
 
-" np: 親ノート（リンクは現ノートの している 側）
+" np: 親ノート（リンクは現ノートの こっちにとって 側）
 function! yurii_pkm#v2_new_parent(...) abort
   call call('s:v2_new_related', [0, 0] + a:000)
 endfunction
@@ -5325,7 +5329,7 @@ endfunction
 
 function! yurii_pkm#add_clipboard_before_up() abort
   if s:pkm_format() ==# 'v2'
-    call yurii_pkm#v2_add_link('', '', 1)  " ca: されている 側へ
+    call yurii_pkm#v2_add_link('', '', 1)  " ca: そっちにとって 側へ
     return
   endif
   let l:current_file = expand('%:p')
@@ -5681,7 +5685,7 @@ endfunction
 
 function! yurii_pkm#at_add() abort
   if s:pkm_format() ==# 'v2'
-    call yurii_pkm#v2_add_link('', '', 0)  " at: している 側へ（相方は sync）
+    call yurii_pkm#v2_add_link('', '', 0)  " at: こっちにとって 側へ（相方は sync）
     return
   endif
   let l:current_file  = expand('%:p')

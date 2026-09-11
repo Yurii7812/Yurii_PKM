@@ -230,7 +230,7 @@ nnoremap <silent> \0       <Cmd>call yurii_pkm#hub_list()<CR>
 " <S-Space> … ポップアップを出さずカーソルだけ次の関係リンクへ（従来動作）。
 nnoremap <silent> <Space>   <Cmd>call yurii_pkm#relation_link_popup()<CR>
 nnoremap <silent> <S-Space> <Cmd>call yurii_pkm#jump_relation_link(1)<CR>
-" 数字 1-9 … 本文（している の見張りより前）の N 番目のリンクへ。
+" 数字 1-9 … 本文（こっちにとって の見張りより前）の N 番目のリンクへ。
 " 本文リンクが無い所ではそのままカウント（5j 等）として働く。
 for s:n in range(1, 9)
   execute printf('nnoremap <silent> %d <Cmd>call yurii_pkm#digit_key(%d)<CR>', s:n, s:n)
@@ -244,8 +244,8 @@ nnoremap <nowait> <silent> ,.  <Cmd>call yurii_pkm#jump_down_top()<CR>
 nnoremap <nowait> <silent> ,/  <Cmd>call yurii_pkm#jump_down_bottom()<CR>
 
 " ノート作成（関係を数字で選択、Esc/q でキャンセル）
-"   nc … 子ノート（リンクは現ノートの されている 側）
-"   np … 親ノート（リンクは現ノートの している 側）
+"   nc … 子ノート（リンクは現ノートの そっちにとって 側）
+"   np … 親ノート（リンクは現ノートの こっちにとって 側）
 "   nh … カーソル直下にリンク（本文リンク → 相手には バックリンク: として出る）
 "   nk … カテゴリーノート（c=子 / p=親 を聞く。カテゴリーは nk でのみ作れる）
 nnoremap <nowait> <silent> nc  <Cmd>call yurii_pkm#v2_new_child()<CR>
