@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -44,6 +45,13 @@ def note(path: Path, title: str, up: str = "", down: str = "") -> None:
     txt += DOWN_MARK + "\n"
     if down:
         txt += down.strip("\n") + "\n"
+    path.write_text(txt, encoding="utf-8")
+
+
+def retitle(path: Path, new_title: str) -> None:
+    """front matter の title だけ書き換える（sync 済みの関係セクションは触らない）。"""
+    txt = path.read_text(encoding="utf-8")
+    txt = re.sub(r"^title:.*$", f"title: {new_title}", txt, count=1, flags=re.M)
     path.write_text(txt, encoding="utf-8")
 
 
@@ -155,14 +163,49 @@ def test_kanren_is_symmetric() -> None:
 
 
 def test_title_refresh() -> None:
-    print("sync: リンク表示名を相手の現タイトルへ更新")
+    print("sync: 相手のタイトル変更をリンク表示名へ追従（前回タイトルを記録した上で変更）")
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
         note(root / "20250104.md", "A", up="論点: [ふるいタイトル](20250111.md)")
-        note(root / "20250111.md", "新しいタイトル")
+        note(root / "20250111.md", "ふるいタイトル")
         v2.sync_vault(root)
         a = (root / "20250104.md").read_text(encoding="utf-8")
-        check("[新しいタイトル](20250111.md)" in a, "表示名が front matter の title に揃う")
+        check("[ふるいタイトル](20250111.md)" in a,
+              "最初は表示名とタイトルが一致（＝手で変えていない）ので追従対象のまま")
+        retitle(root / "20250111.md", "新しいタイトル")
+        v2.sync_vault(root)
+        a = (root / "20250104.md").read_text(encoding="utf-8")
+        check("[新しいタイトル](20250111.md)" in a,
+              "前回タイトルと表示名が一致していたので、新タイトルへ追従する")
+
+
+def test_title_refresh_preserves_first_sync_customization() -> None:
+    print("sync: 前回タイトルの記録が無い状態で表示名が違う場合は、手で変えたとみなして残す")
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        note(root / "20250104.md", "A", up="論点: [カスタム表示名](20250111.md)")
+        note(root / "20250111.md", "実際のタイトル")
+        v2.sync_vault(root)
+        a = (root / "20250104.md").read_text(encoding="utf-8")
+        check("[カスタム表示名](20250111.md)" in a,
+              "前回タイトルの記録が無いので、既に違う表示名は手で変えたものとして残す")
+
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        note(root / "20250104.md", "A", up="論点: [ふるいタイトル](20250111.md)")
+        note(root / "20250111.md", "ふるいタイトル")
+        v2.sync_vault(root)
+        # 表示名が相手のタイトルと一致した状態を記録した後、手で違う名前に変える
+        a_path = root / "20250104.md"
+        a_path.write_text(
+            a_path.read_text(encoding="utf-8").replace(
+                "[ふるいタイトル](20250111.md)", "[自分で付けた名前](20250111.md)"),
+            encoding="utf-8")
+        retitle(root / "20250111.md", "また変わったタイトル")
+        v2.sync_vault(root)
+        a = a_path.read_text(encoding="utf-8")
+        check("[自分で付けた名前](20250111.md)" in a,
+              "手で違う名前に変えた後は、相手のタイトルが変わっても追従しない")
 
 
 def test_subdir_relative_path() -> None:

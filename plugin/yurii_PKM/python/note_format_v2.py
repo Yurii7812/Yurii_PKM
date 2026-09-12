@@ -26,6 +26,10 @@
   片面の追加 / 削除はもう片面へ反映される（``.pkm_sync_state_v2.json`` で判定）。
 - 本文（散文）中のリンクは、明示の関係が無ければ相手の下側に
   ``バックリンク:`` として現れる。
+- リンク表示名は上側・下側とも同じ判定で追従するかどうかが決まる：今書かれて
+  いる表示名が前回 sync 時点の相手のタイトルと同じ（＝手で変えていない）なら
+  現タイトルへ追従、違っていれば（＝手で変えた）そのまま残す
+  （``.pkm_title_state_v2.json`` で前回タイトルを記録）。
 
 sync が書き換えるのは見張りコメント 2 行を持つノートだけ。旧 v1 / 旧 `---` /
 日記 / 素の散文は触らない。旧形式の一括変換は `migrate` で明示的に行う。
@@ -459,6 +463,9 @@ def _rel(from_dir: Path, target: Path) -> str:
 # ---------------------------------------------------------------------------
 
 _STATE_FILE = ".pkm_sync_state_v2.json"
+# 前回 sync 時点での各ノートのタイトル。リンク表示名を「追従させるか、打った
+# 通り残すか」の判定に使う（_tracked_disp）。
+_TITLE_STATE_FILE = ".pkm_title_state_v2.json"
 Rel = tuple[str, str, str]  # (src_id, type, tgt_id)  id = root からの相対 posix パス
 
 
@@ -494,6 +501,33 @@ def _save_state(root: Path, entries: set[tuple]) -> None:
     fp.write_text(json.dumps(payload, ensure_ascii=False, indent=0), encoding="utf-8")
 
 
+def _load_title_state(root: Path) -> dict[str, str]:
+    fp = root / _TITLE_STATE_FILE
+    if not fp.exists():
+        return {}
+    try:
+        data = json.loads(fp.read_text(encoding="utf-8"))
+        return {k: v for k, v in data.items() if isinstance(k, str) and isinstance(v, str)}
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def _save_title_state(root: Path, titles: dict[str, str]) -> None:
+    fp = root / _TITLE_STATE_FILE
+    fp.write_text(json.dumps(titles, ensure_ascii=False, indent=0, sort_keys=True), encoding="utf-8")
+
+
+def _tracked_disp(target_id: str, written: str | None, now_title: str,
+                   prev_titles: dict[str, str]) -> str:
+    """表示名の追従判定。今書かれている表示名(written)が前回 sync 時点での
+    相手のタイトルと同じ（＝手で変えていない）なら現タイトルへ追従させる。
+    違っていれば（＝手で変えた）そのまま残す。前回情報が無ければ追従させる。
+    """
+    if written is None or written == prev_titles.get(target_id):
+        return now_title
+    return written
+
+
 def sync_vault(root) -> int:
     """vault 全体を 1 パスで整合させる。見張りコメントを持つノートだけを書き換える。"""
     root = Path(root).resolve()
@@ -514,6 +548,8 @@ def sync_vault(root) -> int:
         if i is not None:
             ids[k] = i
             id_to_path[i] = k
+
+    prev_titles = _load_title_state(root)
 
     def rid(target: str, base: Path) -> str | None:
         tp = _resolve(target, base, root, by_name)
@@ -636,10 +672,8 @@ def sync_vault(root) -> int:
         for tid, lbl in outgoing:
             tp = id_to_path[tid]
             tn = by_path.get(tp)
-            if tn is not None and tn.managed:
-                disp = tn.title  # 管理下は現タイトルへ追従
-            else:  # 外部 / 凍結ノートは打った表示名を尊重
-                disp = orig_title.get(tid) or (tn.title if tn else Path(tid).stem)
+            now_title = tn.title if tn is not None else Path(tid).stem
+            disp = _tracked_disp(tid, orig_title.get(tid), now_title, prev_titles)
             new_up.setdefault(lbl, []).append(
                 (disp, _rel(n.path.parent, tp), up_ann.get((sid, tid))))
         for t, es in up_unresolved[k].items():
@@ -654,12 +688,12 @@ def sync_vault(root) -> int:
         nid = ids.get(k)
         new_down: dict[str, list] = {}
         if nid is not None:
-            # 下側（子リスト）の表示名は、既に手で付けた表示名があればそれを尊重する
-            # （タイトルへ追従するのは上側だけ。子の表示名を変えても、次の sync で
-            # 相手の現タイトルへ勝手に戻ってしまわないようにする）。
+            # 下側（子リスト・バックリンク含む）の表示名は _tracked_disp で判定
+            # （書かれている表示名が前回 sync 時点の相手のタイトルと同じなら
+            # 現タイトルへ追従、違えば手で変えたとみなしそのまま残す）。
             orig_down_title: dict[str, str] = {}
             for t, es in n.down.items():
-                if t in _RESERVED:
+                if t == _EXTRA:
                     continue
                 for _ti, tg, _ann in es:
                     r = rid(tg, n.path.parent)
@@ -677,7 +711,8 @@ def sync_vault(root) -> int:
                     by_lbl.setdefault(t, []).append(other)
             for lbl, srcs in by_lbl.items():
                 new_down[lbl] = [
-                    (orig_down_title.get(s) or by_path[id_to_path[s]].title,
+                    (_tracked_disp(s, orig_down_title.get(s), by_path[id_to_path[s]].title,
+                                   prev_titles),
                      _rel(n.path.parent, id_to_path[s]), None)
                     for s in sorted(set(srcs))
                 ]
@@ -688,7 +723,9 @@ def sync_vault(root) -> int:
             )
             if back:
                 new_down[BACKLINK] = [
-                    (by_path[id_to_path[s]].title, _rel(n.path.parent, id_to_path[s]), None)
+                    (_tracked_disp(s, orig_down_title.get(s), by_path[id_to_path[s]].title,
+                                   prev_titles),
+                     _rel(n.path.parent, id_to_path[s]), None)
                     for s in back
                 ]
         if n.down.get(_EXTRA):
@@ -696,6 +733,7 @@ def sync_vault(root) -> int:
         n.down = new_down
 
     _save_state(root, set(present) | present_sym)
+    _save_title_state(root, {i: by_path[p].title for i, p in id_to_path.items()})
 
     changed = 0
     for n in notes:
