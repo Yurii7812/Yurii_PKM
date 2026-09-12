@@ -383,32 +383,49 @@ def test_attribute_category_subcategory_labels_down_side_too() -> None:
               "自分もカテゴリーノードなので、相手の下側も カテゴリー: になる（サブ容器）")
 
 
-def test_attribute_keyword_labels_member_up_side() -> None:
-    print("attribute: キーワード も同じ非対称ルール：メンバー側の上側だけ常に キーワード: になる")
+def test_attribute_keyword_target_forces_category_not_keyword() -> None:
+    print("相手が attribute: キーワード でも、自分の上側は キーワード: ではなく カテゴリー: になる")
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
         _note_with_attr(root / "20250101.md", "実在論", v2.KEYWORD_ATTR)
-        note(root / "20250104.md", "普遍は実在するか", up="論点: [実在論](20250101.md)")
+        note(root / "20250104.md", "普遍は実在するか", up="資料: [実在論](20250101.md)")
         v2.sync_vault(root)
         up, _dn = regions((root / "20250104.md").read_text(encoding="utf-8"))
         _u, dn = regions((root / "20250101.md").read_text(encoding="utf-8"))
-        check("キーワード:\n[実在論](20250101.md)" in up,
-              "手で 論点 を選んでいても、相手が キーワード なら上側は キーワード:")
-        check("論点:\n[普遍は実在するか](20250104.md)" in dn,
-              "実在論 側の下側は非対称：自分（メンバー）が索引ノードでないので元の関係名のまま")
+        check("カテゴリー:\n[実在論](20250101.md)" in up,
+              "手で 資料 を選んでいても、相手が キーワード ノードなら上側は カテゴリー:（キーワード: にはならない）")
+        check("資料:\n[普遍は実在するか](20250104.md)" in dn,
+              "実在論 側の下側は打った関係名（資料:）のまま。キーワードは相手を下位に置く容器ではない")
 
 
-def test_attribute_keyword_subnode_labels_down_side() -> None:
-    print("自分が attribute: キーワード なら、相手の下側は キーワード: になる")
+def test_attribute_keyword_source_does_not_force_target_down_side() -> None:
+    print("自分が attribute: キーワード でも、相手の下側は上書きしない（打った関係名のまま）")
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
         note(root / "20250101.md", "実在論")
         _note_with_attr(root / "20250104.md", "唯名論", v2.KEYWORD_ATTR,
-                         up="ノート: [実在論](20250101.md)")
+                         up="関連: [実在論](20250101.md)")
         v2.sync_vault(root)
         _u, dn = regions((root / "20250101.md").read_text(encoding="utf-8"))
-        check("キーワード:\n[唯名論](20250104.md)" in dn,
-              "自分（唯名論）が キーワード ノードなので、相手の下側は キーワード: になる")
+        check("関連:\n[唯名論](20250104.md)" in dn,
+              "自分（唯名論）が キーワード ノードでも、相手（実在論）の下側は打った関係名（関連:）のまま")
+        check("キーワード:\n[唯名論](20250104.md)" not in dn,
+              "カテゴリーと違い、キーワードのサブノードは相手の下側を キーワード: に上書きしない")
+
+
+def test_attribute_keyword_child_view_differs_by_side() -> None:
+    print("キーワードノードの子：キーワード側の下側は打った関係名、子自身の上側は カテゴリー:")
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        _note_with_attr(root / "20250101.md", "実在論", v2.KEYWORD_ATTR)
+        note(root / "20250104.md", "普遍は実在するか", up="資料: [実在論](20250101.md)")
+        v2.sync_vault(root)
+        up, _dn = regions((root / "20250104.md").read_text(encoding="utf-8"))
+        _u, dn = regions((root / "20250101.md").read_text(encoding="utf-8"))
+        check("資料:\n[普遍は実在するか](20250104.md)" in dn,
+              "実在論（キーワード）側の下側からは、打った関係名（資料:）で見える")
+        check("カテゴリー:\n[実在論](20250101.md)" in up,
+              "その子（普遍は実在するか）自身の上側からは カテゴリー: として見える")
 
 
 def main() -> int:

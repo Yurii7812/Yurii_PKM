@@ -3846,9 +3846,17 @@ function! s:v2_new_related(below, attr, ...) abort
   let l:cur_name  = expand('%:t')
   let l:cur_title = yurii_pkm#current_title()
   if l:cur_title ==# '' | let l:cur_title = fnamemodify(l:cur, ':t:r') | endif
-  " 現ノートが属性ノートなら、新ノート側のラベルはその属性値
+  " 現ノートが属性ノートなら、新ノート側のラベルを上書きする。
+  " below=1（nc: backlink は新ノートの こっちにとって）: 相手（現ノート）が
+  " カテゴリー / キーワード どちらの属性でも、値に関わらず常に カテゴリー。
+  " below=0（np: backlink は新ノートの そっちにとって）: 現ノート自身が
+  " カテゴリー の場合だけ上書き（サブ容器）。キーワードは上書きしない。
   let l:cur_attr = s:v2_buf_attr()
-  let l:back_rel = !empty(l:cur_attr) ? l:cur_attr : l:rel
+  if a:below
+    let l:back_rel = !empty(l:cur_attr) ? 'カテゴリー' : l:rel
+  else
+    let l:back_rel = (l:cur_attr ==# 'カテゴリー') ? 'カテゴリー' : l:rel
+  endif
 
   let l:dir = expand('%:p:h')
   let l:ts  = yurii_pkm#timestamp_filename()

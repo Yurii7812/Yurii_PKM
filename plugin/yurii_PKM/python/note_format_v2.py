@@ -8,14 +8,16 @@
 - ``<!-- そっちにとって -->`` 見張り行から下側（それ＝そのノートにとって このノートが○○）。
   HTML コメントなのでレンダラで不可視・見出し化しない・本文と衝突しない。
 - 関係: キーワード / 前提 / 論点 / 見解 / 関連 / ノート（既定）/ 自由入力。
-  `カテゴリー` は選ばない ── 相手が `attribute: カテゴリー` /
-  `attribute: キーワード` なら、選んだ関係に関わらず自分側は自動でそのラベルになる
+  `カテゴリー` は選ばない ── 相手が `attribute: カテゴリー` / `attribute: キーワード`
+  のどちらでも、選んだ関係に関わらず自分側は自動で `カテゴリー:` になる
   （`キーワード` 自体はピッカーから選べる。索引語の自由入力という既存の用途は変わらない）。
   `関連` は対称。並び順は カテゴリー → キーワード → 前提 → 論点 → 見解 → 関連 → ノート。
   相手が `attribute: カテゴリー` / `attribute: キーワード` のノートなら、自分側の
-  ラベルは常にその値になる（相手側の そっちにとって は書かれた関係のまま）。
-  同様に自分が `attribute: カテゴリー` / `attribute: キーワード` なら、相手側の
-  そっちにとって は常にその値になる（サブ容器 / 索引ノードとして）。
+  ラベルは値に関わらず常に `カテゴリー:`（相手側の そっちにとって は書かれた関係のまま）。
+  自分が `attribute: カテゴリー` なら、相手側の そっちにとって も常に `カテゴリー:`
+  （サブ容器として）。自分が `attribute: キーワード` の場合はこの上書きをしない ──
+  相手の そっちにとって には書かれた関係がそのまま出る（キーワードは「何に索引されて
+  いるか」を見せるだけで、相手を自分の下位に置く容器ではないため）。
 - ノード属性は front matter の `attribute: カテゴリー` / `attribute: キーワード`
   （容器ノート・索引ノードの印）。無ければただのノート。
   論点 / 見解 等は宣言しない（関係とタイトルから分かる）。
@@ -594,20 +596,23 @@ def sync_vault(root) -> int:
     def far_label(pair: tuple[str, str]) -> str:
         return down_label.get(pair) or up_label.get(pair) or "ノート"
 
-    # --- 上側を再構築。相手が attribute 持ちなら自分側ラベルは常にその attribute 値 ---
+    # --- 上側を再構築。相手が attribute 持ちなら自分側ラベルは常に `カテゴリー:` ---
     incoming: dict[str, list[tuple[str, str]]] = {}  # to_id -> [(from_id, label)]
     for (a, b) in present:
-        # from が attribute ノート（カテゴリー / キーワード） = サブ容器 / サブ索引 →
-        # 相手（to）の そっちにとって では その値。from に attribute が無ければ元の関係名のまま
-        # （to 自身の下側は「中身が何か」を見せる面なので、to の attribute では上書きしない）。
-        lbl = attr_of.get(a, far_label((a, b)))
+        # from が attribute: カテゴリー = サブ容器 → 相手（to）の そっちにとって では
+        # `カテゴリー:`。from が attribute: キーワード の場合はここでは上書きしない
+        # （キーワード自身の下側は「中身が何の関係か」を見せる面。to 自身の下側も同様に
+        # 上書きしない ── to の attribute では上書きしない）。
+        lbl = CATEGORY_ATTR if attr_of.get(a) == CATEGORY_ATTR else far_label((a, b))
         incoming.setdefault(b, []).append((a, lbl))
 
     for k, n in by_path.items():
         sid = ids.get(k)
         if sid is None:
             continue
-        outgoing = [(b, attr_of.get(b, far_label((sid, b))))
+        # 相手（b）が attribute 持ち（カテゴリー / キーワードどちらでも）なら、
+        # 値に関わらず自分の こっちにとって は常に `カテゴリー:`。
+        outgoing = [(b, (CATEGORY_ATTR if b in attr_of else far_label((sid, b))))
                     for (a, b) in present if a == sid]
         # 既存の並び順と、手で打った表示名を尊重
         order: list[str] = []
