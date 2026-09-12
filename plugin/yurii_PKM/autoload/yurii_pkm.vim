@@ -3674,6 +3674,14 @@ function! s:v2_pick_relation() abort
   return l:r ==# 'なし' ? 'ノート' : l:r
 endfunction
 
+" nw で作れる属性ノードの種類。今後増やす時はここに足すだけでいい
+" （末尾の自由入力枠は s:v2_pick が自動で足す）。
+let s:v2_attr_types = ['キーワード']
+
+function! s:v2_pick_attr() abort
+  return s:v2_pick('attribute', s:v2_attr_types)
+endfunction
+
 " front matter 終端行と、本文側で末尾寄りの --- 2 本（上側開始 / 下側開始）を返す。
 " 2 本無ければ EOF に補って返す。本文中の --- は末尾 2 本にならないので無視される。
 let s:v2_up_mark   = '<!-- こっちにとって -->'
@@ -3815,9 +3823,9 @@ endfunction
 "             0 = 現ノートの --- より上（親: 相手の下側に載る）
 "   a:1     … 関係(relation)（省略時は数字で選択）
 " a:below … 0 = 現ノートの こっちにとって 側 / 1 = そっちにとって 側
-" a:is_cat … 1 なら新ノートを attribute: カテゴリー で作る
+" a:attr  … 空でなければ新ノートを `attribute: {a:attr}` で作る（カテゴリー / キーワード 等）
 " a:1(可変) … 関係名（省略時は数字ピッカー）
-function! s:v2_new_related(below, is_cat, ...) abort
+function! s:v2_new_related(below, attr, ...) abort
   if s:pkm_format() !=# 'v2'
     echo 'yurii_PKM: v2 専用（g:yurii_pkm_format = ''v2''）' | return
   endif
@@ -3829,17 +3837,18 @@ function! s:v2_new_related(below, is_cat, ...) abort
   let l:rel = (a:0 > 0 && a:1 !=# '') ? a:1 : s:v2_pick_relation()
   if l:rel ==# '' | echo 'yurii_PKM: キャンセル' | return | endif
   " 関係ごとの向きの制約（キーワード=そっちにとって / 関連=対称）。
-  " カテゴリー は nk が c/p の選択どおりの a:below を渡してくるので、ここでは
-  " 上書きしない（上書きすると c/p の意味が反転する）。
-  let l:side = a:is_cat ? -1 : s:v2_relation_side(l:rel)
+  " 属性ノート（カテゴリー / キーワード）は nk/nw が c/p の選択どおりの a:below を
+  " 渡してくるので、ここでは上書きしない（上書きすると c/p の意味が反転する）。
+  let l:side = !empty(a:attr) ? -1 : s:v2_relation_side(l:rel)
   let l:below = l:side >= 0 ? l:side : a:below
 
   " 現ノート（＝新ノートの相手）の情報
   let l:cur_name  = expand('%:t')
   let l:cur_title = yurii_pkm#current_title()
   if l:cur_title ==# '' | let l:cur_title = fnamemodify(l:cur, ':t:r') | endif
-  " 現ノートがカテゴリーなら、新ノート側のラベルは カテゴリー
-  let l:back_rel = s:v2_buf_is_category() ? 'カテゴリー' : l:rel
+  " 現ノートが属性ノートなら、新ノート側のラベルはその属性値
+  let l:cur_attr = s:v2_buf_attr()
+  let l:back_rel = !empty(l:cur_attr) ? l:cur_attr : l:rel
 
   let l:dir = expand('%:p:h')
   let l:ts  = yurii_pkm#timestamp_filename()
@@ -3858,7 +3867,7 @@ function! s:v2_new_related(below, is_cat, ...) abort
   " 常にブロック形（『ラベル:』の次行にリンク）
   let l:backlink = [l:back_rel . ':', '[' . l:cur_title . '](' . l:cur_name . ')']
   let l:fm = ['---', 'time: ' . yurii_pkm#timestamp_yaml(), 'title: ' . l:ts]
-  if a:is_cat | call add(l:fm, 'attribute: カテゴリー') | endif
+  if !empty(a:attr) | call add(l:fm, 'attribute: ' . a:attr) | endif
   call add(l:fm, '---')
   let l:up   = a:below ? l:backlink : []
   let l:down = a:below ? [] : l:backlink
@@ -3874,24 +3883,25 @@ function! s:v2_new_related(below, is_cat, ...) abort
   startinsert
 endfunction
 
-" 現在バッファが attribute: カテゴリー か
-function! s:v2_buf_is_category() abort
-  if getline(1) !~# '^---\s*$' | return 0 | endif
+" 現在バッファの attribute 値（カテゴリー / キーワード 等）。無ければ空文字
+function! s:v2_buf_attr() abort
+  if getline(1) !~# '^---\s*$' | return '' | endif
   for l:i in range(2, min([25, line('$')]))
     if getline(l:i) =~# '^---\s*$' | break | endif
-    if getline(l:i) =~# '^\s*\%(attribute\|属性\)\s*:\s*カテゴリー\s*$' | return 1 | endif
+    let l:m = matchlist(getline(l:i), '^\s*\%(attribute\|属性\)\s*:\s*\(\S.\{-}\)\s*$')
+    if !empty(l:m) | return l:m[1] | endif
   endfor
-  return 0
+  return ''
 endfunction
 
 " nc: 子ノート（リンクは現ノートの そっちにとって 側）
 function! yurii_pkm#v2_new_child(...) abort
-  call call('s:v2_new_related', [1, 0] + a:000)
+  call call('s:v2_new_related', [1, ''] + a:000)
 endfunction
 
 " np: 親ノート（リンクは現ノートの こっちにとって 側）
 function! yurii_pkm#v2_new_parent(...) abort
-  call call('s:v2_new_related', [0, 0] + a:000)
+  call call('s:v2_new_related', [0, ''] + a:000)
 endfunction
 
 " nk: カテゴリーノートを作る（attribute: カテゴリー）。関係は数字で選ぶ
@@ -3904,7 +3914,23 @@ function! yurii_pkm#v2_new_category() abort
     echo 'yurii_PKM: キャンセル' | return
   endif
   let l:below = (l:ch ==? 'p') ? 0 : 1
-  call s:v2_new_related(l:below, 1, 'カテゴリー')
+  call s:v2_new_related(l:below, 'カテゴリー', 'カテゴリー')
+endfunction
+
+" nw: 属性ノートを作る（今のところ attribute: キーワード。ピッカーの末尾は自由入力
+" なので、今後属性の種類が増えても s:v2_attr_types に足すだけで選べるようになる）。
+" c=子 / p=親 を聞くだけ。関係は常にその属性値。
+function! yurii_pkm#v2_new_attr() abort
+  let l:attr = s:v2_pick_attr()
+  if l:attr ==# '' | echo 'yurii_PKM: キャンセル' | return | endif
+  echo '新' . l:attr . 'を  c=子（現ノートの中） / p=親（現ノートを含む）  (既定 c, Esc/q キャンセル)'
+  let l:ch = nr2char(getchar())
+  redraw
+  if l:ch ==? 'q' || char2nr(l:ch) == 27 || char2nr(l:ch) == 3
+    echo 'yurii_PKM: キャンセル' | return
+  endif
+  let l:below = (l:ch ==? 'p') ? 0 : 1
+  call s:v2_new_related(l:below, l:attr, l:attr)
 endfunction
 
 " カーソル直下ノート（nh）: 新ノートを作り、そのリンクをカーソル行の直下（本文）に置く。

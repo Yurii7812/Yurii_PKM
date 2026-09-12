@@ -8,11 +8,16 @@
 - ``<!-- そっちにとって -->`` 見張り行から下側（それ＝そのノートにとって このノートが○○）。
   HTML コメントなのでレンダラで不可視・見出し化しない・本文と衝突しない。
 - 関係: キーワード / 前提 / 論点 / 見解 / 関連 / ノート（既定）/ 自由入力。
-  `カテゴリー` は選ばない ── 相手が `attribute: カテゴリー` なら自動でそのラベルになる。
+  `カテゴリー` は選ばない ── 相手が `attribute: カテゴリー` /
+  `attribute: キーワード` なら、選んだ関係に関わらず自分側は自動でそのラベルになる
+  （`キーワード` 自体はピッカーから選べる。索引語の自由入力という既存の用途は変わらない）。
   `関連` は対称。並び順は カテゴリー → キーワード → 前提 → 論点 → 見解 → 関連 → ノート。
-  `関連` は対称。相手が `attribute: カテゴリー` のノートなら、自分側のラベルは
-  常に `カテゴリー:` になる（相手側の そっちにとって は書かれた関係のまま）。
-- 唯一のノード属性は front matter の `attribute: カテゴリー`（容器ノートの印）。無ければただのノート。
+  相手が `attribute: カテゴリー` / `attribute: キーワード` のノートなら、自分側の
+  ラベルは常にその値になる（相手側の そっちにとって は書かれた関係のまま）。
+  同様に自分が `attribute: カテゴリー` / `attribute: キーワード` なら、相手側の
+  そっちにとって は常にその値になる（サブ容器 / 索引ノードとして）。
+- ノード属性は front matter の `attribute: カテゴリー` / `attribute: キーワード`
+  （容器ノート・索引ノードの印）。無ければただのノート。
   論点 / 見解 等は宣言しない（関係とタイトルから分かる）。
 - リンク 1 本は ``関係: [t](x.md)`` のインライン、2 本以上は ``関係:`` 改行のブロック。
 - 上側が真実。下側は他ノートの上側から導出。上下どちらも編集でき、
@@ -42,9 +47,11 @@ from pathlib import Path
 RELATIONS: tuple[str, ...] = ("カテゴリー", "キーワード", "前提", "論点", "見解", "ノート", "関連", "補足", "資料")
 # 関係名の読み替え（既定は無し。カテゴリー: はそのまま残す）
 RELATION_ALIASES: dict[str, str] = {"ワード": "キーワード"}
-# 唯一のノード属性: `attribute: カテゴリー`（容器ノートの印）。他の値は使わない。
+# ノード属性: `attribute: カテゴリー` / `attribute: キーワード`（容器ノート・索引ノードの印）。
 ATTR_KEYS = ("attribute", "属性")
-CATEGORY_ATTR = "カテゴリー"  # attribute の唯一の値 / 関係名でもある
+CATEGORY_ATTR = "カテゴリー"  # attribute の値 / 関係名でもある
+KEYWORD_ATTR = "キーワード"  # attribute の値 / 関係名でもある
+ATTR_LABELS: frozenset[str] = frozenset({CATEGORY_ATTR, KEYWORD_ATTR})  # attribute として使える値
 # 対称関係: 上側には出さず、両ノートの下側に現れる。
 SYMMETRIC: frozenset[str] = frozenset({"関連"})
 BACKLINK = "バックリンク"
@@ -579,26 +586,28 @@ def sync_vault(root) -> int:
     directed |= {(a, b) for (a, _t, b) in present_sym}
     directed |= {(b, a) for (a, _t, b) in present_sym}
 
-    is_cat: set[str] = {
-        i for kk, nn in by_path.items()
-        if (i := ids.get(kk)) is not None and _fm_attr(nn.fm) == CATEGORY_ATTR
+    attr_of: dict[str, str] = {
+        i: a for kk, nn in by_path.items()
+        if (i := ids.get(kk)) is not None and (a := _fm_attr(nn.fm)) in ATTR_LABELS
     }
 
     def far_label(pair: tuple[str, str]) -> str:
         return down_label.get(pair) or up_label.get(pair) or "ノート"
 
-    # --- 上側を再構築。相手がカテゴリーなら自分側ラベルは常に `カテゴリー:` ---
+    # --- 上側を再構築。相手が attribute 持ちなら自分側ラベルは常にその attribute 値 ---
     incoming: dict[str, list[tuple[str, str]]] = {}  # to_id -> [(from_id, label)]
     for (a, b) in present:
-        # from がカテゴリーノート = サブ容器 → 相手の そっちにとって では `カテゴリー:`
-        lbl = CATEGORY_ATTR if a in is_cat else far_label((a, b))
+        # from が attribute ノート（カテゴリー / キーワード） = サブ容器 / サブ索引 →
+        # 相手（to）の そっちにとって では その値。from に attribute が無ければ元の関係名のまま
+        # （to 自身の下側は「中身が何か」を見せる面なので、to の attribute では上書きしない）。
+        lbl = attr_of.get(a, far_label((a, b)))
         incoming.setdefault(b, []).append((a, lbl))
 
     for k, n in by_path.items():
         sid = ids.get(k)
         if sid is None:
             continue
-        outgoing = [(b, (CATEGORY_ATTR if b in is_cat else far_label((sid, b))))
+        outgoing = [(b, attr_of.get(b, far_label((sid, b))))
                     for (a, b) in present if a == sid]
         # 既存の並び順と、手で打った表示名を尊重
         order: list[str] = []

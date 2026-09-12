@@ -341,6 +341,76 @@ def test_legacy_marks_upgraded_by_sync() -> None:
         check("論点:\n[B](20250111.md)" in txt, "関係の中身は保持される")
 
 
+def _note_with_attr(path: Path, title: str, attr: str, up: str = "", down: str = "") -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    txt = (
+        f"---\ntime: 2026-01-01 00:00:00\ntitle: {title}\nattribute: {attr}\n---\n\n"
+        f"# {title}\n\n本文。\n\n{UP_MARK}\n"
+    )
+    if up:
+        txt += up.strip("\n") + "\n"
+    txt += DOWN_MARK + "\n"
+    if down:
+        txt += down.strip("\n") + "\n"
+    path.write_text(txt, encoding="utf-8")
+
+
+def test_attribute_category_labels_member_up_side() -> None:
+    print("attribute: カテゴリー は非対称：メンバー側の上側だけ常に カテゴリー: になる")
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        _note_with_attr(root / "20250101.md", "哲学", v2.CATEGORY_ATTR)
+        note(root / "20250104.md", "認識論とは何か", up="論点: [哲学](20250101.md)")
+        v2.sync_vault(root)
+        up, _dn = regions((root / "20250104.md").read_text(encoding="utf-8"))
+        _u, dn = regions((root / "20250101.md").read_text(encoding="utf-8"))
+        check("カテゴリー:\n[哲学](20250101.md)" in up,
+              "手で 論点 を選んでいても、相手が カテゴリー なら上側は カテゴリー:")
+        check("論点:\n[認識論とは何か](20250104.md)" in dn,
+              "容器ノート自身の下側は非対称：自分（メンバー）が容器でないので元の関係名（論点:）のまま")
+
+
+def test_attribute_category_subcategory_labels_down_side_too() -> None:
+    print("自分（サブ容器）も attribute: カテゴリー なら、相手の下側も カテゴリー: になる")
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        _note_with_attr(root / "20250101.md", "哲学", v2.CATEGORY_ATTR)
+        _note_with_attr(root / "20250104.md", "認識論", v2.CATEGORY_ATTR,
+                         up="ノート: [哲学](20250101.md)")
+        v2.sync_vault(root)
+        _u, dn = regions((root / "20250101.md").read_text(encoding="utf-8"))
+        check("カテゴリー:\n[認識論](20250104.md)" in dn,
+              "自分もカテゴリーノードなので、相手の下側も カテゴリー: になる（サブ容器）")
+
+
+def test_attribute_keyword_labels_member_up_side() -> None:
+    print("attribute: キーワード も同じ非対称ルール：メンバー側の上側だけ常に キーワード: になる")
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        _note_with_attr(root / "20250101.md", "実在論", v2.KEYWORD_ATTR)
+        note(root / "20250104.md", "普遍は実在するか", up="論点: [実在論](20250101.md)")
+        v2.sync_vault(root)
+        up, _dn = regions((root / "20250104.md").read_text(encoding="utf-8"))
+        _u, dn = regions((root / "20250101.md").read_text(encoding="utf-8"))
+        check("キーワード:\n[実在論](20250101.md)" in up,
+              "手で 論点 を選んでいても、相手が キーワード なら上側は キーワード:")
+        check("論点:\n[普遍は実在するか](20250104.md)" in dn,
+              "実在論 側の下側は非対称：自分（メンバー）が索引ノードでないので元の関係名のまま")
+
+
+def test_attribute_keyword_subnode_labels_down_side() -> None:
+    print("自分が attribute: キーワード なら、相手の下側は キーワード: になる")
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        note(root / "20250101.md", "実在論")
+        _note_with_attr(root / "20250104.md", "唯名論", v2.KEYWORD_ATTR,
+                         up="ノート: [実在論](20250101.md)")
+        v2.sync_vault(root)
+        _u, dn = regions((root / "20250101.md").read_text(encoding="utf-8"))
+        check("キーワード:\n[唯名論](20250104.md)" in dn,
+              "自分（唯名論）が キーワード ノードなので、相手の下側は キーワード: になる")
+
+
 def main() -> int:
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

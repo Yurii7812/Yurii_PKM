@@ -248,10 +248,13 @@ nnoremap <nowait> <silent> ,/  <Cmd>call yurii_pkm#jump_down_bottom()<CR>
 "   np … 親ノート（リンクは現ノートの こっちにとって 側）
 "   nh … カーソル直下にリンク（本文リンク → 相手には バックリンク: として出る）
 "   nk … カテゴリーノート（c=子 / p=親 を聞く。カテゴリーは nk でのみ作れる）
+"   nw … 属性ノート（数字ピッカーで種類を選ぶ。今は 1=キーワード、末尾=自由入力。
+"        選択後は nk と同じく c=子 / p=親 を聞く）
 nnoremap <nowait> <silent> nc  <Cmd>call yurii_pkm#v2_new_child()<CR>
 nnoremap <nowait> <silent> np  <Cmd>call yurii_pkm#v2_new_parent()<CR>
 nnoremap <nowait> <silent> nh  <Cmd>call yurii_pkm#v2_new_here()<CR>
 nnoremap <nowait> <silent> nk  <Cmd>call yurii_pkm#v2_new_category()<CR>
+nnoremap <nowait> <silent> nw  <Cmd>call yurii_pkm#v2_new_attr()<CR>
 " cu: クリップボードのリンクを Parent: セクションへ追加
 nnoremap <nowait> <silent> cu  <Cmd>call yurii_pkm#add_clipboard_to_branch()<CR>
 " ca: クリップボードのリンクを Child: に追加し、リンク先の Parent: に現在ノートを追加
