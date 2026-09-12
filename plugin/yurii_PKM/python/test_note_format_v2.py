@@ -428,6 +428,27 @@ def test_attribute_keyword_child_view_differs_by_side() -> None:
               "その子（普遍は実在するか）自身の上側からは カテゴリー: として見える")
 
 
+def test_down_side_display_name_is_sticky() -> None:
+    print("下側（子リスト）の表示名は手で変えたらそのまま残る（相手のタイトルへ戻らない）")
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        note(root / "20250104.md", "A", up="論点: [B](20250111.md)")
+        note(root / "20250111.md", "B")
+        v2.sync_vault(root)
+        _u, dn = regions((root / "20250111.md").read_text(encoding="utf-8"))
+        check("論点:\n[A](20250104.md)" in dn, "初回は相手の現タイトルで生成される")
+
+        # B の下側の表示名を手で書き換える
+        b_path = root / "20250111.md"
+        b_text = b_path.read_text(encoding="utf-8")
+        b_path.write_text(b_text.replace("[A](20250104.md)", "[カスタム表示名](20250104.md)"),
+                           encoding="utf-8")
+        v2.sync_vault(root)
+        _u2, dn2 = regions(b_path.read_text(encoding="utf-8"))
+        check("論点:\n[カスタム表示名](20250104.md)" in dn2,
+              "sync をもう一度走らせても、手で付けた表示名が相手の現タイトルへ戻らない")
+
+
 def main() -> int:
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

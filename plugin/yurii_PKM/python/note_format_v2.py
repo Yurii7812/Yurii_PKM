@@ -648,6 +648,18 @@ def sync_vault(root) -> int:
         nid = ids.get(k)
         new_down: dict[str, list] = {}
         if nid is not None:
+            # 下側（子リスト）の表示名は、既に手で付けた表示名があればそれを尊重する
+            # （タイトルへ追従するのは上側だけ。子の表示名を変えても、次の sync で
+            # 相手の現タイトルへ勝手に戻ってしまわないようにする）。
+            orig_down_title: dict[str, str] = {}
+            for t, es in n.down.items():
+                if t in _RESERVED:
+                    continue
+                for _ti, tg, _ann in es:
+                    r = rid(tg, n.path.parent)
+                    if r:
+                        orig_down_title.setdefault(r, _ti)
+
             by_lbl: dict[str, list[str]] = {}
             for (a, lbl) in incoming.get(nid, []):
                 if (nid, a) in present:  # 相互は下側に出さない
@@ -659,7 +671,8 @@ def sync_vault(root) -> int:
                     by_lbl.setdefault(t, []).append(other)
             for lbl, srcs in by_lbl.items():
                 new_down[lbl] = [
-                    (by_path[id_to_path[s]].title, _rel(n.path.parent, id_to_path[s]), None)
+                    (orig_down_title.get(s) or by_path[id_to_path[s]].title,
+                     _rel(n.path.parent, id_to_path[s]), None)
                     for s in sorted(set(srcs))
                 ]
             back = sorted(

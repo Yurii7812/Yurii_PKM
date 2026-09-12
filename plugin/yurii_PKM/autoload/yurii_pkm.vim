@@ -3682,6 +3682,20 @@ function! s:v2_pick_attr() abort
   return s:v2_pick('attribute', s:v2_attr_types)
 endfunction
 
+" 任意の .md ファイル（現ノートからの相対パス）の front matter attribute 値。無ければ空文字
+function! s:v2_target_attr(tgt) abort
+  let l:path = yurii_pkm#resolve_link(a:tgt)
+  if !filereadable(l:path) | return '' | endif
+  let l:lines = readfile(l:path, '', 30)
+  if empty(l:lines) || l:lines[0] !~# '^---\s*$' | return '' | endif
+  for l:i in range(1, len(l:lines) - 1)
+    if l:lines[l:i] =~# '^---\s*$' | break | endif
+    let l:m = matchlist(l:lines[l:i], '^\s*\%(attribute\|属性\)\s*:\s*\(\S.\{-}\)\s*$')
+    if !empty(l:m) | return l:m[1] | endif
+  endfor
+  return ''
+endfunction
+
 " front matter 終端行と、本文側で末尾寄りの --- 2 本（上側開始 / 下側開始）を返す。
 " 2 本無ければ EOF に補って返す。本文中の --- は末尾 2 本にならないので無視される。
 let s:v2_up_mark   = '<!-- こっちにとって -->'
@@ -3787,35 +3801,82 @@ function! s:v2_title_for(tgt) abort
 endfunction
 
 " クリップボード / 無名レジスタの `.md` ファイル名 or `[t](x.md)` を関係付きで取り込む。
-"   a:1 … 取り込む対象（空ならレジスタから）
-"   a:2 … 関係(relation)（省略時は数字で選択）
+" 複数行 / 複数リンクにも対応（1 件なら従来どおり質問なしで進む）。
+"   a:1 … 取り込む対象（空ならレジスタから。複数行 / 複数リンクも可）
+"   a:2 … 関係(relation)（省略時は数字で選択。複数件なら先に「一括 / 個別」を聞く）
 "   a:3 … 1 なら --- より下（そっちにとって）へ。既定は上
 function! yurii_pkm#v2_add_link(...) abort
   let l:raw = a:0 > 0 && a:1 !=# '' ? a:1 : trim(getreg('+'))
   if l:raw ==# '' | let l:raw = trim(getreg('"')) | endif
-  let l:tgt = matchstr(l:raw, '](\zs[^)]\+\ze)')
-  if l:tgt ==# '' | let l:tgt = l:raw | endif
-  let l:tgt = trim(l:tgt)
-  if l:tgt !~# '\.md$'
+  let l:below_default = a:0 > 2 ? a:3 : 0
+
+  let l:targets = filter(s:extract_targets_from_clipboard(l:raw), 'v:val =~# ''\.md$''')
+  if empty(l:targets)
     echohl WarningMsg | echo 'yurii_PKM: .md のファイル名 / リンクが見つからない' | echohl NONE
     return
   endif
-  let l:rel = a:0 > 1 && a:2 !=# '' ? a:2 : s:v2_pick_relation()
-  if l:rel ==# '' | echo 'yurii_PKM: キャンセル' | return | endif
-  " 関係ごとの向きの制約（キーワード=そっちにとって / カテゴリー=こっちにとって / 関連=対称）
-  let l:side = s:v2_relation_side(l:rel)
-  let l:below = l:side >= 0 ? l:side : (a:0 > 2 ? a:3 : 0)
 
-  let l:title = s:v2_title_for(l:tgt)
-  if l:rel ==# 'キーワード'
-    let l:kw = s:v2_keyword_name(yurii_pkm#current_title())
-    if empty(l:kw) | echo 'yurii_PKM: キャンセル' | return | endif
-    let l:title = l:kw
+  " 関係: 複数件なら「一括で同じ関係」か「一つずつ選ぶ」かを先に聞く
+  let l:rel_fixed = a:0 > 1 && a:2 !=# '' ? a:2 : ''
+  let l:batch_rel = l:rel_fixed
+  if empty(l:batch_rel)
+    if len(l:targets) == 1
+      let l:batch_rel = s:v2_pick_relation()
+      if l:batch_rel ==# '' | echo 'yurii_PKM: キャンセル' | return | endif
+    else
+      let l:mode = s:v2_pick('複数件の関係', ['一括で同じ関係', '一つずつ選ぶ'])
+      if l:mode ==# '' | echo 'yurii_PKM: キャンセル' | return | endif
+      if l:mode ==# '一括で同じ関係'
+        let l:batch_rel = s:v2_pick_relation()
+        if l:batch_rel ==# '' | echo 'yurii_PKM: キャンセル' | return | endif
+      endif
+    endif
   endif
-  if s:v2_insert_link(l:rel, '[' . l:title . '](' . l:tgt . ')', l:below)
-    silent! write
-    echo 'yurii_PKM: ' . l:rel . (l:below ? ' ↓ ' : ' ') . '+= ' . l:title
+
+  " 表示名: 対象にカテゴリー / キーワード属性のファイルが含まれるなら、
+  " その表示名の付け方を聞く（複数あれば「一つずつ入力」か「タイトルのまま」を先に選ぶ）。
+  let l:attr_targets = {}
+  for l:t in l:targets
+    if s:v2_target_attr(l:t) !=# '' | let l:attr_targets[l:t] = 1 | endif
+  endfor
+  let l:manual_name = !empty(l:attr_targets) && len(l:attr_targets) == 1
+  if !empty(l:attr_targets) && len(l:attr_targets) > 1
+    let l:nm = s:v2_pick('属性ノートの表示名', ['一つずつ入力', 'タイトルのまま'])
+    if l:nm ==# '' | echo 'yurii_PKM: キャンセル' | return | endif
+    let l:manual_name = (l:nm ==# '一つずつ入力')
   endif
+
+  let l:added = 0
+  for l:tgt in l:targets
+    let l:rel = !empty(l:batch_rel) ? l:batch_rel : s:v2_pick_relation()
+    if l:rel ==# ''
+      echo 'yurii_PKM: ' . l:tgt . ' はキャンセルしてスキップ'
+      continue
+    endif
+    " 関係ごとの向きの制約（キーワード=そっちにとって / カテゴリー=こっちにとって / 関連=対称）
+    let l:side = s:v2_relation_side(l:rel)
+    let l:below = l:side >= 0 ? l:side : l:below_default
+
+    let l:default_title = s:v2_title_for(l:tgt)
+    let l:title = l:default_title
+    if l:rel ==# 'キーワード'
+      let l:kw = s:v2_keyword_name(yurii_pkm#current_title())
+      if empty(l:kw)
+        echo 'yurii_PKM: ' . l:tgt . ' はキャンセルしてスキップ'
+        continue
+      endif
+      let l:title = l:kw
+    elseif has_key(l:attr_targets, l:tgt) && l:manual_name
+      let l:input = trim(input('[' . l:tgt . '] 表示名: ', l:default_title))
+      let l:title = empty(l:input) ? l:default_title : l:input
+    endif
+
+    if s:v2_insert_link(l:rel, '[' . l:title . '](' . l:tgt . ')', l:below)
+      let l:added += 1
+      echo 'yurii_PKM: ' . l:rel . (l:below ? ' ↓ ' : ' ') . '+= ' . l:title
+    endif
+  endfor
+  if l:added > 0 | silent! write | endif
 endfunction
 
 " --- ページを開きながら関連ノートを新規作成。
