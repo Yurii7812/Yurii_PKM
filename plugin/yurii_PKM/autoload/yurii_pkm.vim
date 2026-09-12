@@ -3892,7 +3892,10 @@ function! s:v2_new_related(below, attr, ...) abort
     echohl WarningMsg | echo 'yurii_PKM: 名前付きバッファで実行して' | echohl NONE
     return
   endif
-  let l:rel = (a:0 > 0 && a:1 !=# '') ? a:1 : s:v2_pick_relation()
+  " 現ノートが属性ノート（グループ / 小グループ）なら、関係ピッカーは
+  " 「ノート」の代わりに「索引」を出す変種を使う（§2）。
+  let l:cur_attr = s:v2_buf_attr()
+  let l:rel = (a:0 > 0 && a:1 !=# '') ? a:1 : s:v2_pick_relation(!empty(l:cur_attr))
   if l:rel ==# '' | echo 'yurii_PKM: キャンセル' | return | endif
   " 関係ごとの向きの制約（関連=対称）。属性ノート（グループ / 小グループ）は
   " nw が c/p の選択どおりの a:below を渡してくるので、ここでは上書きしない
@@ -3909,7 +3912,6 @@ function! s:v2_new_related(below, attr, ...) abort
   " グループ / 小グループ どちらの属性でも、値に関わらず常に グループ。
   " below=0（np: backlink は新ノートの そっちにとって）: 現ノート自身が
   " グループ の場合だけ上書き（サブ容器）。小グループは上書きしない。
-  let l:cur_attr = s:v2_buf_attr()
   if a:below
     let l:back_rel = !empty(l:cur_attr) ? 'グループ' : l:rel
   else
