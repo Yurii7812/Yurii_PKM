@@ -210,7 +210,7 @@ def test_migrate_legacy_v1_note() -> None:
         check("Parent:" not in txt and "Child:" not in txt and "BackLink:" not in txt,
               "旧見出しが消える")
         check("関連:\n[parent-note](260909061513.md)" in dn, "Parent リンク -> 関連:（対称なので下側・表示名は現タイトルへ）")
-        check("カテゴリー:\n[Index](index.md)" in up, "[Index] -> カテゴリー:")
+        check("グループ:\n[Index](index.md)" in up, "[Index] -> グループ:")
         check(UP_MARK in txt and DOWN_MARK in txt, "見張りコメント形式に変換される")
 
 
@@ -355,8 +355,8 @@ def _note_with_attr(path: Path, title: str, attr: str, up: str = "", down: str =
     path.write_text(txt, encoding="utf-8")
 
 
-def test_attribute_category_labels_member_up_side() -> None:
-    print("attribute: カテゴリー は非対称：メンバー側の上側だけ常に カテゴリー: になる")
+def test_attribute_group_labels_member_up_side() -> None:
+    print("attribute: グループ は非対称：メンバー側の上側だけ常に グループ: になる")
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
         _note_with_attr(root / "20250101.md", "哲学", v2.CATEGORY_ATTR)
@@ -364,14 +364,14 @@ def test_attribute_category_labels_member_up_side() -> None:
         v2.sync_vault(root)
         up, _dn = regions((root / "20250104.md").read_text(encoding="utf-8"))
         _u, dn = regions((root / "20250101.md").read_text(encoding="utf-8"))
-        check("カテゴリー:\n[哲学](20250101.md)" in up,
-              "手で 論点 を選んでいても、相手が カテゴリー なら上側は カテゴリー:")
+        check("グループ:\n[哲学](20250101.md)" in up,
+              "手で 論点 を選んでいても、相手が グループ なら上側は グループ:")
         check("論点:\n[認識論とは何か](20250104.md)" in dn,
               "容器ノート自身の下側は非対称：自分（メンバー）が容器でないので元の関係名（論点:）のまま")
 
 
-def test_attribute_category_subcategory_labels_down_side_too() -> None:
-    print("自分（サブ容器）も attribute: カテゴリー なら、相手の下側も カテゴリー: になる")
+def test_attribute_group_subgroup_labels_down_side_too() -> None:
+    print("自分（サブ容器）も attribute: グループ なら、相手の下側も グループ: になる")
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
         _note_with_attr(root / "20250101.md", "哲学", v2.CATEGORY_ATTR)
@@ -379,12 +379,12 @@ def test_attribute_category_subcategory_labels_down_side_too() -> None:
                          up="ノート: [哲学](20250101.md)")
         v2.sync_vault(root)
         _u, dn = regions((root / "20250101.md").read_text(encoding="utf-8"))
-        check("カテゴリー:\n[認識論](20250104.md)" in dn,
-              "自分もカテゴリーノードなので、相手の下側も カテゴリー: になる（サブ容器）")
+        check("グループ:\n[認識論](20250104.md)" in dn,
+              "自分もグループノードなので、相手の下側も グループ: になる（サブ容器）")
 
 
-def test_attribute_keyword_target_forces_category_not_keyword() -> None:
-    print("相手が attribute: キーワード でも、自分の上側は キーワード: ではなく カテゴリー: になる")
+def test_attribute_subgroup_target_forces_group_not_subgroup() -> None:
+    print("相手が attribute: 小グループ でも、自分の上側は 小グループ: ではなく グループ: になる")
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
         _note_with_attr(root / "20250101.md", "実在論", v2.KEYWORD_ATTR)
@@ -392,14 +392,14 @@ def test_attribute_keyword_target_forces_category_not_keyword() -> None:
         v2.sync_vault(root)
         up, _dn = regions((root / "20250104.md").read_text(encoding="utf-8"))
         _u, dn = regions((root / "20250101.md").read_text(encoding="utf-8"))
-        check("カテゴリー:\n[実在論](20250101.md)" in up,
-              "手で 資料 を選んでいても、相手が キーワード ノードなら上側は カテゴリー:（キーワード: にはならない）")
+        check("グループ:\n[実在論](20250101.md)" in up,
+              "手で 資料 を選んでいても、相手が 小グループ ノードなら上側は グループ:（小グループ: にはならない）")
         check("資料:\n[普遍は実在するか](20250104.md)" in dn,
-              "実在論 側の下側は打った関係名（資料:）のまま。キーワードは相手を下位に置く容器ではない")
+              "実在論 側の下側は打った関係名（資料:）のまま。小グループは相手を下位に置く容器ではない")
 
 
-def test_attribute_keyword_source_does_not_force_target_down_side() -> None:
-    print("自分が attribute: キーワード でも、相手の下側は上書きしない（打った関係名のまま）")
+def test_attribute_subgroup_source_does_not_force_target_down_side() -> None:
+    print("自分が attribute: 小グループ でも、相手の下側は上書きしない（打った関係名のまま）")
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
         note(root / "20250101.md", "実在論")
@@ -408,13 +408,13 @@ def test_attribute_keyword_source_does_not_force_target_down_side() -> None:
         v2.sync_vault(root)
         _u, dn = regions((root / "20250101.md").read_text(encoding="utf-8"))
         check("関連:\n[唯名論](20250104.md)" in dn,
-              "自分（唯名論）が キーワード ノードでも、相手（実在論）の下側は打った関係名（関連:）のまま")
-        check("キーワード:\n[唯名論](20250104.md)" not in dn,
-              "カテゴリーと違い、キーワードのサブノードは相手の下側を キーワード: に上書きしない")
+              "自分（唯名論）が 小グループ ノードでも、相手（実在論）の下側は打った関係名（関連:）のまま")
+        check("小グループ:\n[唯名論](20250104.md)" not in dn,
+              "グループと違い、小グループのサブノードは相手の下側を 小グループ: に上書きしない")
 
 
-def test_attribute_keyword_child_view_differs_by_side() -> None:
-    print("キーワードノードの子：キーワード側の下側は打った関係名、子自身の上側は カテゴリー:")
+def test_attribute_subgroup_child_view_differs_by_side() -> None:
+    print("小グループノードの子：小グループ側の下側は打った関係名、子自身の上側は グループ:")
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
         _note_with_attr(root / "20250101.md", "実在論", v2.KEYWORD_ATTR)
@@ -423,9 +423,24 @@ def test_attribute_keyword_child_view_differs_by_side() -> None:
         up, _dn = regions((root / "20250104.md").read_text(encoding="utf-8"))
         _u, dn = regions((root / "20250101.md").read_text(encoding="utf-8"))
         check("資料:\n[普遍は実在するか](20250104.md)" in dn,
-              "実在論（キーワード）側の下側からは、打った関係名（資料:）で見える")
-        check("カテゴリー:\n[実在論](20250101.md)" in up,
-              "その子（普遍は実在するか）自身の上側からは カテゴリー: として見える")
+              "実在論（小グループ）側の下側からは、打った関係名（資料:）で見える")
+        check("グループ:\n[実在論](20250101.md)" in up,
+              "その子（普遍は実在するか）自身の上側からは グループ: として見える")
+
+
+def test_legacy_attribute_names_still_recognized() -> None:
+    print("旧 attribute: カテゴリー / キーワード は前方互換で認識される（グループ / 小グループ扱い）")
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        _note_with_attr(root / "20250101.md", "哲学", "カテゴリー")
+        note(root / "20250104.md", "認識論とは何か", up="論点: [哲学](20250101.md)")
+        v2.sync_vault(root)
+        up, _dn = regions((root / "20250104.md").read_text(encoding="utf-8"))
+        check("グループ:\n[哲学](20250101.md)" in up,
+              "front matter が旧名でも、機能としては グループ 属性として扱われる")
+        txt = (root / "20250101.md").read_text(encoding="utf-8")
+        check("attribute: カテゴリー" in txt,
+              "front matter 自体は書き換えない（sync は関係セクションしか触らない）")
 
 
 def test_down_side_display_name_is_sticky() -> None:

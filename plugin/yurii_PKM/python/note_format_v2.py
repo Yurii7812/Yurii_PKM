@@ -7,19 +7,19 @@
 - 本文の後、``<!-- こっちにとって -->`` 見張り行から上側（これ＝このノートにとって そのノートが○○）。
 - ``<!-- そっちにとって -->`` 見張り行から下側（それ＝そのノートにとって このノートが○○）。
   HTML コメントなのでレンダラで不可視・見出し化しない・本文と衝突しない。
-- 関係: キーワード / 前提 / 論点 / 見解 / 関連 / ノート（既定）/ 自由入力。
-  `カテゴリー` は選ばない ── 相手が `attribute: カテゴリー` / `attribute: キーワード`
-  のどちらでも、選んだ関係に関わらず自分側は自動で `カテゴリー:` になる
-  （`キーワード` 自体はピッカーから選べる。索引語の自由入力という既存の用途は変わらない）。
-  `関連` は対称。並び順は カテゴリー → キーワード → 前提 → 論点 → 見解 → 関連 → ノート。
-  相手が `attribute: カテゴリー` / `attribute: キーワード` のノートなら、自分側の
-  ラベルは値に関わらず常に `カテゴリー:`（相手側の そっちにとって は書かれた関係のまま）。
-  自分が `attribute: カテゴリー` なら、相手側の そっちにとって も常に `カテゴリー:`
-  （サブ容器として）。自分が `attribute: キーワード` の場合はこの上書きをしない ──
-  相手の そっちにとって には書かれた関係がそのまま出る（キーワードは「何に索引されて
+- 関係: 索引 / 前提 / 論点 / 見解 / 関連 / ノート（既定）/ 自由入力。
+  `グループ` は選ばない ── 相手が `attribute: グループ` / `attribute: 小グループ`
+  のどちらでも、選んだ関係に関わらず自分側は自動で `グループ:` になる。
+  （旧 `attribute: カテゴリー` / `attribute: キーワード` は前方互換で読める。§ATTR_ALIASES）。
+  `関連` は対称。並び順は グループ → 小グループ → 索引 → 前提 → 論点 → 見解 → 関連 → ノート。
+  相手が `attribute: グループ` / `attribute: 小グループ` のノートなら、自分側の
+  ラベルは値に関わらず常に `グループ:`（相手側の そっちにとって は書かれた関係のまま）。
+  自分が `attribute: グループ` なら、相手側の そっちにとって も常に `グループ:`
+  （サブ容器として）。自分が `attribute: 小グループ` の場合はこの上書きをしない ──
+  相手の そっちにとって には書かれた関係がそのまま出る（小グループは「何に属して
   いるか」を見せるだけで、相手を自分の下位に置く容器ではないため）。
-- ノード属性は front matter の `attribute: カテゴリー` / `attribute: キーワード`
-  （容器ノート・索引ノードの印）。無ければただのノート。
+- ノード属性は front matter の `attribute: グループ` / `attribute: 小グループ`
+  （容器ノート・サブグループの印）。無ければただのノート。
   論点 / 見解 等は宣言しない（関係とタイトルから分かる）。
 - リンク 1 本は ``関係: [t](x.md)`` のインライン、2 本以上は ``関係:`` 改行のブロック。
 - 上側が真実。下側は他ノートの上側から導出。上下どちらも編集でき、
@@ -46,13 +46,18 @@ import re
 import sys
 from pathlib import Path
 
-RELATIONS: tuple[str, ...] = ("カテゴリー", "キーワード", "前提", "論点", "見解", "ノート", "関連", "補足", "資料")
-# 関係名の読み替え（既定は無し。カテゴリー: はそのまま残す）
+RELATIONS: tuple[str, ...] = (
+    "グループ", "小グループ", "索引", "前提", "論点", "見解", "ノート", "関連", "補足", "資料",
+)
+# 関係名の読み替え（既定は無し。グループ: はそのまま残す）
 RELATION_ALIASES: dict[str, str] = {"ワード": "キーワード"}
-# ノード属性: `attribute: カテゴリー` / `attribute: キーワード`（容器ノート・索引ノードの印）。
+# ノード属性: `attribute: グループ` / `attribute: 小グループ`（容器ノート・サブグループの印）。
 ATTR_KEYS = ("attribute", "属性")
-CATEGORY_ATTR = "カテゴリー"  # attribute の値 / 関係名でもある
-KEYWORD_ATTR = "キーワード"  # attribute の値 / 関係名でもある
+CATEGORY_ATTR = "グループ"  # attribute の値 / 関係名でもある
+KEYWORD_ATTR = "小グループ"  # attribute の値
+# 旧名からの前方互換（既存ノートの `attribute: カテゴリー` / `attribute: キーワード` を
+# そのまま新しい値として扱う。front matter 自体は書き換えない）。
+ATTR_ALIASES: dict[str, str] = {"カテゴリー": CATEGORY_ATTR, "キーワード": KEYWORD_ATTR}
 ATTR_LABELS: frozenset[str] = frozenset({CATEGORY_ATTR, KEYWORD_ATTR})  # attribute として使える値
 # 対称関係: 上側には出さず、両ノートの下側に現れる。
 SYMMETRIC: frozenset[str] = frozenset({"関連"})
@@ -117,7 +122,8 @@ def _fm_attr(fm: list[str]) -> str:
     for ln in fm:
         m = re.match(rf"^\s*(?:{keys})\s*:\s*(.+?)\s*$", ln)
         if m:
-            return m.group(1).strip().strip("\"'")
+            v = m.group(1).strip().strip("\"'")
+            return ATTR_ALIASES.get(v, v)
     return ""
 
 
@@ -181,7 +187,7 @@ def _has_relation_header(lines: list[str]) -> bool:
 
 def _route_legacy_link(up: dict, ti: str, tg: str, ann: str | None) -> None:
     base = tg.split("#", 1)[0].rsplit("/", 1)[-1].lower()
-    kind = "カテゴリー" if base in ("index.md", "index") else "関連"  # v1 の Index -> カテゴリー
+    kind = CATEGORY_ATTR if base in ("index.md", "index") else "関連"  # v1 の Index -> グループ
     up.setdefault(kind, [])
     if all(e[1] != tg for e in up[kind]):
         up[kind].append((ti, tg, ann))
@@ -190,7 +196,7 @@ def _route_legacy_link(up: dict, ti: str, tg: str, ann: str | None) -> None:
 def _migrate_legacy(lines: list[str]):
     """旧 v1（Parent:/Child:/BackLink:）を v2 の形へ寄せる。
 
-    Parent/Child/Branch のリンク -> ``関連:``、``[Index](index.md)`` -> ``カテゴリー:``。
+    Parent/Child/Branch のリンク -> ``関連:``、``[Index](index.md)`` -> ``グループ:``。
     BackLink は捨てる（sync が下側に再生成する）。リンクは失わない。
     """
     body: list[str] = []

@@ -369,14 +369,14 @@ endfunction
 
 function! s:index_template() abort
   " index.md は全ノートの最上位の容器なので、v2 では最初から
-  " attribute: カテゴリー を付ける（無いと sync が index を容器と認識できず、
-  " index に足したリンクが自動で カテゴリー: ラベルにならない）。
+  " attribute: グループ を付ける（無いと sync が index を容器と認識できず、
+  " index に足したリンクが自動で グループ: ラベルにならない）。
   let l:v2 = s:pkm_format() ==# 'v2'
   let l:head = [
         \ '---',
         \ 'time: ' . yurii_pkm#timestamp_yaml(),
         \ 'title: Index',
-        \ ] + (l:v2 ? ['attribute: カテゴリー'] : []) + [
+        \ ] + (l:v2 ? ['attribute: グループ'] : []) + [
         \ '---',
         \ '',
         \ '# Index',
@@ -2556,11 +2556,6 @@ function! s:rlp_link_apply(targets, below, ...) abort
   for l:t in a:targets
     if fnamemodify(l:t, ':p') ==# fnamemodify(l:anchor, ':p') | continue | endif
     let l:title = s:get_title(l:t)
-    if l:rel ==# 'キーワード'
-      let l:kw = s:v2_keyword_name(yurii_pkm#current_title())
-      if empty(l:kw) | continue | endif
-      let l:title = l:kw
-    endif
     if s:v2_insert_link(l:rel, s:make_link_from_dir(l:t, l:title, l:dir), l:below)
       let l:n += 1
     endif
@@ -3569,7 +3564,7 @@ function! s:body_top_insert_line() abort
   return 1
 endfunction
 
-" a:1 = v2 で 1 なら `attribute: カテゴリー` を付ける（容器ノート）
+" a:1 = v2 で 1 なら `attribute: グループ` を付ける（容器ノート）
 function! yurii_pkm#note_template(title, ...) abort
   let l:is_cat = (a:0 > 0 && s:pkm_format() ==# 'v2' && a:1)
   let l:header = [
@@ -3578,7 +3573,7 @@ function! yurii_pkm#note_template(title, ...) abort
         \ 'title: ' . a:title,
         \ ]
   if l:is_cat
-    call add(l:header, 'attribute: カテゴリー')
+    call add(l:header, 'attribute: グループ')
   endif
   call add(l:header, '---')
   if s:pkm_format() ==# 'v2'
@@ -3612,27 +3607,19 @@ endfunction
 
 " ピッカーで選べる関係。論点 / 見解 / 前提 は廃止。
 " 既存ノートの 論点: / 見解: / 前提: はそのまま残り、sync の並び替えでも壊れない。
-" カテゴリー は選ばせない（相手が attribute: カテゴリー なら sync が自動で付ける。
-" 手動で選べると向きが固定で壊れる — nk 専用で s:v2_new_category から直接渡す）。
-let s:v2_relations = ['キーワード', 'ノート', '関連', '補足', '資料']
+" グループ は選ばせない（相手が attribute: グループ なら sync が自動で付ける。
+" 手動で選べると向きが固定で壊れる — nw 専用で s:v2_new_attr から直接渡す）。
+let s:v2_relations = ['ノート', '補足', '資料', '関連']
+" グループ / 小グループ ノードへリンクする時だけ使う変種。「ノート」の代わりに
+" 「索引」を出す（意味は同じ既定・無色の関係だが、属性ノードに対しては
+" こちらの言葉のほうが実態に合う）。
+let s:v2_relations_attr = ['索引', '補足', '資料', '関連']
 
 " 関係ごとの向きの制約。0 = こっちにとって側のみ / 1 = そっちにとって側のみ / -1 = 制約なし
 function! s:v2_relation_side(rel) abort
-  if a:rel ==# 'キーワード' | return 1 | endif
-  if a:rel ==# 'カテゴリー' | return 0 | endif
-  if a:rel ==# '関連'       | return 1 | endif
+  if a:rel ==# 'グループ' | return 0 | endif
+  if a:rel ==# '関連'     | return 1 | endif
   return -1
-endfunction
-
-" キーワードは「このノートを索引する語」なので、相手のタイトルではなく打った語を使う。
-" どのノートに足しているのか見失わないよう、プロンプトにそのノートのタイトルを出す。
-function! s:v2_keyword_name(owner_title) abort
-  let l:label = empty(a:owner_title) ? 'キーワード: ' : '[' . a:owner_title . '] キーワード: '
-  try
-    return trim(input(l:label))
-  catch /^Vim:Interrupt$/
-    return ''
-  endtry
 endfunction
 
 " 数字で 1 項目選ぶ共通ピッカー。末尾は「入力」= 自由入力。'' = キャンセル（Esc/q）。
@@ -3668,21 +3655,33 @@ function! s:v2_pick(label, items) abort
   return ''
 endfunction
 
-function! s:v2_pick_relation() abort
-  let l:r = s:v2_pick('relation', s:v2_relations)
+" a:1 … 1 なら グループ / 小グループ ノードへリンクする時の変種
+" （「ノート」の代わりに「索引」を出す）を使う。省略時は通常の一覧。
+function! s:v2_pick_relation(...) abort
+  let l:items = (a:0 > 0 && a:1) ? s:v2_relations_attr : s:v2_relations
+  let l:r = s:v2_pick('relation', l:items)
   " 旧ピッカーの『なし』互換
   return l:r ==# 'なし' ? 'ノート' : l:r
 endfunction
 
 " nw で作れる属性ノードの種類。今後増やす時はここに足すだけでいい
 " （末尾の自由入力枠は s:v2_pick が自動で足す）。
-let s:v2_attr_types = ['キーワード']
+let s:v2_attr_types = ['グループ', '小グループ']
 
 function! s:v2_pick_attr() abort
-  return s:v2_pick('attribute', s:v2_attr_types)
+  return s:v2_pick('属性', s:v2_attr_types)
+endfunction
+
+" 旧名（カテゴリー / キーワード）を新名（グループ / 小グループ）へ読み替える。
+" 既存ノートの front matter はそのままでも、機能としては新しい規則で動く。
+function! s:v2_normalize_attr(v) abort
+  if a:v ==# 'カテゴリー' | return 'グループ' | endif
+  if a:v ==# 'キーワード' | return '小グループ' | endif
+  return a:v
 endfunction
 
 " 任意の .md ファイル（現ノートからの相対パス）の front matter attribute 値。無ければ空文字
+" （旧名 カテゴリー / キーワード は グループ / 小グループ へ読み替えて返す）
 function! s:v2_target_attr(tgt) abort
   let l:path = yurii_pkm#resolve_link(a:tgt)
   if !filereadable(l:path) | return '' | endif
@@ -3691,7 +3690,7 @@ function! s:v2_target_attr(tgt) abort
   for l:i in range(1, len(l:lines) - 1)
     if l:lines[l:i] =~# '^---\s*$' | break | endif
     let l:m = matchlist(l:lines[l:i], '^\s*\%(attribute\|属性\)\s*:\s*\(\S.\{-}\)\s*$')
-    if !empty(l:m) | return l:m[1] | endif
+    if !empty(l:m) | return s:v2_normalize_attr(l:m[1]) | endif
   endfor
   return ''
 endfunction
@@ -3816,29 +3815,33 @@ function! yurii_pkm#v2_add_link(...) abort
     return
   endif
 
+  " 対象にグループ / 小グループ属性のファイルが含まれるか（先に判定しておき、
+  " 関係ピッカーで「ノート」の代わりに「索引」を出すかどうかに使う）。
+  let l:attr_targets = {}
+  for l:t in l:targets
+    if s:v2_target_attr(l:t) !=# '' | let l:attr_targets[l:t] = 1 | endif
+  endfor
+  let l:all_attr = !empty(l:attr_targets) && len(l:attr_targets) == len(l:targets)
+
   " 関係: 複数件なら「一括で同じ関係」か「一つずつ選ぶ」かを先に聞く
   let l:rel_fixed = a:0 > 1 && a:2 !=# '' ? a:2 : ''
   let l:batch_rel = l:rel_fixed
   if empty(l:batch_rel)
     if len(l:targets) == 1
-      let l:batch_rel = s:v2_pick_relation()
+      let l:batch_rel = s:v2_pick_relation(l:all_attr)
       if l:batch_rel ==# '' | echo 'yurii_PKM: キャンセル' | return | endif
     else
       let l:mode = s:v2_pick('複数件の関係', ['一括で同じ関係', '一つずつ選ぶ'])
       if l:mode ==# '' | echo 'yurii_PKM: キャンセル' | return | endif
       if l:mode ==# '一括で同じ関係'
-        let l:batch_rel = s:v2_pick_relation()
+        let l:batch_rel = s:v2_pick_relation(l:all_attr)
         if l:batch_rel ==# '' | echo 'yurii_PKM: キャンセル' | return | endif
       endif
     endif
   endif
 
-  " 表示名: 対象にカテゴリー / キーワード属性のファイルが含まれるなら、
+  " 表示名: 対象にグループ / 小グループ属性のファイルが含まれるなら、
   " その表示名の付け方を聞く（複数あれば「一つずつ入力」か「タイトルのまま」を先に選ぶ）。
-  let l:attr_targets = {}
-  for l:t in l:targets
-    if s:v2_target_attr(l:t) !=# '' | let l:attr_targets[l:t] = 1 | endif
-  endfor
   let l:manual_name = !empty(l:attr_targets) && len(l:attr_targets) == 1
   if !empty(l:attr_targets) && len(l:attr_targets) > 1
     let l:nm = s:v2_pick('属性ノートの表示名', ['一つずつ入力', 'タイトルのまま'])
@@ -3848,25 +3851,19 @@ function! yurii_pkm#v2_add_link(...) abort
 
   let l:added = 0
   for l:tgt in l:targets
-    let l:rel = !empty(l:batch_rel) ? l:batch_rel : s:v2_pick_relation()
+    let l:is_attr = has_key(l:attr_targets, l:tgt)
+    let l:rel = !empty(l:batch_rel) ? l:batch_rel : s:v2_pick_relation(l:is_attr)
     if l:rel ==# ''
       echo 'yurii_PKM: ' . l:tgt . ' はキャンセルしてスキップ'
       continue
     endif
-    " 関係ごとの向きの制約（キーワード=そっちにとって / カテゴリー=こっちにとって / 関連=対称）
+    " 関係ごとの向きの制約（グループ=こっちにとって / 関連=対称）
     let l:side = s:v2_relation_side(l:rel)
     let l:below = l:side >= 0 ? l:side : l:below_default
 
     let l:default_title = s:v2_title_for(l:tgt)
     let l:title = l:default_title
-    if l:rel ==# 'キーワード'
-      let l:kw = s:v2_keyword_name(yurii_pkm#current_title())
-      if empty(l:kw)
-        echo 'yurii_PKM: ' . l:tgt . ' はキャンセルしてスキップ'
-        continue
-      endif
-      let l:title = l:kw
-    elseif has_key(l:attr_targets, l:tgt) && l:manual_name
+    if l:is_attr && l:manual_name
       let l:input = trim(input('[' . l:tgt . '] 表示名: ', l:default_title))
       let l:title = empty(l:input) ? l:default_title : l:input
     endif
@@ -3884,7 +3881,7 @@ endfunction
 "             0 = 現ノートの --- より上（親: 相手の下側に載る）
 "   a:1     … 関係(relation)（省略時は数字で選択）
 " a:below … 0 = 現ノートの こっちにとって 側 / 1 = そっちにとって 側
-" a:attr  … 空でなければ新ノートを `attribute: {a:attr}` で作る（カテゴリー / キーワード 等）
+" a:attr  … 空でなければ新ノートを `attribute: {a:attr}` で作る（グループ / 小グループ 等）
 " a:1(可変) … 関係名（省略時は数字ピッカー）
 function! s:v2_new_related(below, attr, ...) abort
   if s:pkm_format() !=# 'v2'
@@ -3897,9 +3894,9 @@ function! s:v2_new_related(below, attr, ...) abort
   endif
   let l:rel = (a:0 > 0 && a:1 !=# '') ? a:1 : s:v2_pick_relation()
   if l:rel ==# '' | echo 'yurii_PKM: キャンセル' | return | endif
-  " 関係ごとの向きの制約（キーワード=そっちにとって / 関連=対称）。
-  " 属性ノート（カテゴリー / キーワード）は nk/nw が c/p の選択どおりの a:below を
-  " 渡してくるので、ここでは上書きしない（上書きすると c/p の意味が反転する）。
+  " 関係ごとの向きの制約（関連=対称）。属性ノート（グループ / 小グループ）は
+  " nw が c/p の選択どおりの a:below を渡してくるので、ここでは上書きしない
+  " （上書きすると c/p の意味が反転する）。
   let l:side = !empty(a:attr) ? -1 : s:v2_relation_side(l:rel)
   let l:below = l:side >= 0 ? l:side : a:below
 
@@ -3909,14 +3906,14 @@ function! s:v2_new_related(below, attr, ...) abort
   if l:cur_title ==# '' | let l:cur_title = fnamemodify(l:cur, ':t:r') | endif
   " 現ノートが属性ノートなら、新ノート側のラベルを上書きする。
   " below=1（nc: backlink は新ノートの こっちにとって）: 相手（現ノート）が
-  " カテゴリー / キーワード どちらの属性でも、値に関わらず常に カテゴリー。
+  " グループ / 小グループ どちらの属性でも、値に関わらず常に グループ。
   " below=0（np: backlink は新ノートの そっちにとって）: 現ノート自身が
-  " カテゴリー の場合だけ上書き（サブ容器）。キーワードは上書きしない。
+  " グループ の場合だけ上書き（サブ容器）。小グループは上書きしない。
   let l:cur_attr = s:v2_buf_attr()
   if a:below
-    let l:back_rel = !empty(l:cur_attr) ? 'カテゴリー' : l:rel
+    let l:back_rel = !empty(l:cur_attr) ? 'グループ' : l:rel
   else
-    let l:back_rel = (l:cur_attr ==# 'カテゴリー') ? 'カテゴリー' : l:rel
+    let l:back_rel = (l:cur_attr ==# 'グループ') ? 'グループ' : l:rel
   endif
 
   let l:dir = expand('%:p:h')
@@ -3952,13 +3949,14 @@ function! s:v2_new_related(below, attr, ...) abort
   startinsert
 endfunction
 
-" 現在バッファの attribute 値（カテゴリー / キーワード 等）。無ければ空文字
+" 現在バッファの attribute 値（グループ / 小グループ 等）。無ければ空文字
+" （旧名 カテゴリー / キーワード は グループ / 小グループ へ読み替えて返す）
 function! s:v2_buf_attr() abort
   if getline(1) !~# '^---\s*$' | return '' | endif
   for l:i in range(2, min([25, line('$')]))
     if getline(l:i) =~# '^---\s*$' | break | endif
     let l:m = matchlist(getline(l:i), '^\s*\%(attribute\|属性\)\s*:\s*\(\S.\{-}\)\s*$')
-    if !empty(l:m) | return l:m[1] | endif
+    if !empty(l:m) | return s:v2_normalize_attr(l:m[1]) | endif
   endfor
   return ''
 endfunction
@@ -3973,29 +3971,22 @@ function! yurii_pkm#v2_new_parent(...) abort
   call call('s:v2_new_related', [0, ''] + a:000)
 endfunction
 
-" nk: カテゴリーノートを作る（attribute: カテゴリー）。関係は数字で選ぶ
-" nk: カテゴリーノートを作る。c=子 / p=親 を聞くだけ。関係は常に カテゴリー（含有）
-function! yurii_pkm#v2_new_category() abort
-  echo '新カテゴリーを  c=子（現ノートの中） / p=親（現ノートを含む）  (既定 c, Esc/q キャンセル)'
-  let l:ch = nr2char(getchar())
-  redraw
-  if l:ch ==? 'q' || char2nr(l:ch) == 27 || char2nr(l:ch) == 3
-    echo 'yurii_PKM: キャンセル' | return
-  endif
-  let l:below = (l:ch ==? 'p') ? 0 : 1
-  call s:v2_new_related(l:below, 'カテゴリー', 'カテゴリー')
-endfunction
-
-" nw: 属性ノートを作る（今のところ attribute: キーワード。ピッカーの末尾は自由入力
-" なので、今後属性の種類が増えても s:v2_attr_types に足すだけで選べるようになる）。
-" nk と違い、属性を選んだ後に関係も選ぶ（カテゴリーと違って キーワード は
-" 自分がソースの時に sync が関係名を上書きしないので、実際に何の関係か
-" 選べることに意味がある。§3 参照）。c=子 / p=親 は最後に聞く。
+" nw: 属性ノートを作る。まず属性の種類を選ぶ（1=グループ 2=小グループ、末尾=自由入力。
+" 今後属性の種類が増えても s:v2_attr_types に足すだけで選べるようになる）。
+" グループ は関係固定（常に `グループ`）── 相手が違う関係を選べると向きが固定で
+" 壊れるため、関係ピッカーを飛ばしてそのまま c/p を聞く。
+" 小グループ（と自由入力の属性）は関係も選ばせる ── グループと違って小グループは
+" 自分がソースの時に sync が関係名を上書きしないので、実際に何の関係か選べる
+" ことに意味がある（§3）。この時のピッカーは「ノート」の代わりに「索引」を出す。
 function! yurii_pkm#v2_new_attr() abort
   let l:attr = s:v2_pick_attr()
   if l:attr ==# '' | echo 'yurii_PKM: キャンセル' | return | endif
-  let l:rel = s:v2_pick_relation()
-  if l:rel ==# '' | echo 'yurii_PKM: キャンセル' | return | endif
+  if l:attr ==# 'グループ'
+    let l:rel = 'グループ'
+  else
+    let l:rel = s:v2_pick_relation(1)
+    if l:rel ==# '' | echo 'yurii_PKM: キャンセル' | return | endif
+  endif
   echo '新' . l:attr . 'を  c=子（現ノートの中） / p=親（現ノートを含む）  (既定 c, Esc/q キャンセル)'
   let l:ch = nr2char(getchar())
   redraw

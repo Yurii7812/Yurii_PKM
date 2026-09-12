@@ -80,7 +80,7 @@ let s:plugin_root = fnamemodify(expand('<sfile>:p'), ':h:h')
 
 " ノート形式。既定 'v2' = --- 境界 + 型付きセクション（詳細は repo の NOTE_FORMAT.md）。
 " 旧 Parent:/Child:/BackLink: 形式に固定したい場合のみ 'v1' を明示する。
-" v1 のノートは v2 sync で初回に自動変換される（Parent/Child リンク -> 関連:、Index -> カテゴリー:）。
+" v1 のノートは v2 sync で初回に自動変換される（Parent/Child リンク -> 関連:、Index -> グループ:）。
 if !exists('g:yurii_pkm_format')
   let g:yurii_pkm_format = 'v2'
 endif
@@ -247,13 +247,12 @@ nnoremap <nowait> <silent> ,/  <Cmd>call yurii_pkm#jump_down_bottom()<CR>
 "   nc … 子ノート（リンクは現ノートの そっちにとって 側）
 "   np … 親ノート（リンクは現ノートの こっちにとって 側）
 "   nh … カーソル直下にリンク（本文リンク → 相手には バックリンク: として出る）
-"   nk … カテゴリーノート（c=子 / p=親 を聞く。カテゴリーは nk でのみ作れる）
-"   nw … 属性ノート（数字ピッカーで種類を選ぶ。今は 1=キーワード、末尾=自由入力。
-"        選択後は nk と同じく c=子 / p=親 を聞く）
+"   nw … 属性ノート（数字ピッカーで種類を選ぶ。1=グループ 2=小グループ、末尾=自由入力。
+"        グループは関係固定 → そのまま c=子 / p=親。小グループ（と自由入力）は
+"        続けて関係も選ぶ → c=子 / p=親）。属性ノートは nw でのみ作れる
 nnoremap <nowait> <silent> nc  <Cmd>call yurii_pkm#v2_new_child()<CR>
 nnoremap <nowait> <silent> np  <Cmd>call yurii_pkm#v2_new_parent()<CR>
 nnoremap <nowait> <silent> nh  <Cmd>call yurii_pkm#v2_new_here()<CR>
-nnoremap <nowait> <silent> nk  <Cmd>call yurii_pkm#v2_new_category()<CR>
 nnoremap <nowait> <silent> nw  <Cmd>call yurii_pkm#v2_new_attr()<CR>
 " cu: クリップボードのリンクを Parent: セクションへ追加
 nnoremap <nowait> <silent> cu  <Cmd>call yurii_pkm#add_clipboard_to_branch()<CR>
