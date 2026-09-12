@@ -650,7 +650,8 @@ def sync_vault(root) -> int:
                 ]
             back = sorted(
                 s for s, targets in body_links.items()
-                if nid in targets and (s, nid) not in directed and s in id_to_path
+                if nid in targets and (s, nid) not in directed
+                and (nid, s) not in directed and s in id_to_path
             )
             if back:
                 new_down[BACKLINK] = [

@@ -368,16 +368,21 @@ function! s:pkm_format() abort
 endfunction
 
 function! s:index_template() abort
+  " index.md は全ノートの最上位の容器なので、v2 では最初から
+  " attribute: カテゴリー を付ける（無いと sync が index を容器と認識できず、
+  " index に足したリンクが自動で カテゴリー: ラベルにならない）。
+  let l:v2 = s:pkm_format() ==# 'v2'
   let l:head = [
         \ '---',
         \ 'time: ' . yurii_pkm#timestamp_yaml(),
         \ 'title: Index',
+        \ ] + (l:v2 ? ['attribute: カテゴリー'] : []) + [
         \ '---',
         \ '',
         \ '# Index',
         \ '',
         \ ]
-  if s:pkm_format() ==# 'v2'
+  if l:v2
     return l:head + [s:v2_up_mark, s:v2_down_mark]
   endif
   return l:head
@@ -3607,7 +3612,9 @@ endfunction
 
 " ピッカーで選べる関係。論点 / 見解 / 前提 は廃止。
 " 既存ノートの 論点: / 見解: / 前提: はそのまま残り、sync の並び替えでも壊れない。
-let s:v2_relations = ['カテゴリー', 'キーワード', 'ノート', '関連', '補足', '資料']
+" カテゴリー は選ばせない（相手が attribute: カテゴリー なら sync が自動で付ける。
+" 手動で選べると向きが固定で壊れる — nk 専用で s:v2_new_category から直接渡す）。
+let s:v2_relations = ['キーワード', 'ノート', '関連', '補足', '資料']
 
 " 関係ごとの向きの制約。0 = こっちにとって側のみ / 1 = そっちにとって側のみ / -1 = 制約なし
 function! s:v2_relation_side(rel) abort
@@ -3821,8 +3828,10 @@ function! s:v2_new_related(below, is_cat, ...) abort
   endif
   let l:rel = (a:0 > 0 && a:1 !=# '') ? a:1 : s:v2_pick_relation()
   if l:rel ==# '' | echo 'yurii_PKM: キャンセル' | return | endif
-  " 関係ごとの向きの制約（キーワード=そっちにとって / カテゴリー=こっちにとって / 関連=対称）
-  let l:side = s:v2_relation_side(l:rel)
+  " 関係ごとの向きの制約（キーワード=そっちにとって / 関連=対称）。
+  " カテゴリー は nk が c/p の選択どおりの a:below を渡してくるので、ここでは
+  " 上書きしない（上書きすると c/p の意味が反転する）。
+  let l:side = a:is_cat ? -1 : s:v2_relation_side(l:rel)
   let l:below = l:side >= 0 ? l:side : a:below
 
   " 現ノート（＝新ノートの相手）の情報

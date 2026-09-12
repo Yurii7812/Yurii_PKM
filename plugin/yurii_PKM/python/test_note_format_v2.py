@@ -254,6 +254,23 @@ def test_typed_link_suppresses_backlink() -> None:
         check("バックリンク" not in dn, "バックリンク: A は出さない（型で表示済み）")
 
 
+def test_typed_link_from_down_side_suppresses_backlink() -> None:
+    print("backlink: 型付きの関係が相手の そっちにとって 側にあっても バックリンク: にしない")
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        # A の本文で B に触れつつ、A の そっちにとって（子）側にも同じ B を載せる
+        # （nc/ca 相当。関係の向きは B->A で、本文リンクの向き A->B とは逆）。
+        (root / "20250104.md").write_text(
+            "---\ntitle: A\n---\n\n# A\n\n本文で [B](20250111.md) に触れる。\n\n"
+            "<!-- こっちにとって -->\n<!-- そっちにとって -->\nノート: [B](20250111.md)\n",
+            encoding="utf-8")
+        note(root / "20250111.md", "B")
+        v2.sync_vault(root)
+        up, dn = regions((root / "20250111.md").read_text(encoding="utf-8"))
+        check("ノート:\n[A](20250104.md)" in up, "B の こっちにとって に ノート: A は出る")
+        check("バックリンク" not in dn, "B の そっちにとって に バックリンク: A は出さない（重複のため）")
+
+
 
 def test_foreign_file_untouched() -> None:
     print("integrate: 見張り無しの外部ファイル（日記）は書き換えない")
