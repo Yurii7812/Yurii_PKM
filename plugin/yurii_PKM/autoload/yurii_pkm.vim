@@ -3988,10 +3988,14 @@ endfunction
 
 " nw: 属性ノートを作る（今のところ attribute: キーワード。ピッカーの末尾は自由入力
 " なので、今後属性の種類が増えても s:v2_attr_types に足すだけで選べるようになる）。
-" c=子 / p=親 を聞くだけ。関係は常にその属性値。
+" nk と違い、属性を選んだ後に関係も選ぶ（カテゴリーと違って キーワード は
+" 自分がソースの時に sync が関係名を上書きしないので、実際に何の関係か
+" 選べることに意味がある。§3 参照）。c=子 / p=親 は最後に聞く。
 function! yurii_pkm#v2_new_attr() abort
   let l:attr = s:v2_pick_attr()
   if l:attr ==# '' | echo 'yurii_PKM: キャンセル' | return | endif
+  let l:rel = s:v2_pick_relation()
+  if l:rel ==# '' | echo 'yurii_PKM: キャンセル' | return | endif
   echo '新' . l:attr . 'を  c=子（現ノートの中） / p=親（現ノートを含む）  (既定 c, Esc/q キャンセル)'
   let l:ch = nr2char(getchar())
   redraw
@@ -3999,7 +4003,7 @@ function! yurii_pkm#v2_new_attr() abort
     echo 'yurii_PKM: キャンセル' | return
   endif
   let l:below = (l:ch ==? 'p') ? 0 : 1
-  call s:v2_new_related(l:below, l:attr, l:attr)
+  call s:v2_new_related(l:below, l:attr, l:rel)
 endfunction
 
 " カーソル直下ノート（nh）: 新ノートを作り、そのリンクをカーソル行の直下（本文）に置く。
