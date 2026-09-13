@@ -3671,16 +3671,10 @@ function! s:v2_is_custom_relation(rel) abort
   return a:rel !=# 'ノート' && a:rel !=# '関連'
 endfunction
 
-" 相手側にどう書くかをその場で聞く。「自動のまま」なら sync と同じ括弧付き
-" 既定値、「書く」ならその場で入力したテキストをそのまま使う。
-function! s:v2_ask_other_side_label(rel) abort
-  let l:default = '(' . a:rel . ')'
-  let l:choice = s:v2_pick('相手側のラベル（既定: ' . l:default . '）', ['自動のまま', '書く'])
-  if l:choice ==# '書く'
-    let l:txt = trim(input('相手側のラベル: '))
-    return empty(l:txt) ? l:default : l:txt
-  endif
-  return l:default
+" 相手側にも同じラベルをそのまま書くかどうかを聞く（自由入力はしない、
+" 二択のみ）。「いいえ」なら sync の括弧付き既定値に任せる。
+function! s:v2_ask_write_same_label(rel) abort
+  return s:v2_pick('相手側にも「' . a:rel . '」と書く？', ['はい', 'いいえ（自動）']) ==# 'はい'
 endfunction
 
 " nw で作れる属性ノードの種類。今後増やす時はここに足すだけでいい
@@ -3950,7 +3944,10 @@ function! yurii_pkm#v2_add_link(...) abort
   let l:cur_title = yurii_pkm#current_title()
   if l:cur_title ==# '' | let l:cur_title = fnamemodify(l:cur_path, ':t:r') | endif
 
-  let l:added = 0
+  " まず各対象の関係・向き・表示名を決めるだけ決める（挿入はまだしない）。
+  " こうしておくと、「相手側にも同じラベルを書くか」を全体で 1 回だけ
+  " 聞ける（個々の関係が何であれ、答えは 1 つで済む）。
+  let l:entries = []
   for l:tgt in l:targets
     let l:is_attr = has_key(l:attr_targets, l:tgt)
     let l:rel = !empty(l:batch_rel) ? l:batch_rel : s:v2_pick_relation(l:is_attr)
@@ -3969,23 +3966,31 @@ function! yurii_pkm#v2_add_link(...) abort
       let l:title = empty(l:input) ? l:default_title : l:input
     endif
 
-    if s:v2_insert_link(l:rel, '[' . l:title . '](' . l:tgt . ')', l:below)
+    call add(l:entries, {'tgt': l:tgt, 'rel': l:rel, 'below': l:below, 'title': l:title})
+  endfor
+
+  " ノート/関連 以外（方向性を持ちうる関係）が 1 件でもあれば、相手側にも
+  " 同じ言葉をそのまま書くかどうかを全体で 1 回だけ聞く（自由入力はしない）。
+  " 「いいえ」なら何もしない（次の sync が括弧付き既定値を生成する）。
+  let l:custom_rels = {}
+  for l:e in l:entries
+    if s:v2_is_custom_relation(l:e.rel) | let l:custom_rels[l:e.rel] = 1 | endif
+  endfor
+  let l:write_same = 0
+  if len(l:custom_rels) == 1
+    let l:write_same = s:v2_ask_write_same_label(keys(l:custom_rels)[0])
+  elseif len(l:custom_rels) > 1
+    let l:write_same = s:v2_pick('相手側にもそれぞれ同じ関係名を書く？', ['はい', 'いいえ（自動）']) ==# 'はい'
+  endif
+
+  let l:added = 0
+  for l:e in l:entries
+    if s:v2_insert_link(l:e.rel, '[' . l:e.title . '](' . l:e.tgt . ')', l:e.below)
       let l:added += 1
-      echo 'yurii_PKM: ' . l:rel . (l:below ? ' ↓ ' : ' ') . '+= ' . l:title
-      " ノート/関連 以外（方向性を持ちうる関係）を選んだ時は、相手側にも
-      " 今その場で書くか聞く。「自動のまま」なら何もしない（次の sync が
-      " 括弧付き既定値を生成する）。
-      if s:v2_is_custom_relation(l:rel)
-        let l:choice = s:v2_pick('[' . l:tgt . '] 相手側のラベル（既定: (' . l:rel . ')）',
-              \ ['自動のまま', '書く'])
-        if l:choice ==# '書く'
-          let l:other_label = trim(input('[' . l:tgt . '] 相手側のラベル: '))
-          if !empty(l:other_label)
-            let l:tgt_path = yurii_pkm#resolve_link(l:tgt)
-            call s:v2_write_other_side_label(l:tgt_path, l:other_label,
-                  \ l:cur_path, l:cur_title, l:below)
-          endif
-        endif
+      echo 'yurii_PKM: ' . l:e.rel . (l:e.below ? ' ↓ ' : ' ') . '+= ' . l:e.title
+      if l:write_same && s:v2_is_custom_relation(l:e.rel)
+        let l:tgt_path = yurii_pkm#resolve_link(l:e.tgt)
+        call s:v2_write_other_side_label(l:tgt_path, l:e.rel, l:cur_path, l:cur_title, l:e.below)
       endif
     endif
   endfor
@@ -4033,8 +4038,10 @@ function! s:v2_new_related(below, attr, ...) abort
   let l:forced_group = a:below ? !empty(l:cur_attr) : (l:cur_attr ==# 'グループ')
   if l:forced_group
     let l:back_rel = 'グループ'
+  elseif s:v2_is_custom_relation(l:rel) && s:v2_ask_write_same_label(l:rel)
+    let l:back_rel = l:rel
   elseif s:v2_is_custom_relation(l:rel)
-    let l:back_rel = s:v2_ask_other_side_label(l:rel)
+    let l:back_rel = '(' . l:rel . ')'
   else
     let l:back_rel = l:rel
   endif
