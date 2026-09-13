@@ -4,9 +4,10 @@
 詳細仕様は repo ルートの NOTE_FORMAT.md。要点:
 
 - ファイル名 = タイムスタンプのみ。front matter は time / title。
-- 本文の後、``<!-- こっちにとって -->`` 見張り行から上側（これ＝このノートにとって そのノートが○○）。
-- ``<!-- そっちにとって -->`` 見張り行から下側（それ＝そのノートにとって このノートが○○）。
-  HTML コメントなのでレンダラで不可視・見出し化しない・本文と衝突しない。
+- 本文の後、``Parent`` 見張り行から上側（これ＝このノートにとって そのノートが○○）。
+- ``Child`` 見張り行から下側（それ＝そのノートにとって このノートが○○）。
+  行全体がその 1 語だけ（コロンも中身も無い）。旧 v1 の ``Parent:``/``Child:``
+  （コロン付き・直後にリンク）とは別物。
 - 関係: 索引 / 前提 / 論点 / 見解 / 関連 / ノート（既定）/ 自由入力。
   `グループ` は選ばない ── 相手が `attribute: グループ` / `attribute: 小グループ`
   のどちらでも、選んだ関係に関わらず自分側は自動で `グループ:` になる。
@@ -77,9 +78,11 @@ ATTR_LABELS: frozenset[str] = frozenset({CATEGORY_ATTR, KEYWORD_ATTR})  # attrib
 SYMMETRIC: frozenset[str] = frozenset({"関連"})
 BACKLINK = "バックリンク"
 
-UP_MARK = "<!-- こっちにとって -->"
-DOWN_MARK = "<!-- そっちにとって -->"
-# 旧見張り（している/されている）。parse だけが読む。render は新表記に統一する。
+UP_MARK = "Parent"
+DOWN_MARK = "Child"
+# 旧見張り（新しい順）。parse だけが読む。render は新表記（Parent/Child）に統一する。
+LEGACY_UP_MARK2 = "<!-- こっちにとって -->"
+LEGACY_DOWN_MARK2 = "<!-- そっちにとって -->"
 LEGACY_UP_MARK = "<!-- している -->"
 LEGACY_DOWN_MARK = "<!-- されている -->"
 
@@ -266,12 +269,17 @@ def parse_note(path, text: str | None = None) -> Note:
 
     stripped = [ln.strip() for ln in rest]
 
-    # sync が触るのは見張りコメント 2 行を持つファイルだけ。
+    # sync が触るのは見張り 2 行を持つファイルだけ。
     # それ以外（旧 v1 / 旧 --- / 日記 / 素の散文）は managed=False で読むだけ。
-    # 見張りは新表記（こっちにとって/そっちにとって）・旧表記（している/されている）
-    # のどちらでも読める。render は常に新表記で書き直す（＝次の sync で自動移行）。
-    up_mark = UP_MARK if UP_MARK in stripped else (LEGACY_UP_MARK if LEGACY_UP_MARK in stripped else None)
-    down_mark = DOWN_MARK if DOWN_MARK in stripped else (LEGACY_DOWN_MARK if LEGACY_DOWN_MARK in stripped else None)
+    # 見張りは新表記（Parent/Child）・旧表記（こっちにとって/そっちにとって の
+    # HTML コメント）・さらに旧い表記（している/されている）のどれでも読める。
+    # render は常に新表記で書き直す（＝次の sync で自動移行）。
+    up_mark = UP_MARK if UP_MARK in stripped else (
+        LEGACY_UP_MARK2 if LEGACY_UP_MARK2 in stripped else (
+            LEGACY_UP_MARK if LEGACY_UP_MARK in stripped else None))
+    down_mark = DOWN_MARK if DOWN_MARK in stripped else (
+        LEGACY_DOWN_MARK2 if LEGACY_DOWN_MARK2 in stripped else (
+            LEGACY_DOWN_MARK if LEGACY_DOWN_MARK in stripped else None))
     marked = up_mark is not None and down_mark is not None
     frozen = bool(re.search(
         r"^\s*(pkm\s*:\s*raw|sync\s*:\s*(?:false|off|no))\s*$",
@@ -304,6 +312,7 @@ def migrate_note(text: str, path: str = "note.md") -> str | None:
     fm, rest = _split_front_matter(raw)
     stripped = [ln.strip() for ln in rest]
     if (UP_MARK in stripped and DOWN_MARK in stripped) or (
+            LEGACY_UP_MARK2 in stripped and LEGACY_DOWN_MARK2 in stripped) or (
             LEGACY_UP_MARK in stripped and LEGACY_DOWN_MARK in stripped):
         return None
     title = _fm_title(fm) or Path(path).stem
@@ -658,9 +667,17 @@ def sync_vault(root) -> int:
         相手（そっちにとって）が何と書いていようと関係なく既定の `ノート`。
         相手の言葉を勝手に借りて括弧で示すようなことはしない（方向性のある
         言葉（例: きっかけ）は相手から見て意味が通らないため）。
+
+        例外: sid 自身が attribute（グループ / 小グループ）を持つ容器ノードの
+        場合だけは、相手（そっちにとって）が書いた実際の関係名をそのまま使う
+        （§3: 容器ノード自身の関係表示は実際に選んだ関係名のまま、という
+        既存の非対称ルールを、通常と逆方向＝容器側から見た場合にも保つ）。
         """
         if pair in up_label:
             return up_label[pair]
+        sid = pair[0]
+        if attr_of.get(sid) in ATTR_LABELS:
+            return down_label.get(pair) or "ノート"
         return "ノート"
 
     # --- 上側を再構築。相手が attribute 持ちなら自分側ラベルは常に `カテゴリー:` ---
@@ -742,6 +759,11 @@ def sync_vault(root) -> int:
                     lbl = CATEGORY_ATTR
                 elif a in orig_down_label:
                     lbl = orig_down_label[a]
+                elif attr_of.get(nid) in ATTR_LABELS:
+                    # §3 の例外: 容器ノード（グループ / 小グループ）自身の
+                    # そっちにとって には、実際に選んだ関係名がそのまま並ぶ
+                    # （ノート の既定値に落とさない）。
+                    lbl = up_label.get((a, nid)) or down_label.get((a, nid)) or "ノート"
                 else:
                     lbl = "ノート"
                 by_lbl.setdefault(lbl, []).append(a)

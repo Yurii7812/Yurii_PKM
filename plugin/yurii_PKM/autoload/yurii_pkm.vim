@@ -1709,8 +1709,8 @@ function! s:v2_boundaries_in_lines(lines) abort
   let l:up_m = 0 | let l:dn_m = 0
   for l:i in range(0, len(a:lines) - 1)
     let l:s = trim(a:lines[l:i])
-    if l:s ==# s:v2_up_mark || l:s ==# s:v2_up_mark_legacy     | let l:up_m = l:i + 1 | endif
-    if l:s ==# s:v2_down_mark || l:s ==# s:v2_down_mark_legacy | let l:dn_m = l:i + 1 | endif
+    if l:s ==# s:v2_up_mark || index(s:v2_up_marks_legacy, l:s) >= 0     | let l:up_m = l:i + 1 | endif
+    if l:s ==# s:v2_down_mark || index(s:v2_down_marks_legacy, l:s) >= 0 | let l:dn_m = l:i + 1 | endif
   endfor
   if l:up_m > 0 && l:dn_m > l:up_m
     return [l:up_m, l:dn_m]
@@ -3718,22 +3718,23 @@ endfunction
 
 " front matter 終端行と、本文側で末尾寄りの --- 2 本（上側開始 / 下側開始）を返す。
 " 2 本無ければ EOF に補って返す。本文中の --- は末尾 2 本にならないので無視される。
-let s:v2_up_mark   = '<!-- こっちにとって -->'
-let s:v2_down_mark = '<!-- そっちにとって -->'
-" 旧見張り（している/されている）。まだ移行していないノートも読めるように残す。
-" sync（note_format_v2.py）が保存時に新表記へ書き換える。
-let s:v2_up_mark_legacy   = '<!-- している -->'
-let s:v2_down_mark_legacy = '<!-- されている -->'
+let s:v2_up_mark   = 'Parent'
+let s:v2_down_mark = 'Child'
+" 旧見張り（新しい順: こっちにとって/そっちにとって -> している/されている）。
+" まだ移行していないノートも読めるように残す。sync（note_format_v2.py）が
+" 保存時に新表記（Parent/Child）へ書き換える。
+let s:v2_up_marks_legacy   = ['<!-- こっちにとって -->', '<!-- している -->']
+let s:v2_down_marks_legacy = ['<!-- そっちにとって -->', '<!-- されている -->']
 
-" こっちにとって / そっちにとって の見張り行の行番号を返す。
+" Parent / Child の見張り行の行番号を返す。
 " 見張りはノート作成時（テンプレート）にだけ入る。無ければ [0, 0] を返し、
 " 呼び出し側が処理を中止する（後から見張りを追加することは決してしない）。
 function! s:v2_boundaries() abort
   let l:up_m = 0 | let l:dn_m = 0
   for l:i in range(1, line('$'))
     let l:s = trim(getline(l:i))
-    if l:s ==# s:v2_up_mark || l:s ==# s:v2_up_mark_legacy     | let l:up_m = l:i | endif
-    if l:s ==# s:v2_down_mark || l:s ==# s:v2_down_mark_legacy | let l:dn_m = l:i | endif
+    if l:s ==# s:v2_up_mark || index(s:v2_up_marks_legacy, l:s) >= 0     | let l:up_m = l:i | endif
+    if l:s ==# s:v2_down_mark || index(s:v2_down_marks_legacy, l:s) >= 0 | let l:dn_m = l:i | endif
   endfor
   if l:up_m > 0 && l:dn_m > l:up_m
     return [l:up_m, l:dn_m]

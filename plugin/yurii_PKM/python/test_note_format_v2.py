@@ -23,8 +23,8 @@ def check(cond: bool, msg: str) -> None:
         _FAILED.append(msg)
 
 
-UP_MARK = "<!-- こっちにとって -->"
-DOWN_MARK = "<!-- そっちにとって -->"
+UP_MARK = v2.UP_MARK
+DOWN_MARK = v2.DOWN_MARK
 
 
 def regions(text: str) -> tuple[str, str]:
@@ -365,7 +365,7 @@ def test_unmarked_notes_frozen_by_sync() -> None:
         check("論点:\n[昔のメモ](diary/20200101120000.md)" in up, "リンクは打った通りに残る（表示名も固定）")
         # migrate を明示的に呼ぶと変換される
         conv = v2.migrate_note(v1raw, str(old))
-        check(conv is not None and "<!-- こっちにとって -->" in conv, "migrate は v2 化する")
+        check(conv is not None and UP_MARK in conv, "migrate は v2 化する")
 
 
 def test_legacy_marks_upgraded_by_sync() -> None:
@@ -412,8 +412,8 @@ def test_attribute_group_labels_member_up_side() -> None:
         _u, dn = regions((root / "20250101.md").read_text(encoding="utf-8"))
         check("グループ:\n[哲学](20250101.md)" in up,
               "手で 論点 を選んでいても、相手が グループ なら上側は グループ:")
-        check("ノート:\n[認識論とは何か](20250104.md)" in dn,
-              "容器ノート自身の下側は非対称：自分（メンバー）が容器でないので新規ペアは既定の『ノート』になる")
+        check("論点:\n[認識論とは何か](20250104.md)" in dn,
+              "容器ノート自身の下側は非対称：メンバーが打った実際の関係名がそのまま並ぶ（§3 の例外）")
 
 
 def test_attribute_group_subgroup_labels_down_side_too() -> None:
@@ -440,8 +440,8 @@ def test_attribute_subgroup_target_forces_group_not_subgroup() -> None:
         _u, dn = regions((root / "20250101.md").read_text(encoding="utf-8"))
         check("グループ:\n[実在論](20250101.md)" in up,
               "手で 資料 を選んでいても、相手が 小グループ ノードなら上側は グループ:（小グループ: にはならない）")
-        check("ノート:\n[普遍は実在するか](20250104.md)" in dn,
-              "実在論 側の下側は新規ペアなので既定の『ノート』。"
+        check("資料:\n[普遍は実在するか](20250104.md)" in dn,
+              "実在論 側の下側は打った実際の関係名（資料:）がそのまま並ぶ（§3 の例外）。"
               "小グループは相手を下位に置く容器ではない")
 
 
@@ -469,8 +469,8 @@ def test_attribute_subgroup_child_view_differs_by_side() -> None:
         v2.sync_vault(root)
         up, _dn = regions((root / "20250104.md").read_text(encoding="utf-8"))
         _u, dn = regions((root / "20250101.md").read_text(encoding="utf-8"))
-        check("ノート:\n[普遍は実在するか](20250104.md)" in dn,
-              "実在論（小グループ）側の下側からは、新規ペアの既定値『ノート』で見える")
+        check("資料:\n[普遍は実在するか](20250104.md)" in dn,
+              "実在論（小グループ）側の下側からは、打った実際の関係名（資料:）で見える")
         check("グループ:\n[実在論](20250101.md)" in up,
               "その子（普遍は実在するか）自身の上側からは グループ: として見える")
 
@@ -594,6 +594,21 @@ def test_down_authored_label_does_not_mirror_to_up_side() -> None:
         up2, _dn2 = regions(a_path.read_text(encoding="utf-8"))
         check("参照元:\n[C](20250120.md)" in up2,
               "手で書き換えた『参照元:』はそのまま残り、『ノート』には戻らない（上側も sticky）")
+
+
+def test_attribute_container_down_authored_keeps_picked_relation_on_own_up_side() -> None:
+    print("sync: 容器（グループ）が そっちにとって 側から追加された（ca 相当）場合も、"
+          "容器自身の こっちにとって は既定の『ノート』に落とさず、実際に選んだ関係名を保つ")
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        _note_with_attr(root / "20250101.md", "G", v2.CATEGORY_ATTR)
+        # A の そっちにとって から G へ「索引: [G]」（ca が下側へ書くのと同じ経路）。
+        # G 自身は何も書いていない。
+        note(root / "20250104.md", "A", down="索引: [G](20250101.md)")
+        v2.sync_vault(root)
+        up, _dn = regions((root / "20250101.md").read_text(encoding="utf-8"))
+        check("索引:\n[A](20250104.md)" in up,
+              "G は容器なので既定の『ノート』ではなく、A が実際に選んだ『索引』のまま")
 
 
 def main() -> int:
