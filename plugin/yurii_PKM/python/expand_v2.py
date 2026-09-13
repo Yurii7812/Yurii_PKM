@@ -226,6 +226,26 @@ def _body_without_own_h1(n: v2.Note) -> list[str]:
     return body
 
 
+def _relation_lines(n: v2.Note, root: Path, by_name, tmp_dir: Path) -> list[str]:
+    """このノートの関係リンク（こっちにとって・そっちにとって）を、展開先には
+    含まれていないものも含めてそのままリンクとして書き出す（そこから先は
+    展開しない ── あくまで「このノートは他に何にリンクしているか」を見せる
+    だけ）。リンク先は展開ファイル（_tmp 配下）から見た相対パスに直す。"""
+    lines: list[str] = []
+    for side in (n.up, n.down):
+        for label, entries in side.items():
+            if label == v2._EXTRA:
+                continue
+            links: list[str] = []
+            for title, tg, _ann in entries:
+                tp = v2._resolve(tg, n.path.parent, root, by_name)
+                rel = v2._rel(tmp_dir, tp) if tp is not None else tg
+                links.append(f"[{title}]({rel})")
+            if links:
+                lines.append(f"- {label}: " + "、".join(links))
+    return lines
+
+
 def _toc_lines(start_id: str, order: list[str], parent_of: dict, notes_by_id: dict[str, v2.Note],
                anchors: dict[str, str]) -> list[str]:
     """`parent_of`（＝どのノートを辿ってこの id に着いたか）に沿って、
@@ -248,7 +268,8 @@ def _toc_lines(start_id: str, order: list[str], parent_of: dict, notes_by_id: di
     return lines
 
 
-def _render(order: list[str], parent_of: dict, notes_by_id: dict[str, v2.Note]) -> str:
+def _render(order: list[str], parent_of: dict, notes_by_id: dict[str, v2.Note],
+            root: Path, by_name, tmp_dir: Path) -> str:
     anchors = {i: _anchor(idx) for idx, i in enumerate(order)}
     start_id = order[0]
     start_title = notes_by_id[start_id].title
@@ -265,6 +286,11 @@ def _render(order: list[str], parent_of: dict, notes_by_id: dict[str, v2.Note]) 
         out.append(f"## {n.title}")
         out.append("")
         out.extend(_body_without_own_h1(n))
+        rel_lines = _relation_lines(n, root, by_name, tmp_dir)
+        if rel_lines:
+            out.append("")
+            out.append("**関係リンク:**")
+            out.extend(rel_lines)
         out.append("")
         out.append("---")
 
@@ -320,10 +346,10 @@ def _run(root: Path, start_file: Path, order_fn) -> Path:
 
     order, parent_of = order_fn(start_id, dir_of)
     notes_by_id = {i: notes[id_to_path[i]] for i in order}
-    text = _render(order, parent_of, notes_by_id)
 
     tmp_dir = root / v2.EXPAND_TMP_DIR
     tmp_dir.mkdir(parents=True, exist_ok=True)
+    text = _render(order, parent_of, notes_by_id, root, by_name, tmp_dir)
     out_path = tmp_dir / _make_filename()
     out_path.write_text(text, encoding="utf-8")
     return out_path

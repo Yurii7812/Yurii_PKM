@@ -179,6 +179,28 @@ def test_detailed_mode_each_child_chain_node_gets_own_parent_and_backlink() -> N
               "起点(A)の親G・子C1に加えて、C1自身の親P・C1自身の文中Yも独立に含まれる")
 
 
+def test_relation_links_shown_even_for_terminal_nodes() -> None:
+    print("render: 展開されなかったノート（終端）でも、そのノートの関係リンクは表示する")
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        # Index はグループ。日記・yurii_pkm を子に持つが、この展開では
+        # 深さの都合で Index 自体は含まれても、その子は展開されない。
+        note(root / "index.md", "Index", down="索引:\n[日記](diary.md)\n[yurii_pkm](pkm.md)")
+        note(root / "diary.md", "日記", up="グループ:\n[Index](index.md)")
+        note(root / "pkm.md", "yurii_pkm", up="グループ:\n[Index](index.md)")
+        note(root / "A.md", "A", up="グループ:\n[Index](index.md)")
+        v2.sync_vault(root)
+
+        out_path = ex._run(root, root / "A.md",
+                            lambda sid, dir_of: ex.collect_detailed(sid, dir_of, 0, 1, 0))
+        text = out_path.read_text(encoding="utf-8")
+        check("## Index" in text, "Index 自体は展開結果に含まれる（終端として）")
+        check("## 日記" not in text and "## yurii_pkm" not in text,
+              "Index の子（日記・yurii_pkm）はこの深さでは展開されない")
+        check("[日記](" in text and "[yurii_pkm](" in text,
+              "それでも Index の関係リンクとして 日記・yurii_pkm へのリンクは表示される")
+
+
 def test_toc_is_nested_by_discovery_path() -> None:
     print("目次: 発見経路に沿ってインデントされる（フラットな一覧ではない）")
     with tempfile.TemporaryDirectory() as d:
