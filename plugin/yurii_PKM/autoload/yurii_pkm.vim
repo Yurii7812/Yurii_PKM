@@ -3993,15 +3993,19 @@ function! yurii_pkm#v2_add_link(...) abort
 
   let l:added = 0
   for l:e in l:entries
-    " 逆モードでは今開いているノート側（自分の見出し）だけ括弧付きにする。
-    " 相手側へ書くのは常に生のラベル（下の write_same 部分）。
+    " 通常モード（ca/at/bc/cu）: 自分側は常に生のラベル。相手側へ書くのを
+    " 選んだ場合は括弧付き `(ラベル)` を書く（相手から見た自分の言葉、という
+    " 位置づけ）。書かなければ何もせず、sync が既定の『ノート』を生成する。
+    " 逆モード（\ca/\at）: 役割が逆。自分側を括弧付きにし、相手側には
+    " 常に（質問なしで）生のラベルをそのまま書く。
     let l:own_rel = (l:reverse && s:v2_is_custom_relation(l:e.rel)) ? '(' . l:e.rel . ')' : l:e.rel
+    let l:other_rel = (l:reverse || !s:v2_is_custom_relation(l:e.rel)) ? l:e.rel : '(' . l:e.rel . ')'
     if s:v2_insert_link(l:own_rel, '[' . l:e.title . '](' . l:e.tgt . ')', l:e.below)
       let l:added += 1
       echo 'yurii_PKM: ' . l:own_rel . (l:e.below ? ' ↓ ' : ' ') . '+= ' . l:e.title
       if l:write_same && s:v2_is_custom_relation(l:e.rel)
         let l:tgt_path = yurii_pkm#resolve_link(l:e.tgt)
-        call s:v2_write_other_side_label(l:tgt_path, l:e.rel, l:cur_path, l:cur_title, l:e.below)
+        call s:v2_write_other_side_label(l:tgt_path, l:other_rel, l:cur_path, l:cur_title, l:e.below)
       endif
     endif
   endfor
