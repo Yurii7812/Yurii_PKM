@@ -264,6 +264,8 @@ nnoremap <nowait> <silent> pe  <Cmd>call yurii_pkm#v2_expand()<CR>
 nnoremap <nowait> <silent> cu  <Cmd>call yurii_pkm#add_clipboard_to_branch()<CR>
 " ca: クリップボードのリンクを Child: に追加し、リンク先の Parent: に現在ノートを追加
 nnoremap <nowait> <silent> ca  <Cmd>call yurii_pkm#add_clipboard_before_up()<CR>
+" \ca: ca と同じ向きだが括弧が逆。今開いているノート側が (ラベル)、相手側に生のラベルを書く
+nnoremap <nowait> <silent> \ca  <Cmd>call yurii_pkm#add_clipboard_before_up_reverse()<CR>
 nnoremap <nowait> <silent> tt  <Cmd>call yurii_pkm#add_clipboard_to_top()<CR>
 " nt: タイトル変更（空欄から開始）
 nnoremap <nowait> <silent> nt  <Cmd>call yurii_pkm#rename_title_with_default('')<CR>
@@ -278,6 +280,8 @@ nnoremap <nowait> <silent> nd  <Cmd>RenameChildLinkTitles<CR>
 vnoremap <nowait> <silent> nd  :<C-u>'<,'>RenameChildLinkTitles<CR>
 " at: クリップボードのファイルのChildに現在ファイルへのリンクを追加
 nnoremap <nowait> <silent> at  <Cmd>call yurii_pkm#at_add()<CR>
+" \at: at と同じ向きだが括弧が逆。今開いているノート側が (ラベル)、相手側に生のラベルを書く
+nnoremap <nowait> <silent> \at  <Cmd>call yurii_pkm#at_add_reverse()<CR>
 " bc: クリップボードのファイル名をChildに追加
 nnoremap <nowait> <silent> bc  <Cmd>call yurii_pkm#add_from_clipboard()<CR>
 " yn: 現在のファイル名をヤンク

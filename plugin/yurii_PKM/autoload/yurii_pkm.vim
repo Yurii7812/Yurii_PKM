@@ -3895,10 +3895,14 @@ endfunction
 "   a:1 … 取り込む対象（空ならレジスタから。複数行 / 複数リンクも可）
 "   a:2 … 関係(relation)（省略時は数字で選択。複数件なら先に「一括 / 個別」を聞く）
 "   a:3 … 1 なら --- より下（そっちにとって）へ。既定は上
+"   a:4 … 1 なら逆モード（\ca/\at）。今開いているノート側を `(ラベル)` にし、
+"          相手側には生のラベルをその場で（質問なしで）書く。通常モード
+"          （ca/at）とは括弧が付く側が逆になるだけで、他のロジックは共通。
 function! yurii_pkm#v2_add_link(...) abort
   let l:raw = a:0 > 0 && a:1 !=# '' ? a:1 : trim(getreg('+'))
   if l:raw ==# '' | let l:raw = trim(getreg('"')) | endif
   let l:below_default = a:0 > 2 ? a:3 : 0
+  let l:reverse = a:0 > 3 ? a:4 : 0
 
   let l:targets = filter(s:extract_targets_from_clipboard(l:raw), 'v:val =~# ''\.md$''')
   if empty(l:targets)
@@ -3972,12 +3976,16 @@ function! yurii_pkm#v2_add_link(...) abort
   " ノート/関連 以外（方向性を持ちうる関係）が 1 件でもあれば、相手側にも
   " 同じ言葉をそのまま書くかどうかを全体で 1 回だけ聞く（自由入力はしない）。
   " 「いいえ」なら何もしない（次の sync が括弧付き既定値を生成する）。
+  " 逆モード（\ca/\at）ではコマンドを選んだ時点で役割が決まっているので聞かず、
+  " 常に相手側へ生のラベルを書く。
   let l:custom_rels = {}
   for l:e in l:entries
     if s:v2_is_custom_relation(l:e.rel) | let l:custom_rels[l:e.rel] = 1 | endif
   endfor
   let l:write_same = 0
-  if len(l:custom_rels) == 1
+  if l:reverse
+    let l:write_same = !empty(l:custom_rels)
+  elseif len(l:custom_rels) == 1
     let l:write_same = s:v2_ask_write_same_label(keys(l:custom_rels)[0])
   elseif len(l:custom_rels) > 1
     let l:write_same = s:v2_pick('相手側にもそれぞれ同じ関係名を書く？', ['はい', 'いいえ（自動）']) ==# 'はい'
@@ -3985,9 +3993,12 @@ function! yurii_pkm#v2_add_link(...) abort
 
   let l:added = 0
   for l:e in l:entries
-    if s:v2_insert_link(l:e.rel, '[' . l:e.title . '](' . l:e.tgt . ')', l:e.below)
+    " 逆モードでは今開いているノート側（自分の見出し）だけ括弧付きにする。
+    " 相手側へ書くのは常に生のラベル（下の write_same 部分）。
+    let l:own_rel = (l:reverse && s:v2_is_custom_relation(l:e.rel)) ? '(' . l:e.rel . ')' : l:e.rel
+    if s:v2_insert_link(l:own_rel, '[' . l:e.title . '](' . l:e.tgt . ')', l:e.below)
       let l:added += 1
-      echo 'yurii_PKM: ' . l:e.rel . (l:e.below ? ' ↓ ' : ' ') . '+= ' . l:e.title
+      echo 'yurii_PKM: ' . l:own_rel . (l:e.below ? ' ↓ ' : ' ') . '+= ' . l:e.title
       if l:write_same && s:v2_is_custom_relation(l:e.rel)
         let l:tgt_path = yurii_pkm#resolve_link(l:e.tgt)
         call s:v2_write_other_side_label(l:tgt_path, l:e.rel, l:cur_path, l:cur_title, l:e.below)
@@ -5636,6 +5647,16 @@ function! yurii_pkm#add_clipboard_to_branch() abort
 endfunction
 
 
+" \ca: ca と同じ そっちにとって 側だが、括弧が付く側が逆。今開いているノート
+" 側を `(ラベル)` にし、相手側にはその場で生のラベルを書く（質問なし）。
+function! yurii_pkm#add_clipboard_before_up_reverse() abort
+  if s:pkm_format() ==# 'v2'
+    call yurii_pkm#v2_add_link('', '', 1, 1)
+    return
+  endif
+  call yurii_pkm#add_clipboard_before_up()
+endfunction
+
 function! yurii_pkm#add_clipboard_before_up() abort
   if s:pkm_format() ==# 'v2'
     call yurii_pkm#v2_add_link('', '', 1)  " ca: そっちにとって 側へ
@@ -5991,6 +6012,16 @@ endfunction
 " ---------------------------------------------------------------------------
 " :AT2 - Add To clipboard target (逆リンク)
 " ---------------------------------------------------------------------------
+
+" \at: at と同じ こっちにとって 側だが、括弧が付く側が逆。今開いているノート
+" 側を `(ラベル)` にし、相手側にはその場で生のラベルを書く（質問なし）。
+function! yurii_pkm#at_add_reverse() abort
+  if s:pkm_format() ==# 'v2'
+    call yurii_pkm#v2_add_link('', '', 0, 1)
+    return
+  endif
+  call yurii_pkm#at_add()
+endfunction
 
 function! yurii_pkm#at_add() abort
   if s:pkm_format() ==# 'v2'
