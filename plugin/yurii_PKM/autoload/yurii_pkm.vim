@@ -4115,12 +4115,20 @@ function! s:v2_new_related(below, attr, ...) abort
   " グループ の場合だけ上書き（サブ容器）。小グループは上書きしない。
   " 属性による強制が無く、かつ選んだ関係が方向性を持ちうる（ノート/関連/索引
   " 以外）場合、自由入力の言葉だけ書くかどうかを聞く。ピッカーの選択肢
-  " （補足/資料 等）は聞かず、常に括弧付きで書く。
+  " （補足/資料 等）は聞かず、常に括弧付きで書く。書かない場合は新ノートへは
+  " 何も書かず（sync が既定の『ノート』を生成する）、代わりに現ノート側を
+  " `;` 終端で書く（sync の自動ミラー対象外にするため。ca/at と同じ規約。§4）。
   let l:forced_group = a:below ? !empty(l:cur_attr) : (l:cur_attr ==# 'グループ')
+  let l:own_write_rel = l:rel
   if l:forced_group
     let l:back_rel = 'グループ'
-  elseif s:v2_is_custom_relation(l:rel) && !s:v2_is_menu_relation(l:rel) && s:v2_ask_write_same_label(l:rel)
-    let l:back_rel = l:rel
+  elseif s:v2_is_custom_relation(l:rel) && !s:v2_is_menu_relation(l:rel)
+    if s:v2_ask_write_same_label(l:rel)
+      let l:back_rel = '(' . l:rel . ')'
+    else
+      let l:back_rel = ''
+      let l:own_write_rel = l:rel . ';'
+    endif
   elseif s:v2_is_custom_relation(l:rel)
     let l:back_rel = '(' . l:rel . ')'
   else
@@ -4133,7 +4141,7 @@ function! s:v2_new_related(below, attr, ...) abort
 
   let l:save_ai = &autoindent | let l:save_si = &smartindent
   setlocal noautoindent nosmartindent
-  let l:ok = s:v2_insert_link(l:rel, '[' . l:ts . '](' . l:ts . '.md)', l:below)
+  let l:ok = s:v2_insert_link(l:own_write_rel, '[' . l:ts . '](' . l:ts . '.md)', l:below)
   let &autoindent = l:save_ai | let &smartindent = l:save_si
   if !l:ok
     return  " 現ノートが v2 形式でない（見張りなし）
@@ -4141,8 +4149,10 @@ function! s:v2_new_related(below, attr, ...) abort
 
   " 新ノートを組み立てる。相手へのリンクを先に入れておく（sync が確認するだけ）。
   " nc: 相手は新ノートの こっちにとって 側 / np: そっちにとって 側。
-  " 常にブロック形（『ラベル:』の次行にリンク）
-  let l:backlink = [l:back_rel . ':', '[' . l:cur_title . '](' . l:cur_name . ')']
+  " 常にブロック形（『ラベル:』の次行にリンク）。back_rel が空（書かない
+  " を選んだ）なら新ノートには何も書かず、sync が既定の『ノート』を生成する。
+  let l:backlink = empty(l:back_rel) ? [] :
+        \ [l:back_rel . ':', '[' . l:cur_title . '](' . l:cur_name . ')']
   let l:fm = ['---', 'time: ' . yurii_pkm#timestamp_yaml(), 'title: ' . l:ts]
   if !empty(a:attr) | call add(l:fm, 'attribute: ' . a:attr) | endif
   call add(l:fm, '---')
