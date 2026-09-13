@@ -3973,43 +3973,65 @@ function! yurii_pkm#v2_add_link(...) abort
     call add(l:entries, {'tgt': l:tgt, 'rel': l:rel, 'below': l:below, 'title': l:title})
   endfor
 
-  " ノート/関連 以外（方向性を持ちうる関係）が 1 件でもあれば、相手側にも
-  " 同じ言葉をそのまま書くかどうかを全体で 1 回だけ聞く（自由入力はしない）。
-  " 「いいえ」なら何もしない（次の sync が括弧付き既定値を生成する）。
-  " 逆モード（\ca/\at）ではコマンドを選んだ時点で役割が決まっているので聞かず、
-  " 常に相手側へ生のラベルを書く。
+  " ノート/関連 以外（方向性を持ちうる関係）が 1 件でもあれば、「聞かれる側」
+  " （通常モードなら相手側、逆モード \ca/\at なら自分側）に `(ラベル)` を
+  " その場で書くかどうかを全体で 1 回だけ聞く（自由入力はしない）。
+  " 「いいえ」なら聞かれる側には何も書かず、次の sync が既定の『ノート』を
+  " 生成する。「もう一方の側」（通常モードなら自分側、逆モードなら相手側）
+  " は常に、質問なしで生のラベルをその場で書く。
   let l:custom_rels = {}
   for l:e in l:entries
     if s:v2_is_custom_relation(l:e.rel) | let l:custom_rels[l:e.rel] = 1 | endif
   endfor
-  let l:write_same = 0
-  if l:reverse
-    let l:write_same = !empty(l:custom_rels)
-  elseif len(l:custom_rels) == 1
-    let l:write_same = s:v2_ask_write_same_label(keys(l:custom_rels)[0])
+  let l:write_asked = 0
+  if len(l:custom_rels) == 1
+    let l:write_asked = s:v2_ask_write_same_label(keys(l:custom_rels)[0])
   elseif len(l:custom_rels) > 1
-    let l:write_same = s:v2_pick('相手側にもそれぞれ同じ関係名を書く？', ['はい', 'いいえ（自動）']) ==# 'はい'
+    let l:msg = l:reverse ? '自分側にもそれぞれ書く？' : '相手側にもそれぞれ書く？'
+    let l:write_asked = s:v2_pick(l:msg, ['はい', 'いいえ（自動）']) ==# 'はい'
   endif
 
   let l:added = 0
+  let l:other_written = 0
   for l:e in l:entries
-    " 通常モード（ca/at/bc/cu）: 自分側は常に生のラベル。相手側へ書くのを
-    " 選んだ場合は括弧付き `(ラベル)` を書く（相手から見た自分の言葉、という
-    " 位置づけ）。書かなければ何もせず、sync が既定の『ノート』を生成する。
-    " 逆モード（\ca/\at）: 役割が逆。自分側を括弧付きにし、相手側には
-    " 常に（質問なしで）生のラベルをそのまま書く。
-    let l:own_rel = (l:reverse && s:v2_is_custom_relation(l:e.rel)) ? '(' . l:e.rel . ')' : l:e.rel
-    let l:other_rel = (l:reverse || !s:v2_is_custom_relation(l:e.rel)) ? l:e.rel : '(' . l:e.rel . ')'
-    if s:v2_insert_link(l:own_rel, '[' . l:e.title . '](' . l:e.tgt . ')', l:e.below)
-      let l:added += 1
-      echo 'yurii_PKM: ' . l:own_rel . (l:e.below ? ' ↓ ' : ' ') . '+= ' . l:e.title
-      if l:write_same && s:v2_is_custom_relation(l:e.rel)
-        let l:tgt_path = yurii_pkm#resolve_link(l:e.tgt)
-        call s:v2_write_other_side_label(l:tgt_path, l:other_rel, l:cur_path, l:cur_title, l:e.below)
+    let l:is_custom = s:v2_is_custom_relation(l:e.rel)
+    let l:tgt_path = yurii_pkm#resolve_link(l:e.tgt)
+    if l:reverse
+      " \ca/\at: 相手側は常に（質問なしで）生のラベルをその場で書く。
+      " 自分側は聞かれる側: 「はい」なら (ラベル) をその場で書き、
+      " 「いいえ」なら何も書かず sync 任せ（既定の『ノート』になる）。
+      if l:is_custom
+        call s:v2_write_other_side_label(l:tgt_path, l:e.rel, l:cur_path, l:cur_title, l:e.below)
+        let l:other_written = 1
+      endif
+      if !l:is_custom || l:write_asked
+        let l:own_rel = l:is_custom ? '(' . l:e.rel . ')' : l:e.rel
+        if s:v2_insert_link(l:own_rel, '[' . l:e.title . '](' . l:e.tgt . ')', l:e.below)
+          let l:added += 1
+          echo 'yurii_PKM: ' . l:own_rel . (l:e.below ? ' ↓ ' : ' ') . '+= ' . l:e.title
+        endif
+      else
+        echo 'yurii_PKM: ' . l:e.rel . (l:e.below ? ' ↓ ' : ' ') . '(相手のみ) += ' . l:e.title
+      endif
+    else
+      " ca/at/bc/cu: 自分側は常に生のラベルをその場で書く。相手側は
+      " 聞かれる側: 「はい」なら (ラベル) をその場で書き、「いいえ」なら
+      " 何も書かず sync 任せ（既定の『ノート』になる）。
+      if s:v2_insert_link(l:e.rel, '[' . l:e.title . '](' . l:e.tgt . ')', l:e.below)
+        let l:added += 1
+        echo 'yurii_PKM: ' . l:e.rel . (l:e.below ? ' ↓ ' : ' ') . '+= ' . l:e.title
+        if l:write_asked && l:is_custom
+          call s:v2_write_other_side_label(l:tgt_path, '(' . l:e.rel . ')', l:cur_path, l:cur_title, l:e.below)
+          let l:other_written = 1
+        endif
       endif
     endif
   endfor
-  if l:added > 0 | silent! write | endif
+  if l:added > 0
+    silent! write
+  elseif l:other_written
+    call s:run_update_one_for(l:cur_path)
+  endif
 endfunction
 
 " --- ページを開きながら関連ノートを新規作成。
