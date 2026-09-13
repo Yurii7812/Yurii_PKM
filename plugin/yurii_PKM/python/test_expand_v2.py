@@ -83,7 +83,7 @@ def test_simple_mode_depth1() -> None:
                 dir_cache[nid] = ex._directions(notes[id_to_path[nid]], root, by_name, ids)
             return dir_cache[nid]
 
-        order = ex.collect_simple(start_id, dir_of, 1)
+        order, _po = ex.collect_simple(start_id, dir_of, 1)
         titles = {notes[id_to_path[i]].title for i in order}
         check(titles == {"A", "G", "C", "B"}, "深さ1で親G・子C・文中Bが全部入る")
 
@@ -95,7 +95,7 @@ def test_simple_mode_depth0_only_start() -> None:
         _fixture(root)
         by_name, notes, ids, id_to_path = ex._build_index(root)
         start_id = ids[(root / "A.md").resolve()]
-        order = ex.collect_simple(start_id, lambda nid: ex._directions(
+        order, _po = ex.collect_simple(start_id, lambda nid: ex._directions(
             notes[id_to_path[nid]], root, by_name, ids), 0)
         check(order == [start_id], "深さ0は起点ノートのみ")
 
@@ -111,25 +111,26 @@ def test_detailed_mode_independent_budgets() -> None:
         def dir_of(nid):
             return ex._directions(notes[id_to_path[nid]], root, by_name, ids)
 
-        order = ex.collect_detailed(start_id, dir_of, child_depth=1, parent_depth=0, backlink_depth=0)
+        order, _po = ex.collect_detailed(start_id, dir_of, child_depth=1, parent_depth=0, backlink_depth=0)
         titles = {notes[id_to_path[i]].title for i in order}
         check(titles == {"A", "C"}, "子だけ許可（親・文中は0）だと A と C だけ")
 
-        order2 = ex.collect_detailed(start_id, dir_of, child_depth=0, parent_depth=1, backlink_depth=0)
+        order2, _po2 = ex.collect_detailed(start_id, dir_of, child_depth=0, parent_depth=1, backlink_depth=0)
         titles2 = {notes[id_to_path[i]].title for i in order2}
         check(titles2 == {"A", "G"}, "親だけ許可だと A と G だけ")
 
-        order3 = ex.collect_detailed(start_id, dir_of, child_depth=0, parent_depth=0, backlink_depth=1)
+        order3, _po3 = ex.collect_detailed(start_id, dir_of, child_depth=0, parent_depth=0, backlink_depth=1)
         titles3 = {notes[id_to_path[i]].title for i in order3}
         check(titles3 == {"A", "B"}, "文中だけ許可だと A と B だけ")
 
 
-def test_detailed_mode_child_chain_does_not_leak_via_parent() -> None:
-    print("detailed: 子は純粋なチェーン。親経由で兄弟が見えても、兄弟の子までは追わない")
+def test_detailed_mode_parent_does_not_leak_siblings() -> None:
+    print("detailed: 親を辿った先（ハブ）の他の子までは展開しない")
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
         # G(グループ) の子は A と H。A は深い子チェーン A->C1->C2 を持つ。
-        # H は G の子として「覗き」で見えてよいが、H の子 HC までは追わない。
+        # G の別の子 H やその子 HC は、A から見た展開には一切出てはいけない
+        # （親チェーンは「純粋に親だけ」を辿り、途中のノードの子は展開しない）。
         note(root / "G.md", "G", down="索引:\n[A](A.md)\n[H](H.md)")
         note(root / "A.md", "A", up="グループ:\n[G](G.md)", down="資料:\n[C1](C1.md)")
         note(root / "C1.md", "C1", up="資料:\n[A](A.md)", down="資料:\n[C2](C2.md)")
@@ -144,31 +145,26 @@ def test_detailed_mode_child_chain_does_not_leak_via_parent() -> None:
         def dir_of(nid):
             return ex._directions(notes[id_to_path[nid]], root, by_name, ids)
 
-        # 子を深く(3)・親は浅く(1)。子チェーン A->C1->C2 に加えて、親 G と、
-        # G を覗いた時に見える兄弟 H は含まれるが、H の子 HC までは追わない
-        # （覗きは 1 階層だけで再帰しない）。
-        order = ex.collect_detailed(start_id, dir_of, child_depth=3, parent_depth=1, backlink_depth=0)
+        # 子を深く(3)・親は浅く(1)。子チェーン A->C1->C2 と、A 自身の親 G は
+        # 含まれるが、G のもう一つの子 H やその子 HC は含まれない。
+        order, _po = ex.collect_detailed(start_id, dir_of, child_depth=3, parent_depth=1, backlink_depth=0)
         titles = {notes[id_to_path[i]].title for i in order}
-        check(titles == {"A", "C1", "C2", "G", "H"},
-              "親経由で G の子（兄弟 H）までは見えるが、H の子 HC までは追わない")
+        check(titles == {"A", "C1", "C2", "G"},
+              "親を1回辿った先(G)がハブでも、G の他の子(H)やその子(HC)までは展開しない")
 
 
-def test_detailed_mode_peek_is_one_level_non_recursive() -> None:
-    print("detailed: 親・文中の経路上では他方向を1階層だけ覗く（そこからは再帰しない）")
+def test_detailed_mode_each_child_chain_node_gets_own_parent_and_backlink() -> None:
+    print("detailed: 子チェーン上の各ノードそれぞれが、自分自身の親・文中を独立に持ってくる")
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
-        # 文中方向のチェーン: A の本文が X を言及、X の本文が Y を言及。
-        # X には子 XC、親 XP がいて「覗き」対象。Y にも子 YC がいるが、
-        # 覗きは X までで、Y から先の覗きの、さらにその先までは追わない
-        # （＝ Y 自体は backlink_depth=2 のチェーンで含まれるが、YC は
-        # 「Y の覗き」で見えてよく、YC のさらに先は追わない、という境界を確認）。
-        note(root / "A.md", "A", body="言及: [X](X.md)")
-        note(root / "X.md", "X", body="言及: [Y](Y.md)",
-             up="資料:\n[XP](XP.md)", down="資料:\n[XC](XC.md)")
-        note(root / "Y.md", "Y", down="資料:\n[YC](YC.md)")
-        note(root / "XP.md", "XP", down="資料:\n[X](X.md)")
-        note(root / "XC.md", "XC", up="資料:\n[X](X.md)")
-        note(root / "YC.md", "YC", up="資料:\n[Y](Y.md)")
+        # A(起点) の親は G。A の子 C1 の親は別の note P（A の親ではない）。
+        # C1 の本文は Y を素リンクで言及（C1 自身の文中）。
+        note(root / "G.md", "G", down="索引:\n[A](A.md)")
+        note(root / "P.md", "P", down="きっかけ:\n[C1](C1.md)")
+        note(root / "A.md", "A", up="グループ:\n[G](G.md)", down="資料:\n[C1](C1.md)")
+        note(root / "C1.md", "C1", body="言及: [Y](Y.md)",
+             up="資料:\n[A](A.md)\nきっかけ:\n[P](P.md)")
+        note(root / "Y.md", "Y")
         v2.sync_vault(root)
 
         by_name, notes, ids, id_to_path = ex._build_index(root)
@@ -177,11 +173,25 @@ def test_detailed_mode_peek_is_one_level_non_recursive() -> None:
         def dir_of(nid):
             return ex._directions(notes[id_to_path[nid]], root, by_name, ids)
 
-        order = ex.collect_detailed(start_id, dir_of, child_depth=0, parent_depth=0, backlink_depth=2)
+        order, _po = ex.collect_detailed(start_id, dir_of, child_depth=1, parent_depth=1, backlink_depth=1)
         titles = {notes[id_to_path[i]].title for i in order}
-        check(titles == {"A", "X", "Y", "XP", "XC", "YC"},
-              "文中チェーン A->X->Y の各ノード(X,Y)で子/親を1階層覗く（XP,XC,YC）が、"
-              "覗いた先(XC 等)からさらに先へは追わない")
+        check(titles == {"A", "C1", "G", "P", "Y"},
+              "起点(A)の親G・子C1に加えて、C1自身の親P・C1自身の文中Yも独立に含まれる")
+
+
+def test_toc_is_nested_by_discovery_path() -> None:
+    print("目次: 発見経路に沿ってインデントされる（フラットな一覧ではない）")
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        _fixture(root)
+        out_path = ex._run(root, root / "A.md",
+                            lambda sid, dir_of: ex.collect_simple(sid, dir_of, 1))
+        text = out_path.read_text(encoding="utf-8")
+        toc = text.split("## 目次")[1].split("---")[0]
+        toc_lines = [ln for ln in toc.split("\n") if ln.strip().startswith("-")]
+        check(toc_lines[0].startswith("- ["), "起点はインデント0")
+        check(all(ln.startswith("  - [") for ln in toc_lines[1:]),
+              "起点から直接発見されたものは1段インデントされる")
 
 
 def test_render_strips_own_h1_and_frontmatter() -> None:

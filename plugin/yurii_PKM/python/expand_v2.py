@@ -105,10 +105,20 @@ def _directions(n: v2.Note, root: Path, by_name, ids: dict[Path, str]) -> dict[s
 # 収集（BFS）
 # ---------------------------------------------------------------------------
 
-def collect_simple(start_id: str, dir_of, depth: int) -> list[str]:
+Collected = tuple[list[str], dict]
+"""(発見順の id リスト, {id: 発見元の id（起点は None）})。
+
+`parent_of` は展開結果の木構造（目次のネストに使う）であって、ノート形式の
+「親（こっちにとって）」とは無関係 ── ここでの「親」は単に「どのノートを
+辿ってこの id にたどり着いたか」を指す。
+"""
+
+
+def collect_simple(start_id: str, dir_of, depth: int) -> Collected:
     """親/子/文中を区別せず、共有の深さ N まで辿る。順番は発見順。"""
     visited = {start_id}
     order = [start_id]
+    parent_of: dict = {start_id: None}
     frontier = [start_id]
     for _ in range(max(depth, 0)):
         nxt: list[str] = []
@@ -118,18 +128,20 @@ def collect_simple(start_id: str, dir_of, depth: int) -> list[str]:
                 if neighbor not in visited:
                     visited.add(neighbor)
                     order.append(neighbor)
+                    parent_of[neighbor] = nid
                     nxt.append(neighbor)
         frontier = nxt
         if not frontier:
             break
-    return order
+    return order, parent_of
 
 
-def _collect_pure_chain(start_id: str, dir_of, depth: int, kind: str) -> list[str]:
+def _collect_pure_chain(start_id: str, dir_of, depth: int, kind: str) -> Collected:
     """起点から、指定した 1 種類の辺だけを辿って深さ N まで集める（純粋なチェーン。
     他の種類へは一切切り替えない）。"""
     visited = {start_id}
     order = [start_id]
+    parent_of: dict = {start_id: None}
     frontier = [start_id]
     for _ in range(max(depth, 0)):
         nxt: list[str] = []
@@ -138,50 +150,52 @@ def _collect_pure_chain(start_id: str, dir_of, depth: int, kind: str) -> list[st
                 if neighbor not in visited:
                     visited.add(neighbor)
                     order.append(neighbor)
+                    parent_of[neighbor] = nid
                     nxt.append(neighbor)
         frontier = nxt
         if not frontier:
             break
-    return order
-
-
-# 「覗き」対象になる方向。子(child)は純粋なチェーンのまま覗きをしない
-# （深く掘るだけの方向）。親・文中は経路上の各ノートで他の方向を
-# 1 階層だけ覗く（そこからさらに再帰はしない）── 元いた場所とは違う
-# 文脈へ移動するので、その場の見晴らし（兄弟・別の言及）を見せるため。
-_PEEK_KINDS: dict[str, tuple[str, ...]] = {
-    "child": (),
-    "parent": ("child", "backlink"),
-    "backlink": ("child", "parent"),
-}
+    return order, parent_of
 
 
 def collect_detailed(start_id: str, dir_of, child_depth: int, parent_depth: int,
-                      backlink_depth: int) -> list[str]:
-    """親・子・文中それぞれ独立に、起点からその種類の辺だけを辿った結果を集める。
+                      backlink_depth: int) -> Collected:
+    """子方向を主軸に再帰展開し、その経路上の各ノート（起点含む）それぞれから
+    独立に親・文中を指定の深さだけ辿って付け加える。
 
-    子方向は純粋なチェーン（覗きなし）。親・文中方向は、経路上の起点以外の
-    各ノードについて、他の 2 方向を 1 階層だけ追加で覗く（そこからは
-    再帰しない＝覗いた先のさらに先へは展開しない）。3 方向の結果は単純に
-    合併するので、ある方向の深さを大きくしても他の方向の探索範囲が
-    巻き込まれて広がることはない。
+    - 子: 起点から純粋な子チェーンを depth=child_depth まで再帰的に展開する
+      （各ノードの本文を全部見せる。「掘り下げる」方向）。
+    - 親・文中: 上の子チェーンに含まれる**各ノードそれぞれ**について、その
+      ノートを起点とした純粋な親チェーン（depth=parent_depth）・純粋な
+      文中チェーン（depth=backlink_depth）を独立に辿って加える。ここでも
+      種類は切り替わらない（親を辿った先でさらに子や文中には進まない）ので、
+      例えば親の先がハブ的なノート（Index 等）でも、そのハブの他の子まで
+      展開されることはない。
+    - 全体を通して同じノートは 1 回だけ（重複除去）。
     """
     order = [start_id]
     seen = {start_id}
-    for kind, depth in (("child", child_depth), ("parent", parent_depth), ("backlink", backlink_depth)):
-        if depth <= 0:
-            continue
-        chain = _collect_pure_chain(start_id, dir_of, depth, kind)
-        for nid in chain[1:]:
-            if nid not in seen:
-                seen.add(nid)
-                order.append(nid)
-            for peek_kind in _PEEK_KINDS[kind]:
-                for neighbor in dir_of(nid)[peek_kind]:
-                    if neighbor not in seen:
-                        seen.add(neighbor)
-                        order.append(neighbor)
-    return order
+    parent_of: dict = {start_id: None}
+
+    child_chain, child_parent_of = _collect_pure_chain(start_id, dir_of, child_depth, "child")
+    for nid in child_chain[1:]:
+        if nid not in seen:
+            seen.add(nid)
+            order.append(nid)
+            parent_of[nid] = child_parent_of[nid]
+
+    for anchor in child_chain:
+        for kind, depth in (("parent", parent_depth), ("backlink", backlink_depth)):
+            if depth <= 0:
+                continue
+            sub_chain, sub_parent_of = _collect_pure_chain(anchor, dir_of, depth, kind)
+            for nid in sub_chain[1:]:
+                if nid not in seen:
+                    seen.add(nid)
+                    order.append(nid)
+                    parent_of[nid] = sub_parent_of[nid]
+
+    return order, parent_of
 
 
 # ---------------------------------------------------------------------------
@@ -212,13 +226,35 @@ def _body_without_own_h1(n: v2.Note) -> list[str]:
     return body
 
 
-def _render(order: list[str], notes_by_id: dict[str, v2.Note]) -> str:
+def _toc_lines(start_id: str, order: list[str], parent_of: dict, notes_by_id: dict[str, v2.Note],
+               anchors: dict[str, str]) -> list[str]:
+    """`parent_of`（＝どのノートを辿ってこの id に着いたか）に沿って、
+    段落（インデント）で経路が分かる目次を作る。"""
+    children: dict[str, list[str]] = {}
+    for nid in order:
+        p = parent_of.get(nid)
+        if p is not None:
+            children.setdefault(p, []).append(nid)
+
+    lines: list[str] = []
+
+    def walk(nid: str, depth: int) -> None:
+        indent = "  " * depth
+        lines.append(f"{indent}- [{notes_by_id[nid].title}](#{anchors[nid]})")
+        for c in children.get(nid, []):
+            walk(c, depth + 1)
+
+    walk(start_id, 0)
+    return lines
+
+
+def _render(order: list[str], parent_of: dict, notes_by_id: dict[str, v2.Note]) -> str:
     anchors = {i: _anchor(idx) for idx, i in enumerate(order)}
-    start_title = notes_by_id[order[0]].title
+    start_id = order[0]
+    start_title = notes_by_id[start_id].title
 
     out = [f"# 展開: {start_title}", "", "## 目次", ""]
-    for i in order:
-        out.append(f"- [{notes_by_id[i].title}](#{anchors[i]})")
+    out.extend(_toc_lines(start_id, order, parent_of, notes_by_id, anchors))
     out.append("")
     out.append("---")
 
@@ -282,9 +318,9 @@ def _run(root: Path, start_file: Path, order_fn) -> Path:
             dir_cache[nid] = _directions(notes[id_to_path[nid]], root, by_name, ids)
         return dir_cache[nid]
 
-    order = order_fn(start_id, dir_of)
+    order, parent_of = order_fn(start_id, dir_of)
     notes_by_id = {i: notes[id_to_path[i]] for i in order}
-    text = _render(order, notes_by_id)
+    text = _render(order, parent_of, notes_by_id)
 
     tmp_dir = root / v2.EXPAND_TMP_DIR
     tmp_dir.mkdir(parents=True, exist_ok=True)
