@@ -3646,11 +3646,16 @@ function! s:v2_pick(label, items) abort
     return a:items[l:n - 1]
   endif
   if l:n == len(a:items) + 1
+    let l:v = ''
     try
-      return trim(input(a:label . '（空でキャンセル）: '))
+      let l:v = trim(input(a:label . '（空でキャンセル）: '))
     catch /^Vim:Interrupt$/
-      return ''
+      let l:v = ''
     endtry
+    " input() の後すぐに別の echo/getchar を出すと「ENTERキーを押すか」の
+    " 待ちが発生することがあるため、ここで一度画面をクリアしておく。
+    redraw
+    return l:v
   endif
   return ''
 endfunction
@@ -3671,10 +3676,13 @@ function! s:v2_is_custom_relation(rel) abort
   return a:rel !=# 'ノート' && a:rel !=# '関連'
 endfunction
 
-" 相手側にも同じラベルをそのまま書くかどうかを聞く（自由入力はしない、
-" 二択のみ）。「いいえ」なら sync の括弧付き既定値に任せる。
-function! s:v2_ask_write_same_label(rel) abort
-  return s:v2_pick('相手側にも「' . a:rel . '」と書く？', ['はい', 'いいえ（自動）']) ==# 'はい'
+" 「聞かれる側」に (ラベル) をその場で書くかどうかを聞く（自由入力はしない、
+" 二択のみ）。a:self が真なら自分側（\ca/\at）、偽なら相手側（ca/at 等）が
+" 聞かれる側。「いいえ」なら何も書かず sync の既定『ノート』に任せる。
+function! s:v2_ask_write_same_label(rel, ...) abort
+  let l:self = a:0 > 0 ? a:1 : 0
+  let l:side = l:self ? '自分側' : '相手側'
+  return s:v2_pick(l:side . 'にも「' . a:rel . '」と書く？', ['はい', 'いいえ（自動）']) ==# 'はい'
 endfunction
 
 " nw で作れる属性ノードの種類。今後増やす時はここに足すだけでいい
@@ -3985,7 +3993,7 @@ function! yurii_pkm#v2_add_link(...) abort
   endfor
   let l:write_asked = 0
   if len(l:custom_rels) == 1
-    let l:write_asked = s:v2_ask_write_same_label(keys(l:custom_rels)[0])
+    let l:write_asked = s:v2_ask_write_same_label(keys(l:custom_rels)[0], l:reverse)
   elseif len(l:custom_rels) > 1
     let l:msg = l:reverse ? '自分側にもそれぞれ書く？' : '相手側にもそれぞれ書く？'
     let l:write_asked = s:v2_pick(l:msg, ['はい', 'いいえ（自動）']) ==# 'はい'
