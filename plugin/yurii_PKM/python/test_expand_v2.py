@@ -124,6 +124,66 @@ def test_detailed_mode_independent_budgets() -> None:
         check(titles3 == {"A", "B"}, "文中だけ許可だと A と B だけ")
 
 
+def test_detailed_mode_child_chain_does_not_leak_via_parent() -> None:
+    print("detailed: 子は純粋なチェーン。親経由で兄弟が見えても、兄弟の子までは追わない")
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        # G(グループ) の子は A と H。A は深い子チェーン A->C1->C2 を持つ。
+        # H は G の子として「覗き」で見えてよいが、H の子 HC までは追わない。
+        note(root / "G.md", "G", down="索引:\n[A](A.md)\n[H](H.md)")
+        note(root / "A.md", "A", up="グループ:\n[G](G.md)", down="資料:\n[C1](C1.md)")
+        note(root / "C1.md", "C1", up="資料:\n[A](A.md)", down="資料:\n[C2](C2.md)")
+        note(root / "C2.md", "C2", up="資料:\n[C1](C1.md)")
+        note(root / "H.md", "H", up="グループ:\n[G](G.md)", down="資料:\n[HC](HC.md)")
+        note(root / "HC.md", "HC", up="資料:\n[H](H.md)")
+        v2.sync_vault(root)
+
+        by_name, notes, ids, id_to_path = ex._build_index(root)
+        start_id = ids[(root / "A.md").resolve()]
+
+        def dir_of(nid):
+            return ex._directions(notes[id_to_path[nid]], root, by_name, ids)
+
+        # 子を深く(3)・親は浅く(1)。子チェーン A->C1->C2 に加えて、親 G と、
+        # G を覗いた時に見える兄弟 H は含まれるが、H の子 HC までは追わない
+        # （覗きは 1 階層だけで再帰しない）。
+        order = ex.collect_detailed(start_id, dir_of, child_depth=3, parent_depth=1, backlink_depth=0)
+        titles = {notes[id_to_path[i]].title for i in order}
+        check(titles == {"A", "C1", "C2", "G", "H"},
+              "親経由で G の子（兄弟 H）までは見えるが、H の子 HC までは追わない")
+
+
+def test_detailed_mode_peek_is_one_level_non_recursive() -> None:
+    print("detailed: 親・文中の経路上では他方向を1階層だけ覗く（そこからは再帰しない）")
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        # 文中方向のチェーン: A の本文が X を言及、X の本文が Y を言及。
+        # X には子 XC、親 XP がいて「覗き」対象。Y にも子 YC がいるが、
+        # 覗きは X までで、Y から先の覗きの、さらにその先までは追わない
+        # （＝ Y 自体は backlink_depth=2 のチェーンで含まれるが、YC は
+        # 「Y の覗き」で見えてよく、YC のさらに先は追わない、という境界を確認）。
+        note(root / "A.md", "A", body="言及: [X](X.md)")
+        note(root / "X.md", "X", body="言及: [Y](Y.md)",
+             up="資料:\n[XP](XP.md)", down="資料:\n[XC](XC.md)")
+        note(root / "Y.md", "Y", down="資料:\n[YC](YC.md)")
+        note(root / "XP.md", "XP", down="資料:\n[X](X.md)")
+        note(root / "XC.md", "XC", up="資料:\n[X](X.md)")
+        note(root / "YC.md", "YC", up="資料:\n[Y](Y.md)")
+        v2.sync_vault(root)
+
+        by_name, notes, ids, id_to_path = ex._build_index(root)
+        start_id = ids[(root / "A.md").resolve()]
+
+        def dir_of(nid):
+            return ex._directions(notes[id_to_path[nid]], root, by_name, ids)
+
+        order = ex.collect_detailed(start_id, dir_of, child_depth=0, parent_depth=0, backlink_depth=2)
+        titles = {notes[id_to_path[i]].title for i in order}
+        check(titles == {"A", "X", "Y", "XP", "XC", "YC"},
+              "文中チェーン A->X->Y の各ノード(X,Y)で子/親を1階層覗く（XP,XC,YC）が、"
+              "覗いた先(XC 等)からさらに先へは追わない")
+
+
 def test_render_strips_own_h1_and_frontmatter() -> None:
     print("render: front matter・見張りコメントは出さず、自分の H1 も二重にしない")
     with tempfile.TemporaryDirectory() as d:

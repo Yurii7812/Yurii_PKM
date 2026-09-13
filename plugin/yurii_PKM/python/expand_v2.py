@@ -125,39 +125,62 @@ def collect_simple(start_id: str, dir_of, depth: int) -> list[str]:
     return order
 
 
-def collect_detailed(start_id: str, dir_of, child_depth: int, parent_depth: int,
-                      backlink_depth: int) -> list[str]:
-    """親・子・文中それぞれ独立の残り回数を持たせて辿る。
-
-    ある種類の辺を辿った時だけ、その種類の残り回数が減る。他の種類の
-    残り回数はそのまま次のノートへ引き継がれる。
-    """
+def _collect_pure_chain(start_id: str, dir_of, depth: int, kind: str) -> list[str]:
+    """起点から、指定した 1 種類の辺だけを辿って深さ N まで集める（純粋なチェーン。
+    他の種類へは一切切り替えない）。"""
     visited = {start_id}
     order = [start_id]
-    frontier = [(start_id, max(child_depth, 0), max(parent_depth, 0), max(backlink_depth, 0))]
-    while frontier:
-        nxt: list[tuple[str, int, int, int]] = []
-        for nid, cd, pd, bd in frontier:
-            d = dir_of(nid)
-            if cd > 0:
-                for neighbor in d["child"]:
-                    if neighbor not in visited:
-                        visited.add(neighbor)
-                        order.append(neighbor)
-                        nxt.append((neighbor, cd - 1, pd, bd))
-            if pd > 0:
-                for neighbor in d["parent"]:
-                    if neighbor not in visited:
-                        visited.add(neighbor)
-                        order.append(neighbor)
-                        nxt.append((neighbor, cd, pd - 1, bd))
-            if bd > 0:
-                for neighbor in d["backlink"]:
-                    if neighbor not in visited:
-                        visited.add(neighbor)
-                        order.append(neighbor)
-                        nxt.append((neighbor, cd, pd, bd - 1))
+    frontier = [start_id]
+    for _ in range(max(depth, 0)):
+        nxt: list[str] = []
+        for nid in frontier:
+            for neighbor in dir_of(nid)[kind]:
+                if neighbor not in visited:
+                    visited.add(neighbor)
+                    order.append(neighbor)
+                    nxt.append(neighbor)
         frontier = nxt
+        if not frontier:
+            break
+    return order
+
+
+# 「覗き」対象になる方向。子(child)は純粋なチェーンのまま覗きをしない
+# （深く掘るだけの方向）。親・文中は経路上の各ノートで他の方向を
+# 1 階層だけ覗く（そこからさらに再帰はしない）── 元いた場所とは違う
+# 文脈へ移動するので、その場の見晴らし（兄弟・別の言及）を見せるため。
+_PEEK_KINDS: dict[str, tuple[str, ...]] = {
+    "child": (),
+    "parent": ("child", "backlink"),
+    "backlink": ("child", "parent"),
+}
+
+
+def collect_detailed(start_id: str, dir_of, child_depth: int, parent_depth: int,
+                      backlink_depth: int) -> list[str]:
+    """親・子・文中それぞれ独立に、起点からその種類の辺だけを辿った結果を集める。
+
+    子方向は純粋なチェーン（覗きなし）。親・文中方向は、経路上の起点以外の
+    各ノードについて、他の 2 方向を 1 階層だけ追加で覗く（そこからは
+    再帰しない＝覗いた先のさらに先へは展開しない）。3 方向の結果は単純に
+    合併するので、ある方向の深さを大きくしても他の方向の探索範囲が
+    巻き込まれて広がることはない。
+    """
+    order = [start_id]
+    seen = {start_id}
+    for kind, depth in (("child", child_depth), ("parent", parent_depth), ("backlink", backlink_depth)):
+        if depth <= 0:
+            continue
+        chain = _collect_pure_chain(start_id, dir_of, depth, kind)
+        for nid in chain[1:]:
+            if nid not in seen:
+                seen.add(nid)
+                order.append(nid)
+            for peek_kind in _PEEK_KINDS[kind]:
+                for neighbor in dir_of(nid)[peek_kind]:
+                    if neighbor not in seen:
+                        seen.add(neighbor)
+                        order.append(neighbor)
     return order
 
 
