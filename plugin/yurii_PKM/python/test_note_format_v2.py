@@ -98,27 +98,41 @@ def test_normalize_counts() -> None:
 
 
 def test_sync_generates_down() -> None:
-    print("sync: 上側 → 相方の下側 生成（新規ペアは既定で『ノート』）")
+    print("sync: 上側 → 相方の下側 生成（`:` 終端の新規ペアは括弧付きで自動ミラー）")
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
         note(root / "20250104.md", "集中と気づき", up="論点: [問い](20250111.md)")
         note(root / "20250111.md", "瞑想のコツがわからない")
         v2.sync_vault(root)
         _u, dn = regions((root / "20250111.md").read_text(encoding="utf-8"))
-        check("ノート:\n[集中と気づき](20250104.md)" in dn,
-              "B の下側は新規ペアなので『ノート』が既定（A の『論点』を借りない）")
+        check("(論点):\n[集中と気づき](20250104.md)" in dn,
+              "B の下側は新規ペアだが、A が `:` で書いたので括弧付きで自動ミラーされる")
 
 
 def test_sync_symmetric_down_edit() -> None:
-    print("sync: 下側の手編集（有向）→ 相方の上側へ反映（新規は既定で『ノート』）")
+    print("sync: 下側の手編集（有向）→ 相方の上側へ反映（`:` 終端は括弧付きで自動ミラー）")
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
         note(root / "20250104.md", "A")
         note(root / "20250120.md", "C", down="論点: [A](20250104.md)")
         v2.sync_vault(root)
         up, _dn = regions((root / "20250104.md").read_text(encoding="utf-8"))
-        check("ノート:\n[C](20250120.md)" in up,
-              "A の上側は新規ペアなので『ノート』が既定（C の『論点』を借りない）")
+        check("(論点):\n[C](20250120.md)" in up,
+              "A の上側は新規ペアだが、C が `:` で書いたので括弧付きで自動ミラーされる")
+
+
+def test_semicolon_suppresses_auto_mirror() -> None:
+    print("sync: `;` 終端で書くと、相手側は自動ミラーされず既定の『ノート』のまま")
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        note(root / "20250104.md", "集中と気づき", up="論点; [問い](20250111.md)")
+        note(root / "20250111.md", "瞑想のコツがわからない")
+        v2.sync_vault(root)
+        up, dn2 = regions((root / "20250104.md").read_text(encoding="utf-8"))
+        _u, dn = regions((root / "20250111.md").read_text(encoding="utf-8"))
+        check("論点;\n[問い](20250111.md)" in up, "書いた側はそのまま `論点;`")
+        check("ノート:\n[集中と気づき](20250104.md)" in dn,
+              "`;` なので相手側は自動ミラーされず既定の『ノート』のまま")
 
 
 def test_kanren_down_edit_mirrors() -> None:
@@ -140,8 +154,8 @@ def test_sync_delete_from_down_removes_up() -> None:
         note(root / "20250111.md", "B")
         v2.sync_vault(root)
         b_path = root / "20250111.md"
-        check("ノート:\n[A](20250104.md)" in regions(b_path.read_text(encoding="utf-8"))[1],
-              "まず下側に生成（新規なので既定の『ノート』）")
+        check("(論点):\n[A](20250104.md)" in regions(b_path.read_text(encoding="utf-8"))[1],
+              "まず下側に生成（`:` 終端なので括弧付きで自動ミラー）")
         # ユーザが B の下側から論点行を削除
         b_path.write_text(
             "---\ntitle: B\n---\n\n# B\n\n本文。\n\n---\n", encoding="utf-8"
@@ -296,7 +310,7 @@ def test_typed_link_suppresses_backlink() -> None:
         note(root / "20250111.md", "B")
         v2.sync_vault(root)
         _up, dn = regions((root / "20250111.md").read_text(encoding="utf-8"))
-        check("ノート:\n[A](20250104.md)" in dn, "ノート: A は出る（新規なので既定の『ノート』）")
+        check("(論点):\n[A](20250104.md)" in dn, "(論点): A は出る（`:` 終端なので括弧付きで自動ミラー）")
         check("バックリンク" not in dn, "バックリンク: A は出さない（型で表示済み）")
 
 
@@ -498,8 +512,8 @@ def test_down_side_display_name_is_sticky() -> None:
         note(root / "20250111.md", "B")
         v2.sync_vault(root)
         _u, dn = regions((root / "20250111.md").read_text(encoding="utf-8"))
-        check("ノート:\n[A](20250104.md)" in dn,
-              "初回は相手の現タイトルで、新規ペアなので既定の『ノート』で生成される")
+        check("(論点):\n[A](20250104.md)" in dn,
+              "初回は相手の現タイトルで、新規ペアだが `:` 終端なので括弧付きで自動ミラーされる")
 
         # B の下側の表示名を手で書き換える
         b_path = root / "20250111.md"
@@ -508,12 +522,12 @@ def test_down_side_display_name_is_sticky() -> None:
                            encoding="utf-8")
         v2.sync_vault(root)
         _u2, dn2 = regions(b_path.read_text(encoding="utf-8"))
-        check("ノート:\n[カスタム表示名](20250104.md)" in dn2,
+        check("(論点):\n[カスタム表示名](20250104.md)" in dn2,
               "sync をもう一度走らせても、手で付けた表示名が相手の現タイトルへ戻らない")
 
 
-def test_new_pair_custom_label_does_not_mirror() -> None:
-    print("sync: 新規ペアはラベルをミラーせず、既定の『ノート』になる（方向性のある言葉対策）")
+def test_new_pair_custom_label_auto_mirrors_parenthesized() -> None:
+    print("sync: `:` 終端の新規ペアは、相手側の言葉をそのままはミラーせず括弧付きで自動ミラーする")
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
         note(root / "20250104.md", "何もしないは苦痛だから", up="きっかけ: [就職について考え始めたきっかけ](20250111.md)")
@@ -523,9 +537,23 @@ def test_new_pair_custom_label_does_not_mirror() -> None:
         _u, dn = regions((root / "20250111.md").read_text(encoding="utf-8"))
         check("きっかけ:\n[就職について考え始めたきっかけ](20250111.md)" in up,
               "書いた側（A の上側）はそのまま『きっかけ:』")
+        check("(きっかけ):\n[何もしないは苦痛だから](20250104.md)" in dn,
+              "相手側（B の下側）は新規ペアだが、`:` 終端なので括弧付きで自動ミラーされる")
+
+
+def test_semicolon_on_new_pair_stays_plain_note() -> None:
+    print("sync: `;` 終端の新規ペアは自動ミラーせず、既定の『ノート』のまま")
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        note(root / "20250104.md", "何もしないは苦痛だから", up="きっかけ; [就職について考え始めたきっかけ](20250111.md)")
+        note(root / "20250111.md", "就職について考え始めたきっかけ")
+        v2.sync_vault(root)
+        up, _dn = regions((root / "20250104.md").read_text(encoding="utf-8"))
+        _u, dn = regions((root / "20250111.md").read_text(encoding="utf-8"))
+        check("きっかけ;\n[就職について考え始めたきっかけ](20250111.md)" in up,
+              "書いた側（A の上側）はそのまま『きっかけ;』")
         check("ノート:\n[何もしないは苦痛だから](20250104.md)" in dn,
-              "相手側（B の下側）は新規ペアなので既定の『ノート』になる"
-              "（方向性のある言葉をそのままミラーしない）")
+              "相手側（B の下側）は `;` なので自動ミラーされず、既定の『ノート』のまま")
 
 
 def test_default_note_label_is_not_parenthesized() -> None:
@@ -541,7 +569,7 @@ def test_default_note_label_is_not_parenthesized() -> None:
 
 
 def test_label_is_sticky_once_written() -> None:
-    print("sync: ラベルも表示名と同じく一度書かれたら sync が変えない（既定の『ノート』には戻らない）")
+    print("sync: ラベルも表示名と同じく一度書かれたら sync が変えない（自動ミラーの括弧付き既定値には戻らない）")
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
         note(root / "20250104.md", "A", up="きっかけ: [B](20250111.md)")
@@ -549,15 +577,15 @@ def test_label_is_sticky_once_written() -> None:
         v2.sync_vault(root)
         b_path = root / "20250111.md"
         _u, dn = regions(b_path.read_text(encoding="utf-8"))
-        check("ノート:\n[A](20250104.md)" in dn, "初回は既定の『ノート』（A の『きっかけ』は借りない）")
+        check("(きっかけ):\n[A](20250104.md)" in dn, "初回は `:` 終端の自動ミラーで括弧付き既定値")
 
         # 手で「後押し」という言葉に書き換える
         b_text = b_path.read_text(encoding="utf-8")
-        b_path.write_text(b_text.replace("ノート:", "後押し:"), encoding="utf-8")
+        b_path.write_text(b_text.replace("(きっかけ):", "後押し:"), encoding="utf-8")
         v2.sync_vault(root)
         _u2, dn2 = regions(b_path.read_text(encoding="utf-8"))
         check("後押し:\n[A](20250104.md)" in dn2,
-              "手で書き換えた『後押し:』はそのまま残り、『ノート』には戻らない")
+              "手で書き換えた『後押し:』はそのまま残り、(きっかけ) には戻らない")
 
 
 def test_hand_written_label_before_first_sync_is_respected() -> None:
@@ -572,8 +600,8 @@ def test_hand_written_label_before_first_sync_is_respected() -> None:
               "初回 sync 前から手で書いてあった『後押し:』は括弧付き既定値で上書きされない")
 
 
-def test_down_authored_label_does_not_mirror_to_up_side() -> None:
-    print("sync: 相手（そっちにとって）が先に書いたラベルは、自分の上側には borrow されない"
+def test_down_authored_label_auto_mirrors_to_up_side() -> None:
+    print("sync: 相手（そっちにとって）が `:` で書いたラベルは、自分の上側へ括弧付きで自動ミラーされる"
           "（nc/ca のようにダウン側から書くケース）")
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
@@ -583,17 +611,29 @@ def test_down_authored_label_does_not_mirror_to_up_side() -> None:
         note(root / "20250120.md", "C", down="論点: [A](20250104.md)")
         v2.sync_vault(root)
         up, _dn = regions((root / "20250104.md").read_text(encoding="utf-8"))
-        check("ノート:\n[C](20250120.md)" in up,
-              "A は何も書いていないので、既定の『ノート』になる（C の『論点』は借りない）")
+        check("(論点):\n[C](20250120.md)" in up,
+              "A は何も書いていないが、C が `:` で書いたので括弧付きで自動ミラーされる")
 
         # 手で自分の言葉に書き換える
         a_path = root / "20250104.md"
         a_text = a_path.read_text(encoding="utf-8")
-        a_path.write_text(a_text.replace("ノート:", "参照元:"), encoding="utf-8")
+        a_path.write_text(a_text.replace("(論点):", "参照元:"), encoding="utf-8")
         v2.sync_vault(root)
         up2, _dn2 = regions(a_path.read_text(encoding="utf-8"))
         check("参照元:\n[C](20250120.md)" in up2,
-              "手で書き換えた『参照元:』はそのまま残り、『ノート』には戻らない（上側も sticky）")
+              "手で書き換えた『参照元:』はそのまま残り、(論点) には戻らない（上側も sticky）")
+
+
+def test_semicolon_down_authored_stays_plain_note_on_up_side() -> None:
+    print("sync: 相手（そっちにとって）が `;` で書いたラベルは、自分の上側には自動ミラーされない")
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        note(root / "20250104.md", "A")
+        note(root / "20250120.md", "C", down="論点; [A](20250104.md)")
+        v2.sync_vault(root)
+        up, _dn = regions((root / "20250104.md").read_text(encoding="utf-8"))
+        check("ノート:\n[C](20250120.md)" in up,
+              "C が `;` で書いたので、A の上側は自動ミラーされず既定の『ノート』のまま")
 
 
 def test_attribute_container_down_authored_keeps_picked_relation_on_own_up_side() -> None:
@@ -609,6 +649,29 @@ def test_attribute_container_down_authored_keeps_picked_relation_on_own_up_side(
         up, _dn = regions((root / "20250101.md").read_text(encoding="utf-8"))
         check("索引:\n[A](20250104.md)" in up,
               "G は容器なので既定の『ノート』ではなく、A が実際に選んだ『索引』のまま")
+
+
+def test_down_side_order_is_sticky() -> None:
+    print("sync: 下側（子リスト）の並び順は手で並び替えたらそのまま保つ（sync がソートし直さない）")
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        note(root / "20250104.md", "A")
+        note(root / "20250101.md", "先に作った方")
+        note(root / "20250199.md", "後に作った方")
+        # 両方とも A の下側（そっちにとって）に論点として登録。ID順なら
+        # 20250101 が先に来るはずだが、ここでは意図的に逆の順で手書きする。
+        a_path = root / "20250104.md"
+        a_text = a_path.read_text(encoding="utf-8")
+        a_text = a_text.replace(
+            "Child",
+            "Child\n論点:\n[後に作った方](20250199.md)\n[先に作った方](20250101.md)")
+        a_path.write_text(a_text, encoding="utf-8")
+        v2.sync_vault(root)
+        _u, dn = regions(a_path.read_text(encoding="utf-8"))
+        idx_first = dn.index("20250199.md")
+        idx_second = dn.index("20250101.md")
+        check(idx_first < idx_second,
+              "ID 順（20250101 が先）ではなく、手で書いた順（20250199 が先）のまま")
 
 
 def main() -> int:

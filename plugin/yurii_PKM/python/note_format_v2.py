@@ -87,8 +87,10 @@ LEGACY_UP_MARK = "<!-- している -->"
 LEGACY_DOWN_MARK = "<!-- されている -->"
 
 DIVIDER_RE = re.compile(r"^-{3,}\s*$")
-# 任意の `語:` 見出し（先頭が空白 / # / : でない）。散文除けは _looks_like_header で行う。
-HEADER_RE = re.compile(r"^([^\s:#][^:]*?)\s*:\s*(.*)$")
+# 任意の `語:` / `語;` 見出し（先頭が空白 / # / : / ; でない）。
+# 散文除けは _looks_like_header で行う。`;` は「相手には自動で書かない」の意
+# （§4）。ラベルは内部的には `;` を含んだ文字列として保持する（例: `きっかけ;`）。
+HEADER_RE = re.compile(r"^([^\s:;#][^:;]*?)\s*([:;])\s*(.*)$")
 # [表示]() 形式のリンク行（末尾に「 — 注釈」を許す）
 LINK_LINE_RE = re.compile(r"^\s*\[([^\]]*)\]\(([^)]+)\)\s*(?:—\s*(.*\S))?\s*$")
 # 本文どこにでも現れるリンク（バックリンク判定用）
@@ -145,7 +147,7 @@ def _fm_attr(fm: list[str]) -> str:
 
 
 def _looks_like_header(m: re.Match, lines: list[str], idx: int) -> bool:
-    inline = m.group(2).strip()
+    inline = m.group(3).strip()
     if inline:
         return bool(LINK_LINE_RE.match(inline))
     for j in range(idx + 1, min(idx + 4, len(lines))):
@@ -154,6 +156,13 @@ def _looks_like_header(m: re.Match, lines: list[str], idx: int) -> bool:
             continue
         return bool(LINK_LINE_RE.match(s))
     return False
+
+
+def _header_label(m: re.Match) -> str:
+    """HEADER_RE のマッチから内部ラベル文字列を作る。`;` 終端なら末尾に `;` を
+    残す（例: `きっかけ;` -> `きっかけ;`）。エイリアス変換は素の語に対して行う。"""
+    name = RELATION_ALIASES.get(m.group(1).strip(), m.group(1).strip())
+    return name if m.group(2) == ":" else name + ";"
 
 
 def _parse_sections(lines: list[str], allow_body: bool):
@@ -167,10 +176,10 @@ def _parse_sections(lines: list[str], allow_body: bool):
         s = ln.strip()
         m = HEADER_RE.match(s)
         if m and _looks_like_header(m, lines, i):
-            cur = RELATION_ALIASES.get(m.group(1).strip(), m.group(1).strip())
+            cur = _header_label(m)
             seen_header = True
             sections.setdefault(cur, [])
-            lm = LINK_LINE_RE.match(m.group(2).strip())
+            lm = LINK_LINE_RE.match(m.group(3).strip())
             if lm:
                 sections[cur].append((lm.group(1), lm.group(2), lm.group(3) or None))
             i += 1
@@ -239,10 +248,10 @@ def _migrate_legacy(lines: list[str]):
         tm = HEADER_RE.match(s)
         if tm and _looks_like_header(tm, lines, idx):
             seen = True
-            _r = RELATION_ALIASES.get(tm.group(1).strip(), tm.group(1).strip())
+            _r = _header_label(tm)
             zone = ("rel", _r)
             up.setdefault(zone[1], [])
-            inln = LINK_LINE_RE.match(tm.group(2).strip())
+            inln = LINK_LINE_RE.match(tm.group(3).strip())
             if inln:
                 up[zone[1]].append((inln.group(1), inln.group(2), inln.group(3) or None))
             continue
@@ -368,7 +377,8 @@ def _render_section(t: str, entries: list[tuple[str, str, str | None]]) -> list[
     """
     if not entries:
         return []
-    out = [f"{t}:"]
+    # ラベルが `;` 終端（例: `きっかけ;`）ならそのまま、それ以外は `:` を付ける。
+    out = [t if t.endswith(";") else f"{t}:"]
     for ti, tg, ann in entries:
         s = f"[{ti}]({tg})"
         out.append(s + f" — {ann}" if ann else s)
@@ -658,15 +668,26 @@ def sync_vault(root) -> int:
         if (i := ids.get(kk)) is not None and (a := _fm_attr(nn.fm)) in ATTR_LABELS
     }
 
+    def _mirrored_default(raw: str | None) -> str:
+        """相手側が何も書いていない時の既定値（手打ちの `:` / `;` 記法用）。
+
+        相手（source）が `語;`（セミコロン終端）で書いていれば、自動では
+        一切ミラーせず素の `ノート`。`語:`（コロン、既定の語も含む）で
+        書いていれば、`(語)` の括弧付き（「相手から見た呼び方」の意。
+        `ノート` 自体は括弧を付けずそのまま）。何も書かれていなければ
+        `ノート`。
+        """
+        if raw is None or raw.endswith(";"):
+            return "ノート"
+        return raw if raw == "ノート" else f"({raw})"
+
     def up_side_label(pair: tuple[str, str]) -> str:
         """sid 自身の こっちにとって 側を再構築する時のラベル判定。
 
         sid 自身が既にその相手向けに書いている（up_label にある）なら、
         それは sid 自身の主張なのでそのまま使う（再パースするたびに読み直す
         だけなので、これが sticky にもなる）。sid 自身は何も書いていないなら、
-        相手（そっちにとって）が何と書いていようと関係なく既定の `ノート`。
-        相手の言葉を勝手に借りて括弧で示すようなことはしない（方向性のある
-        言葉（例: きっかけ）は相手から見て意味が通らないため）。
+        相手（そっちにとって）の書き方に従う（`_mirrored_default`）。
 
         例外: sid 自身が attribute（グループ / 小グループ）を持つ容器ノードの
         場合だけは、相手（そっちにとって）が書いた実際の関係名をそのまま使う
@@ -678,7 +699,7 @@ def sync_vault(root) -> int:
         sid = pair[0]
         if attr_of.get(sid) in ATTR_LABELS:
             return down_label.get(pair) or "ノート"
-        return "ノート"
+        return _mirrored_default(down_label.get(pair))
 
     # --- 上側を再構築。相手が attribute 持ちなら自分側ラベルは常に `カテゴリー:` ---
     # incoming[to] = [(from_id, forced)]。forced=True（カテゴリー属性による強制）
@@ -740,8 +761,11 @@ def sync_vault(root) -> int:
             # そこに今書かれているラベル（手で変えたものも含む）をそのまま使い
             # 続ける。新規のペアは常に既定の `ノート`（相手側の言葉を勝手に
             # 借りることはしない。関連・カテゴリー属性による強制は対象外）。
+            # 表示順も sticky にする: ファイル内で手で並び替えた順序をそのまま
+            # 保つ（sync が勝手にソートし直さない）。新規のものだけ末尾に足す。
             orig_down_title: dict[str, str] = {}
             orig_down_label: dict[str, str] = {}
+            orig_down_order: list[str] = []
             for t, es in n.down.items():
                 if t == _EXTRA:
                     continue
@@ -750,6 +774,11 @@ def sync_vault(root) -> int:
                     if r:
                         orig_down_title.setdefault(r, _ti)
                         orig_down_label.setdefault(r, t)
+                        if r not in orig_down_order:
+                            orig_down_order.append(r)
+
+            def _down_sort_key(s: str) -> int:
+                return orig_down_order.index(s) if s in orig_down_order else 1_000_000
 
             by_lbl: dict[str, list[str]] = {}
             for (a, forced) in incoming.get(nid, []):
@@ -765,7 +794,7 @@ def sync_vault(root) -> int:
                     # （ノート の既定値に落とさない）。
                     lbl = up_label.get((a, nid)) or down_label.get((a, nid)) or "ノート"
                 else:
-                    lbl = "ノート"
+                    lbl = _mirrored_default(up_label.get((a, nid)) or down_label.get((a, nid)))
                 by_lbl.setdefault(lbl, []).append(a)
             for (a, t, b) in present_sym:
                 other = b if a == nid else (a if b == nid else None)
@@ -776,12 +805,13 @@ def sync_vault(root) -> int:
                     (_tracked_disp(s, orig_down_title.get(s), by_path[id_to_path[s]].title,
                                    prev_titles),
                      _rel(n.path.parent, id_to_path[s]), None)
-                    for s in sorted(set(srcs))
+                    for s in sorted(set(srcs), key=_down_sort_key)
                 ]
             back = sorted(
-                s for s, targets in body_links.items()
-                if nid in targets and (s, nid) not in directed
-                and (nid, s) not in directed and s in id_to_path
+                (s for s, targets in body_links.items()
+                 if nid in targets and (s, nid) not in directed
+                 and (nid, s) not in directed and s in id_to_path),
+                key=_down_sort_key,
             )
             if back:
                 new_down[BACKLINK] = [

@@ -3750,6 +3750,18 @@ function! s:v2_boundaries() abort
   return [0, 0]
 endfunction
 
+" a:rel は末尾に `;` を含みうる（例: `きっかけ;` = sync に自動ミラーさせない
+" 印。§4）。見出し行を作る時の実際の終端記号と、既存見出しを探す時の
+" パターン（`;` 側の有無を問わず一致）をここで統一する。
+function! s:v2_rel_header(rel) abort
+  return a:rel =~# ';$' ? a:rel : a:rel . ':'
+endfunction
+
+function! s:v2_rel_header_pat(rel) abort
+  let l:base = substitute(a:rel, ';$', '', '')
+  return '^\V' . escape(l:base, '\') . '\m\s*[:;]'
+endfunction
+
 " s:v2_insert_link の行配列版（現在のバッファに限らず、任意ファイルの行に
 " 対して同じ処理をするために使う）。target_dir は重複チェックの相対パス
 " 解決基準（そのファイル自身のディレクトリ）。戻り値: {lines, ok, reason}
@@ -3782,19 +3794,19 @@ function! s:v2_insert_link_in_lines(lines, target_dir, rel, linktext, below) abo
 
   let l:hdr = 0
   for l:i in range(l:lo + 1, l:hi - 1)
-    if get(l:lines, l:i - 1, '') =~# '^\V' . escape(a:rel, '\') . '\m\s*:'
+    if get(l:lines, l:i - 1, '') =~# s:v2_rel_header_pat(a:rel)
       let l:hdr = l:i | break
     endif
   endfor
 
   if l:hdr == 0
-    call extend(l:lines, [a:rel . ':', a:linktext], l:hi - 1)
+    call extend(l:lines, [s:v2_rel_header(a:rel), a:linktext], l:hi - 1)
     return {'lines': l:lines, 'ok': 1}
   endif
 
-  let l:inline = matchstr(get(l:lines, l:hdr - 1, ''), ':\s*\zs.*$')
+  let l:inline = matchstr(get(l:lines, l:hdr - 1, ''), '[:;]\s*\zs.*$')
   if l:inline =~# '\S'
-    let l:lines[l:hdr - 1] = a:rel . ':'
+    let l:lines[l:hdr - 1] = s:v2_rel_header(a:rel)
     call extend(l:lines, [l:inline, a:linktext], l:hdr)
     return {'lines': l:lines, 'ok': 1}
   endif
@@ -3861,10 +3873,10 @@ function! s:v2_insert_link(rel, linktext, ...) abort
     endfor
   endif
 
-  " 該当区間の `関係:` ヘッダを探す
+  " 該当区間の `関係:` / `関係;` ヘッダを探す
   let l:hdr = 0
   for l:i in range(l:lo + 1, l:hi - 1)
-    if getline(l:i) =~# '^\V' . escape(a:rel, '\') . '\m\s*:'
+    if getline(l:i) =~# s:v2_rel_header_pat(a:rel)
       let l:hdr = l:i | break
     endif
   endfor
@@ -3872,16 +3884,16 @@ function! s:v2_insert_link(rel, linktext, ...) abort
   if l:hdr == 0
     " 常にブロック形（『ラベル:』の次行にリンク）。1 本でもインラインにしない。
     if l:below
-      call append(line('$'), [a:rel . ':', a:linktext])
+      call append(line('$'), [s:v2_rel_header(a:rel), a:linktext])
     else
-      call append(l:hi - 1, [a:rel . ':', a:linktext])
+      call append(l:hi - 1, [s:v2_rel_header(a:rel), a:linktext])
     endif
     return 1
   endif
 
-  let l:inline = matchstr(getline(l:hdr), ':\s*\zs.*$')
+  let l:inline = matchstr(getline(l:hdr), '[:;]\s*\zs.*$')
   if l:inline =~# '\S'
-    call setline(l:hdr, a:rel . ':')
+    call setline(l:hdr, s:v2_rel_header(a:rel))
     call append(l:hdr, [l:inline, a:linktext])
     return 1
   endif
@@ -4026,8 +4038,11 @@ function! yurii_pkm#v2_add_link(...) abort
       " \ca/\at: 相手側は常に（質問なしで）生のラベルをその場で書く。
       " 自分側は聞かれる側: 書くなら (ラベル) をその場で書き、
       " 書かないなら何も書かず sync 任せ（既定の『ノート』になる）。
+      " 書かない場合、相手側は `;` 終端で書く（sync の自動ミラー対象外に
+      " するため。§4）。
       if l:is_custom
-        call s:v2_write_other_side_label(l:tgt_path, l:e.rel, l:cur_path, l:cur_title, l:e.below)
+        let l:other_write_rel = l:do_write ? l:e.rel : l:e.rel . ';'
+        call s:v2_write_other_side_label(l:tgt_path, l:other_write_rel, l:cur_path, l:cur_title, l:e.below)
         let l:other_written = 1
       endif
       if !l:is_custom || l:do_write
@@ -4042,10 +4057,12 @@ function! yurii_pkm#v2_add_link(...) abort
     else
       " ca/at/bc/cu: 自分側は常に生のラベルをその場で書く。相手側は
       " 聞かれる側: 書くなら (ラベル) をその場で書き、書かないなら何も
-      " 書かず sync 任せ（既定の『ノート』になる）。
-      if s:v2_insert_link(l:e.rel, '[' . l:e.title . '](' . l:e.tgt . ')', l:e.below)
+      " 書かず sync 任せ（既定の『ノート』になる）。書かない場合、自分側は
+      " `;` 終端で書く（sync の自動ミラー対象外にするため。§4）。
+      let l:own_write_rel = (l:is_custom && !l:do_write) ? l:e.rel . ';' : l:e.rel
+      if s:v2_insert_link(l:own_write_rel, '[' . l:e.title . '](' . l:e.tgt . ')', l:e.below)
         let l:added += 1
-        echo 'yurii_PKM: ' . l:e.rel . (l:e.below ? ' ↓ ' : ' ') . '+= ' . l:e.title
+        echo 'yurii_PKM: ' . l:own_write_rel . (l:e.below ? ' ↓ ' : ' ') . '+= ' . l:e.title
         if l:do_write
           call s:v2_write_other_side_label(l:tgt_path, '(' . l:e.rel . ')', l:cur_path, l:cur_title, l:e.below)
           let l:other_written = 1
