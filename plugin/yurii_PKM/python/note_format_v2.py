@@ -24,8 +24,15 @@
 - リンク 1 本は ``関係: [t](x.md)`` のインライン、2 本以上は ``関係:`` 改行のブロック。
 - 上側が真実。下側は他ノートの上側から導出。上下どちらも編集でき、
   片面の追加 / 削除はもう片面へ反映される（``.pkm_sync_state_v2.json`` で判定）。
+  ただしラベルの文言は自動でミラーしない（下記）。
 - 本文（散文）中のリンクは、明示の関係が無ければ相手の下側に
   ``バックリンク:`` として現れる。
+- 関係ラベルは方向性を持つことが多い（例: ``きっかけ:`` は A 視点の言葉で、
+  B からそのままミラーすると意味が通らない）ため、``関連``（対称）と
+  ``グループ``（attribute による強制）を除き自動ではミラーしない。新規の
+  ペアでは ``ノート`` はそのまま、それ以外は ``(ラベル):`` と括弧付きの
+  既定値になる。一度その位置に行ができたら、以後 sync はラベルを変えない
+  （表示名と同じ sticky な扱い）。
 - リンク表示名は上側・下側とも同じ判定で追従するかどうかが決まる：今書かれて
   いる表示名が前回 sync 時点の相手のタイトルと同じ（＝手で変えていない）なら
   現タイトルへ追従、違っていれば（＝手で変えた）そのまま残す
@@ -643,14 +650,17 @@ def sync_vault(root) -> int:
         return down_label.get(pair) or up_label.get(pair) or "ノート"
 
     # --- 上側を再構築。相手が attribute 持ちなら自分側ラベルは常に `カテゴリー:` ---
-    incoming: dict[str, list[tuple[str, str]]] = {}  # to_id -> [(from_id, label)]
+    # incoming[to] = [(from_id, raw_label, forced)]。forced=True（カテゴリー属性に
+    # よる強制）だけは常にそのラベルを使う。forced=False の生ラベルは、下側の
+    # 再構築時に「sticky（既存の位置を尊重）／新規なら括弧付き既定値」の判定に使う
+    # （関係ラベルを機械的にミラーすると、方向性のある言葉（例: きっかけ）が相手側でも
+    # そのまま出て意味が通らないため）。
+    incoming: dict[str, list[tuple[str, str, bool]]] = {}
     for (a, b) in present:
-        # from が attribute: カテゴリー = サブ容器 → 相手（to）の そっちにとって では
-        # `カテゴリー:`。from が attribute: キーワード の場合はここでは上書きしない
-        # （キーワード自身の下側は「中身が何の関係か」を見せる面。to 自身の下側も同様に
-        # 上書きしない ── to の attribute では上書きしない）。
-        lbl = CATEGORY_ATTR if attr_of.get(a) == CATEGORY_ATTR else far_label((a, b))
-        incoming.setdefault(b, []).append((a, lbl))
+        if attr_of.get(a) == CATEGORY_ATTR:
+            incoming.setdefault(b, []).append((a, CATEGORY_ATTR, True))
+        else:
+            incoming.setdefault(b, []).append((a, far_label((a, b)), False))
 
     for k, n in by_path.items():
         sid = ids.get(k)
@@ -695,7 +705,13 @@ def sync_vault(root) -> int:
             # 下側（子リスト・バックリンク含む）の表示名は _tracked_disp で判定
             # （書かれている表示名が前回 sync 時点の相手のタイトルと同じなら
             # 現タイトルへ追従、違えば手で変えたとみなしそのまま残す）。
+            # ラベルも同様に sticky にする: 既にその相手向けの行があれば、
+            # そこに今書かれているラベル（既定の括弧付きでも、手で変えたものでも）
+            # をそのまま使い続ける。新規のペアだけ、その場で決まったラベルを使う
+            # （`ノート` はそのまま、それ以外は `(ラベル)` と括弧を付けて「相手側から
+            # 見た呼び方」であることを示す。関連・カテゴリー属性による強制は対象外）。
             orig_down_title: dict[str, str] = {}
+            orig_down_label: dict[str, str] = {}
             for t, es in n.down.items():
                 if t == _EXTRA:
                     continue
@@ -703,11 +719,20 @@ def sync_vault(root) -> int:
                     r = rid(tg, n.path.parent)
                     if r:
                         orig_down_title.setdefault(r, _ti)
+                        orig_down_label.setdefault(r, t)
 
             by_lbl: dict[str, list[str]] = {}
-            for (a, lbl) in incoming.get(nid, []):
+            for (a, raw_lbl, forced) in incoming.get(nid, []):
                 if (nid, a) in present:  # 相互は下側に出さない
                     continue
+                if forced:
+                    lbl = raw_lbl
+                elif a in orig_down_label:
+                    lbl = orig_down_label[a]
+                elif raw_lbl == "ノート":
+                    lbl = "ノート"
+                else:
+                    lbl = f"({raw_lbl})"
                 by_lbl.setdefault(lbl, []).append(a)
             for (a, t, b) in present_sym:
                 other = b if a == nid else (a if b == nid else None)

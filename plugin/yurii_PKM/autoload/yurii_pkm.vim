@@ -3664,6 +3664,25 @@ function! s:v2_pick_relation(...) abort
   return l:r ==# 'なし' ? 'ノート' : l:r
 endfunction
 
+" sync がラベルをミラーせず括弧付き既定値にする対象かどうか（note_format_v2.py
+" 側のルールと対応）。`ノート`/`関連` はそのまま、それ以外（`きっかけ` のような
+" 自由入力や `資料`/`補足` なども含む）は方向性を持ちうるので対象になる。
+function! s:v2_is_custom_relation(rel) abort
+  return a:rel !=# 'ノート' && a:rel !=# '関連'
+endfunction
+
+" 相手側にどう書くかをその場で聞く。「自動のまま」なら sync と同じ括弧付き
+" 既定値、「書く」ならその場で入力したテキストをそのまま使う。
+function! s:v2_ask_other_side_label(rel) abort
+  let l:default = '(' . a:rel . ')'
+  let l:choice = s:v2_pick('相手側のラベル（既定: ' . l:default . '）', ['自動のまま', '書く'])
+  if l:choice ==# '書く'
+    let l:txt = trim(input('相手側のラベル: '))
+    return empty(l:txt) ? l:default : l:txt
+  endif
+  return l:default
+endfunction
+
 " nw で作れる属性ノードの種類。今後増やす時はここに足すだけでいい
 " （末尾の自由入力枠は s:v2_pick が自動で足す）。
 let s:v2_attr_types = ['グループ', '小グループ']
@@ -3912,10 +3931,15 @@ function! s:v2_new_related(below, attr, ...) abort
   " グループ / 小グループ どちらの属性でも、値に関わらず常に グループ。
   " below=0（np: backlink は新ノートの そっちにとって）: 現ノート自身が
   " グループ の場合だけ上書き（サブ容器）。小グループは上書きしない。
-  if a:below
-    let l:back_rel = !empty(l:cur_attr) ? 'グループ' : l:rel
+  " 属性による強制が無く、かつ選んだ関係が方向性を持ちうる（ノート/関連 以外）
+  " 場合は、sync の既定（括弧付き）に任せるかその場で書くかを聞く。
+  let l:forced_group = a:below ? !empty(l:cur_attr) : (l:cur_attr ==# 'グループ')
+  if l:forced_group
+    let l:back_rel = 'グループ'
+  elseif s:v2_is_custom_relation(l:rel)
+    let l:back_rel = s:v2_ask_other_side_label(l:rel)
   else
-    let l:back_rel = (l:cur_attr ==# 'グループ') ? 'グループ' : l:rel
+    let l:back_rel = l:rel
   endif
 
   let l:dir = expand('%:p:h')
