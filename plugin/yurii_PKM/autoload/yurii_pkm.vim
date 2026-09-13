@@ -3669,11 +3669,19 @@ function! s:v2_pick_relation(...) abort
   return l:r ==# 'なし' ? 'ノート' : l:r
 endfunction
 
-" sync がラベルをミラーせず括弧付き既定値にする対象かどうか（note_format_v2.py
-" 側のルールと対応）。`ノート`/`関連` はそのまま、それ以外（`きっかけ` のような
-" 自由入力や `資料`/`補足` なども含む）は方向性を持ちうるので対象になる。
+" sync がラベルをミラーせず自動生成する対象かどうか。`ノート`/`関連` に加え
+" `索引` も対象外（グループ/小グループ 文脈での `ノート` の言い換えに過ぎず、
+" 容器自身の側は sync 側の例外処理が実際に選んだ語をそのまま反映するため、
+" ここで括弧付きの特別扱いをする必要が無い）。
 function! s:v2_is_custom_relation(rel) abort
-  return a:rel !=# 'ノート' && a:rel !=# '関連'
+  return a:rel !=# 'ノート' && a:rel !=# '関連' && a:rel !=# '索引'
+endfunction
+
+" ピッカーの選択肢（自由入力ではなく数字で選べる既定の語）かどうか。
+" これらは「相手にも書くか」を聞かず、常にもう一方の側へ書く
+" （聞くのは自由入力で打った言葉だけ）。
+function! s:v2_is_menu_relation(rel) abort
+  return index(s:v2_relations, a:rel) >= 0 || index(s:v2_relations_attr, a:rel) >= 0
 endfunction
 
 " 「聞かれる側」に (ラベル) をその場で書くかどうかを聞く（自由入力はしない、
@@ -3985,20 +3993,23 @@ function! yurii_pkm#v2_add_link(...) abort
     call add(l:entries, {'tgt': l:tgt, 'rel': l:rel, 'below': l:below, 'title': l:title})
   endfor
 
-  " ノート/関連 以外（方向性を持ちうる関係）が 1 件でもあれば、「聞かれる側」
+  " 自由入力（ピッカーの選択肢に無い言葉）が 1 件でもあれば、「聞かれる側」
   " （通常モードなら相手側、逆モード \ca/\at なら自分側）に `(ラベル)` を
-  " その場で書くかどうかを全体で 1 回だけ聞く（自由入力はしない）。
-  " 「いいえ」なら聞かれる側には何も書かず、次の sync が既定の『ノート』を
-  " 生成する。「もう一方の側」（通常モードなら自分側、逆モードなら相手側）
-  " は常に、質問なしで生のラベルをその場で書く。
-  let l:custom_rels = {}
+  " その場で書くかどうかを全体で 1 回だけ聞く。「いいえ」なら聞かれる側には
+  " 何も書かず、次の sync が既定の『ノート』を生成する。ピッカーの選択肢
+  " （索引/補足/資料 等）は聞かず、常にもう一方の側へ `(ラベル)` を書く
+  " （聞くのは自由入力の言葉だけ）。「もう一方の側」（通常モードなら自分側、
+  " 逆モードなら相手側）は常に、質問なしで生のラベルをその場で書く。
+  let l:free_rels = {}
   for l:e in l:entries
-    if s:v2_is_custom_relation(l:e.rel) | let l:custom_rels[l:e.rel] = 1 | endif
+    if s:v2_is_custom_relation(l:e.rel) && !s:v2_is_menu_relation(l:e.rel)
+      let l:free_rels[l:e.rel] = 1
+    endif
   endfor
   let l:write_asked = 0
-  if len(l:custom_rels) == 1
-    let l:write_asked = s:v2_ask_write_same_label(keys(l:custom_rels)[0], l:reverse)
-  elseif len(l:custom_rels) > 1
+  if len(l:free_rels) == 1
+    let l:write_asked = s:v2_ask_write_same_label(keys(l:free_rels)[0], l:reverse)
+  elseif len(l:free_rels) > 1
     let l:msg = l:reverse ? '自分側にもそれぞれ書く？' : '相手側にもそれぞれ書く？'
     let l:write_asked = s:v2_pick(l:msg, ['はい', 'いいえ（自動）']) ==# 'はい'
   endif
@@ -4007,16 +4018,19 @@ function! yurii_pkm#v2_add_link(...) abort
   let l:other_written = 0
   for l:e in l:entries
     let l:is_custom = s:v2_is_custom_relation(l:e.rel)
+    " ピッカーの選択肢（索引/補足/資料 等）は聞かず常に書く。自由入力の
+    " 言葉だけ、上で聞いた結果（l:write_asked）に従う。
+    let l:do_write = l:is_custom && (s:v2_is_menu_relation(l:e.rel) || l:write_asked)
     let l:tgt_path = yurii_pkm#resolve_link(l:e.tgt)
     if l:reverse
       " \ca/\at: 相手側は常に（質問なしで）生のラベルをその場で書く。
-      " 自分側は聞かれる側: 「はい」なら (ラベル) をその場で書き、
-      " 「いいえ」なら何も書かず sync 任せ（既定の『ノート』になる）。
+      " 自分側は聞かれる側: 書くなら (ラベル) をその場で書き、
+      " 書かないなら何も書かず sync 任せ（既定の『ノート』になる）。
       if l:is_custom
         call s:v2_write_other_side_label(l:tgt_path, l:e.rel, l:cur_path, l:cur_title, l:e.below)
         let l:other_written = 1
       endif
-      if !l:is_custom || l:write_asked
+      if !l:is_custom || l:do_write
         let l:own_rel = l:is_custom ? '(' . l:e.rel . ')' : l:e.rel
         if s:v2_insert_link(l:own_rel, '[' . l:e.title . '](' . l:e.tgt . ')', l:e.below)
           let l:added += 1
@@ -4027,12 +4041,12 @@ function! yurii_pkm#v2_add_link(...) abort
       endif
     else
       " ca/at/bc/cu: 自分側は常に生のラベルをその場で書く。相手側は
-      " 聞かれる側: 「はい」なら (ラベル) をその場で書き、「いいえ」なら
-      " 何も書かず sync 任せ（既定の『ノート』になる）。
+      " 聞かれる側: 書くなら (ラベル) をその場で書き、書かないなら何も
+      " 書かず sync 任せ（既定の『ノート』になる）。
       if s:v2_insert_link(l:e.rel, '[' . l:e.title . '](' . l:e.tgt . ')', l:e.below)
         let l:added += 1
         echo 'yurii_PKM: ' . l:e.rel . (l:e.below ? ' ↓ ' : ' ') . '+= ' . l:e.title
-        if l:write_asked && l:is_custom
+        if l:do_write
           call s:v2_write_other_side_label(l:tgt_path, '(' . l:e.rel . ')', l:cur_path, l:cur_title, l:e.below)
           let l:other_written = 1
         endif
@@ -4082,12 +4096,13 @@ function! s:v2_new_related(below, attr, ...) abort
   " グループ / 小グループ どちらの属性でも、値に関わらず常に グループ。
   " below=0（np: backlink は新ノートの そっちにとって）: 現ノート自身が
   " グループ の場合だけ上書き（サブ容器）。小グループは上書きしない。
-  " 属性による強制が無く、かつ選んだ関係が方向性を持ちうる（ノート/関連 以外）
-  " 場合は、sync の既定（括弧付き）に任せるかその場で書くかを聞く。
+  " 属性による強制が無く、かつ選んだ関係が方向性を持ちうる（ノート/関連/索引
+  " 以外）場合、自由入力の言葉だけ書くかどうかを聞く。ピッカーの選択肢
+  " （補足/資料 等）は聞かず、常に括弧付きで書く。
   let l:forced_group = a:below ? !empty(l:cur_attr) : (l:cur_attr ==# 'グループ')
   if l:forced_group
     let l:back_rel = 'グループ'
-  elseif s:v2_is_custom_relation(l:rel) && s:v2_ask_write_same_label(l:rel)
+  elseif s:v2_is_custom_relation(l:rel) && !s:v2_is_menu_relation(l:rel) && s:v2_ask_write_same_label(l:rel)
     let l:back_rel = l:rel
   elseif s:v2_is_custom_relation(l:rel)
     let l:back_rel = '(' . l:rel . ')'
