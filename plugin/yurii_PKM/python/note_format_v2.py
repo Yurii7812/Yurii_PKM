@@ -418,9 +418,13 @@ def render_note(note: Note) -> str:
 # resolution helpers
 # ---------------------------------------------------------------------------
 
+EXPAND_TMP_DIR = "_tmp"  # 展開（pe）の使い捨て出力先。sync は一切関知しない。
+
+
 def _iter_md(root: Path):
     for p in sorted(root.rglob("*.md")):
-        if any(part.startswith(".") for part in p.relative_to(root).parts):
+        parts = p.relative_to(root).parts
+        if any(part.startswith(".") for part in parts) or EXPAND_TMP_DIR in parts:
             continue
         yield p
 

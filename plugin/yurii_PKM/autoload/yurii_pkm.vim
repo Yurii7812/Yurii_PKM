@@ -3999,6 +3999,86 @@ function! yurii_pkm#v2_new_attr() abort
   call s:v2_new_related(l:below, l:attr, l:rel)
 endfunction
 
+" pe: 現ノートを起点に 親/子/文中 を辿って 1 つの展開ファイルへ集約する。
+" シンプル（深さを 1 つだけ指定、親/子/文中を区別せず平等に辿る）と
+" 詳細（親・子・文中それぞれ独立の深さ。前回の詳細設定は
+" ROOT/.pkm_expand_prefs.json に記録され、次回「保存済み設定を使う」で
+" 再利用できる）を選ぶ。出力は ROOT/_tmp/T_<timestamp>.md（sync 管理外、
+" 編集しても元ノートへは反映されない使い捨てスナップショット）。
+function! yurii_pkm#v2_expand() abort
+  let l:cur = expand('%:p')
+  if empty(l:cur)
+    echohl WarningMsg | echo 'yurii_PKM: 名前付きバッファで実行して' | echohl NONE
+    return
+  endif
+  let l:root = s:get_pkm_root()
+  if empty(l:root)
+    echohl WarningMsg | echo 'yurii_PKM: PKM root が未設定' | echohl NONE
+    return
+  endif
+  let l:py = get(g:, 'yurii_pkm_expand_v2_python', '')
+  if empty(l:py) || !filereadable(l:py)
+    echohl WarningMsg | echo 'yurii_PKM: expand_v2.py が見つからない: ' . l:py | echohl NONE
+    return
+  endif
+
+  let l:mode = s:v2_pick('展開', ['シンプル', '詳細'])
+  if l:mode ==# '' | echo 'yurii_PKM: キャンセル' | return | endif
+
+  if l:mode ==# 'シンプル'
+    let l:n = input('深さ（数字）: ', '1')
+    if l:n !~# '^\d\+$' | echo 'yurii_PKM: キャンセル' | return | endif
+    let l:args = [s:python_cmd(), l:py, 'simple', l:root, l:cur, l:n]
+  else
+    let l:prefs = s:v2_expand_prefs(l:root, l:py)
+    let l:use_saved = 0
+    if !empty(l:prefs)
+      let l:pm = s:v2_pick('詳細設定', [
+            \ '保存済み(子' . l:prefs.child . ' 親' . l:prefs.parent . ' 文中' . l:prefs.backlink . ')を使う',
+            \ '新しく設定する'])
+      if l:pm ==# '' | echo 'yurii_PKM: キャンセル' | return | endif
+      let l:use_saved = (l:pm =~# '^保存済み')
+    endif
+    if l:use_saved
+      let l:cd = l:prefs.child
+      let l:pd = l:prefs.parent
+      let l:bd = l:prefs.backlink
+    else
+      let l:cd = input('子の深さ: ', '1')
+      let l:pd = input('親の深さ: ', '1')
+      let l:bd = input('文中の深さ: ', '0')
+      if l:cd !~# '^\d\+$' || l:pd !~# '^\d\+$' || l:bd !~# '^\d\+$'
+        echo 'yurii_PKM: キャンセル' | return
+      endif
+    endif
+    let l:args = [s:python_cmd(), l:py, 'detailed', l:root, l:cur, l:cd, l:pd, l:bd]
+  endif
+
+  let l:out = systemlist(join(map(copy(l:args), 'shellescape(v:val)'), ' '))
+  if v:shell_error != 0 || empty(l:out)
+    echohl WarningMsg | echo 'yurii_PKM: 展開に失敗: ' . join(l:out, ' ') | echohl NONE
+    return
+  endif
+  let l:result_path = l:out[-1]
+  if !filereadable(l:result_path)
+    echohl WarningMsg | echo 'yurii_PKM: 展開ファイルが見つからない: ' . l:result_path | echohl NONE
+    return
+  endif
+  execute 'edit ' . fnameescape(l:result_path)
+endfunction
+
+" 詳細モードの前回設定を取得する。無ければ空 dict
+function! s:v2_expand_prefs(root, py) abort
+  let l:args = [s:python_cmd(), a:py, 'get_prefs', a:root]
+  let l:out = systemlist(join(map(copy(l:args), 'shellescape(v:val)'), ' '))
+  if v:shell_error != 0 || empty(l:out) || trim(l:out[0]) ==# ''
+    return {}
+  endif
+  let l:parts = split(trim(l:out[0]))
+  if len(l:parts) != 3 | return {} | endif
+  return {'child': l:parts[0], 'parent': l:parts[1], 'backlink': l:parts[2]}
+endfunction
+
 " カーソル直下ノート（nh）: 新ノートを作り、そのリンクをカーソル行の直下（本文）に置く。
 " 関係セクションには入れない → 相手には バックリンク: として現れる。
 function! yurii_pkm#v2_new_here() abort

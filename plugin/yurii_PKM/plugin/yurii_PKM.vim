@@ -94,6 +94,9 @@ endif
 if !exists('g:yurii_pkm_expand_s_python')
   let g:yurii_pkm_expand_s_python = s:plugin_root . '/python/expand_s.py'
 endif
+if !exists('g:yurii_pkm_expand_v2_python')
+  let g:yurii_pkm_expand_v2_python = s:plugin_root . '/python/expand_v2.py'
+endif
 if !exists('g:yurii_pkm_gallery_python')
   let g:yurii_pkm_gallery_python = s:plugin_root . '/python/gallery.py'
 endif
@@ -254,6 +257,9 @@ nnoremap <nowait> <silent> nc  <Cmd>call yurii_pkm#v2_new_child()<CR>
 nnoremap <nowait> <silent> np  <Cmd>call yurii_pkm#v2_new_parent()<CR>
 nnoremap <nowait> <silent> nh  <Cmd>call yurii_pkm#v2_new_here()<CR>
 nnoremap <nowait> <silent> nw  <Cmd>call yurii_pkm#v2_new_attr()<CR>
+" pe: 現ノートを起点に親/子/文中を辿って 1 つの md へ展開（v2 専用、_tmp/T_<timestamp>.md）。
+" シンプル（深さ1つ）/ 詳細（親・子・文中を別々の深さ、前回設定を再利用可）を選ぶ
+nnoremap <nowait> <silent> pe  <Cmd>call yurii_pkm#v2_expand()<CR>
 " cu: クリップボードのリンクを Parent: セクションへ追加
 nnoremap <nowait> <silent> cu  <Cmd>call yurii_pkm#add_clipboard_to_branch()<CR>
 " ca: クリップボードのリンクを Child: に追加し、リンク先の Parent: に現在ノートを追加
