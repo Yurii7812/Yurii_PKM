@@ -649,36 +649,32 @@ def sync_vault(root) -> int:
         if (i := ids.get(kk)) is not None and (a := _fm_attr(nn.fm)) in ATTR_LABELS
     }
 
-    def far_label(pair: tuple[str, str]) -> str:
-        return down_label.get(pair) or up_label.get(pair) or "ノート"
-
     def up_side_label(pair: tuple[str, str]) -> str:
         """sid 自身の こっちにとって 側を再構築する時のラベル判定。
 
         sid 自身が既にその相手向けに書いている（up_label にある）なら、
         それは sid 自身の主張なのでそのまま使う（再パースするたびに読み直す
-        だけなので、これが sticky にもなる）。sid 自身は何も書いていないが
-        相手（そっちにとって）の方が先にこのペアを書いていた場合は、それは
-        「相手から見た呼び方」を押し付けられているだけなので、下側の新規
-        ペアと同じルールで括弧付きにする（`ノート` はそのまま）。
+        だけなので、これが sticky にもなる）。sid 自身は何も書いていないなら、
+        相手（そっちにとって）が何と書いていようと関係なく既定の `ノート`。
+        相手の言葉を勝手に借りて括弧で示すようなことはしない（方向性のある
+        言葉（例: きっかけ）は相手から見て意味が通らないため）。
         """
         if pair in up_label:
             return up_label[pair]
-        raw = down_label.get(pair) or "ノート"
-        return raw if raw == "ノート" else f"({raw})"
+        return "ノート"
 
     # --- 上側を再構築。相手が attribute 持ちなら自分側ラベルは常に `カテゴリー:` ---
-    # incoming[to] = [(from_id, raw_label, forced)]。forced=True（カテゴリー属性に
-    # よる強制）だけは常にそのラベルを使う。forced=False の生ラベルは、下側の
-    # 再構築時に「sticky（既存の位置を尊重）／新規なら括弧付き既定値」の判定に使う
+    # incoming[to] = [(from_id, forced)]。forced=True（カテゴリー属性による強制）
+    # だけは常に `カテゴリー:` を使う。forced=False は、下側の再構築時に
+    # 「sticky（既存の位置を尊重）／新規なら既定の `ノート`」の判定に使う
     # （関係ラベルを機械的にミラーすると、方向性のある言葉（例: きっかけ）が相手側でも
-    # そのまま出て意味が通らないため）。
-    incoming: dict[str, list[tuple[str, str, bool]]] = {}
+    # そのまま出て意味が通らないため、相手側の言葉は勝手に借りない）。
+    incoming: dict[str, list[tuple[str, bool]]] = {}
     for (a, b) in present:
         if attr_of.get(a) == CATEGORY_ATTR:
-            incoming.setdefault(b, []).append((a, CATEGORY_ATTR, True))
+            incoming.setdefault(b, []).append((a, True))
         else:
-            incoming.setdefault(b, []).append((a, far_label((a, b)), False))
+            incoming.setdefault(b, []).append((a, False))
 
     for k, n in by_path.items():
         sid = ids.get(k)
@@ -724,10 +720,9 @@ def sync_vault(root) -> int:
             # （書かれている表示名が前回 sync 時点の相手のタイトルと同じなら
             # 現タイトルへ追従、違えば手で変えたとみなしそのまま残す）。
             # ラベルも同様に sticky にする: 既にその相手向けの行があれば、
-            # そこに今書かれているラベル（既定の括弧付きでも、手で変えたものでも）
-            # をそのまま使い続ける。新規のペアだけ、その場で決まったラベルを使う
-            # （`ノート` はそのまま、それ以外は `(ラベル)` と括弧を付けて「相手側から
-            # 見た呼び方」であることを示す。関連・カテゴリー属性による強制は対象外）。
+            # そこに今書かれているラベル（手で変えたものも含む）をそのまま使い
+            # 続ける。新規のペアは常に既定の `ノート`（相手側の言葉を勝手に
+            # 借りることはしない。関連・カテゴリー属性による強制は対象外）。
             orig_down_title: dict[str, str] = {}
             orig_down_label: dict[str, str] = {}
             for t, es in n.down.items():
@@ -740,17 +735,15 @@ def sync_vault(root) -> int:
                         orig_down_label.setdefault(r, t)
 
             by_lbl: dict[str, list[str]] = {}
-            for (a, raw_lbl, forced) in incoming.get(nid, []):
+            for (a, forced) in incoming.get(nid, []):
                 if (nid, a) in present:  # 相互は下側に出さない
                     continue
                 if forced:
-                    lbl = raw_lbl
+                    lbl = CATEGORY_ATTR
                 elif a in orig_down_label:
                     lbl = orig_down_label[a]
-                elif raw_lbl == "ノート":
-                    lbl = "ノート"
                 else:
-                    lbl = f"({raw_lbl})"
+                    lbl = "ノート"
                 by_lbl.setdefault(lbl, []).append(a)
             for (a, t, b) in present_sym:
                 other = b if a == nid else (a if b == nid else None)

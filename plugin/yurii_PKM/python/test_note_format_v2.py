@@ -98,27 +98,27 @@ def test_normalize_counts() -> None:
 
 
 def test_sync_generates_down() -> None:
-    print("sync: 上側 → 相方の下側 生成（新規ペアは括弧付き既定ラベル）")
+    print("sync: 上側 → 相方の下側 生成（新規ペアは既定で『ノート』）")
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
         note(root / "20250104.md", "集中と気づき", up="論点: [問い](20250111.md)")
         note(root / "20250111.md", "瞑想のコツがわからない")
         v2.sync_vault(root)
         _u, dn = regions((root / "20250111.md").read_text(encoding="utf-8"))
-        check("(論点):\n[集中と気づき](20250104.md)" in dn,
-              "B の下側に新規で入るので『(論点): A』（括弧付き既定値）が入る")
+        check("ノート:\n[集中と気づき](20250104.md)" in dn,
+              "B の下側は新規ペアなので『ノート』が既定（A の『論点』を借りない）")
 
 
 def test_sync_symmetric_down_edit() -> None:
-    print("sync: 下側の手編集（有向）→ 相方の上側へ反映")
+    print("sync: 下側の手編集（有向）→ 相方の上側へ反映（新規は既定で『ノート』）")
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
         note(root / "20250104.md", "A")
         note(root / "20250120.md", "C", down="論点: [A](20250104.md)")
         v2.sync_vault(root)
         up, _dn = regions((root / "20250104.md").read_text(encoding="utf-8"))
-        check("(論点):\n[C](20250120.md)" in up,
-              "A の上側に入るが、C の下側からの言葉なので括弧付き既定値『(論点): C』になる")
+        check("ノート:\n[C](20250120.md)" in up,
+              "A の上側は新規ペアなので『ノート』が既定（C の『論点』を借りない）")
 
 
 def test_kanren_down_edit_mirrors() -> None:
@@ -140,8 +140,8 @@ def test_sync_delete_from_down_removes_up() -> None:
         note(root / "20250111.md", "B")
         v2.sync_vault(root)
         b_path = root / "20250111.md"
-        check("(論点):\n[A](20250104.md)" in regions(b_path.read_text(encoding="utf-8"))[1],
-              "まず下側に生成（新規なので括弧付き既定値）")
+        check("ノート:\n[A](20250104.md)" in regions(b_path.read_text(encoding="utf-8"))[1],
+              "まず下側に生成（新規なので既定の『ノート』）")
         # ユーザが B の下側から論点行を削除
         b_path.write_text(
             "---\ntitle: B\n---\n\n# B\n\n本文。\n\n---\n", encoding="utf-8"
@@ -296,7 +296,7 @@ def test_typed_link_suppresses_backlink() -> None:
         note(root / "20250111.md", "B")
         v2.sync_vault(root)
         _up, dn = regions((root / "20250111.md").read_text(encoding="utf-8"))
-        check("(論点):\n[A](20250104.md)" in dn, "(論点): A は出る（新規なので括弧付き既定値）")
+        check("ノート:\n[A](20250104.md)" in dn, "ノート: A は出る（新規なので既定の『ノート』）")
         check("バックリンク" not in dn, "バックリンク: A は出さない（型で表示済み）")
 
 
@@ -412,8 +412,8 @@ def test_attribute_group_labels_member_up_side() -> None:
         _u, dn = regions((root / "20250101.md").read_text(encoding="utf-8"))
         check("グループ:\n[哲学](20250101.md)" in up,
               "手で 論点 を選んでいても、相手が グループ なら上側は グループ:")
-        check("(論点):\n[認識論とは何か](20250104.md)" in dn,
-              "容器ノート自身の下側は非対称：自分（メンバー）が容器でないので元の関係名が新規なら括弧付き既定値（(論点):）になる")
+        check("ノート:\n[認識論とは何か](20250104.md)" in dn,
+              "容器ノート自身の下側は非対称：自分（メンバー）が容器でないので新規ペアは既定の『ノート』になる")
 
 
 def test_attribute_group_subgroup_labels_down_side_too() -> None:
@@ -440,8 +440,8 @@ def test_attribute_subgroup_target_forces_group_not_subgroup() -> None:
         _u, dn = regions((root / "20250101.md").read_text(encoding="utf-8"))
         check("グループ:\n[実在論](20250101.md)" in up,
               "手で 資料 を選んでいても、相手が 小グループ ノードなら上側は グループ:（小グループ: にはならない）")
-        check("(資料):\n[普遍は実在するか](20250104.md)" in dn,
-              "実在論 側の下側は打った関係名ベースの括弧付き既定値（(資料):）のまま。"
+        check("ノート:\n[普遍は実在するか](20250104.md)" in dn,
+              "実在論 側の下側は新規ペアなので既定の『ノート』。"
               "小グループは相手を下位に置く容器ではない")
 
 
@@ -469,8 +469,8 @@ def test_attribute_subgroup_child_view_differs_by_side() -> None:
         v2.sync_vault(root)
         up, _dn = regions((root / "20250104.md").read_text(encoding="utf-8"))
         _u, dn = regions((root / "20250101.md").read_text(encoding="utf-8"))
-        check("(資料):\n[普遍は実在するか](20250104.md)" in dn,
-              "実在論（小グループ）側の下側からは、括弧付き既定値（(資料):）で見える")
+        check("ノート:\n[普遍は実在するか](20250104.md)" in dn,
+              "実在論（小グループ）側の下側からは、新規ペアの既定値『ノート』で見える")
         check("グループ:\n[実在論](20250101.md)" in up,
               "その子（普遍は実在するか）自身の上側からは グループ: として見える")
 
@@ -498,8 +498,8 @@ def test_down_side_display_name_is_sticky() -> None:
         note(root / "20250111.md", "B")
         v2.sync_vault(root)
         _u, dn = regions((root / "20250111.md").read_text(encoding="utf-8"))
-        check("(論点):\n[A](20250104.md)" in dn,
-              "初回は相手の現タイトルで、新規ペアなので括弧付き既定ラベルで生成される")
+        check("ノート:\n[A](20250104.md)" in dn,
+              "初回は相手の現タイトルで、新規ペアなので既定の『ノート』で生成される")
 
         # B の下側の表示名を手で書き換える
         b_path = root / "20250111.md"
@@ -508,12 +508,12 @@ def test_down_side_display_name_is_sticky() -> None:
                            encoding="utf-8")
         v2.sync_vault(root)
         _u2, dn2 = regions(b_path.read_text(encoding="utf-8"))
-        check("(論点):\n[カスタム表示名](20250104.md)" in dn2,
+        check("ノート:\n[カスタム表示名](20250104.md)" in dn2,
               "sync をもう一度走らせても、手で付けた表示名が相手の現タイトルへ戻らない")
 
 
-def test_new_pair_custom_label_gets_parenthesized_default() -> None:
-    print("sync: 新規ペアはラベルをミラーせず、括弧付きの既定値になる（方向性のある言葉対策）")
+def test_new_pair_custom_label_does_not_mirror() -> None:
+    print("sync: 新規ペアはラベルをミラーせず、既定の『ノート』になる（方向性のある言葉対策）")
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
         note(root / "20250104.md", "何もしないは苦痛だから", up="きっかけ: [就職について考え始めたきっかけ](20250111.md)")
@@ -523,8 +523,8 @@ def test_new_pair_custom_label_gets_parenthesized_default() -> None:
         _u, dn = regions((root / "20250111.md").read_text(encoding="utf-8"))
         check("きっかけ:\n[就職について考え始めたきっかけ](20250111.md)" in up,
               "書いた側（A の上側）はそのまま『きっかけ:』")
-        check("(きっかけ):\n[何もしないは苦痛だから](20250104.md)" in dn,
-              "相手側（B の下側）は新規ペアなので『(きっかけ):』という括弧付き既定値になる"
+        check("ノート:\n[何もしないは苦痛だから](20250104.md)" in dn,
+              "相手側（B の下側）は新規ペアなので既定の『ノート』になる"
               "（方向性のある言葉をそのままミラーしない）")
 
 
@@ -541,7 +541,7 @@ def test_default_note_label_is_not_parenthesized() -> None:
 
 
 def test_label_is_sticky_once_written() -> None:
-    print("sync: ラベルも表示名と同じく一度書かれたら sync が変えない（括弧を外して直しても保持）")
+    print("sync: ラベルも表示名と同じく一度書かれたら sync が変えない（既定の『ノート』には戻らない）")
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
         note(root / "20250104.md", "A", up="きっかけ: [B](20250111.md)")
@@ -549,15 +549,15 @@ def test_label_is_sticky_once_written() -> None:
         v2.sync_vault(root)
         b_path = root / "20250111.md"
         _u, dn = regions(b_path.read_text(encoding="utf-8"))
-        check("(きっかけ):\n[A](20250104.md)" in dn, "初回は括弧付き既定値")
+        check("ノート:\n[A](20250104.md)" in dn, "初回は既定の『ノート』（A の『きっかけ』は借りない）")
 
-        # 手で括弧を外して「後押し」という別の言葉に書き換える
+        # 手で「後押し」という言葉に書き換える
         b_text = b_path.read_text(encoding="utf-8")
-        b_path.write_text(b_text.replace("(きっかけ):", "後押し:"), encoding="utf-8")
+        b_path.write_text(b_text.replace("ノート:", "後押し:"), encoding="utf-8")
         v2.sync_vault(root)
         _u2, dn2 = regions(b_path.read_text(encoding="utf-8"))
         check("後押し:\n[A](20250104.md)" in dn2,
-              "手で書き換えた『後押し:』はそのまま残り、(きっかけ) には戻らない")
+              "手で書き換えた『後押し:』はそのまま残り、『ノート』には戻らない")
 
 
 def test_hand_written_label_before_first_sync_is_respected() -> None:
@@ -572,8 +572,8 @@ def test_hand_written_label_before_first_sync_is_respected() -> None:
               "初回 sync 前から手で書いてあった『後押し:』は括弧付き既定値で上書きされない")
 
 
-def test_down_authored_label_is_parenthesized_on_up_side() -> None:
-    print("sync: 相手（そっちにとって）が先に書いたラベルも、自分の上側では括弧付きになる"
+def test_down_authored_label_does_not_mirror_to_up_side() -> None:
+    print("sync: 相手（そっちにとって）が先に書いたラベルは、自分の上側には borrow されない"
           "（nc/ca のようにダウン側から書くケース）")
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
@@ -583,17 +583,17 @@ def test_down_authored_label_is_parenthesized_on_up_side() -> None:
         note(root / "20250120.md", "C", down="論点: [A](20250104.md)")
         v2.sync_vault(root)
         up, _dn = regions((root / "20250104.md").read_text(encoding="utf-8"))
-        check("(論点):\n[C](20250120.md)" in up,
-              "A は何も書いていないので、C 発のラベルは括弧付き既定値になる")
+        check("ノート:\n[C](20250120.md)" in up,
+              "A は何も書いていないので、既定の『ノート』になる（C の『論点』は借りない）")
 
-        # 手で括弧を外して自分の言葉に書き換える
+        # 手で自分の言葉に書き換える
         a_path = root / "20250104.md"
         a_text = a_path.read_text(encoding="utf-8")
-        a_path.write_text(a_text.replace("(論点):", "参照元:"), encoding="utf-8")
+        a_path.write_text(a_text.replace("ノート:", "参照元:"), encoding="utf-8")
         v2.sync_vault(root)
         up2, _dn2 = regions(a_path.read_text(encoding="utf-8"))
         check("参照元:\n[C](20250120.md)" in up2,
-              "手で書き換えた『参照元:』はそのまま残り、(論点) には戻らない（上側も sticky）")
+              "手で書き換えた『参照元:』はそのまま残り、『ノート』には戻らない（上側も sticky）")
 
 
 def main() -> int:
