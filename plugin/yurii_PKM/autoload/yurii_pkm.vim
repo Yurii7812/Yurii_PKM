@@ -3921,11 +3921,14 @@ function! yurii_pkm#v2_add_link(...) abort
 
   " 対象にグループ / 小グループ属性のファイルが含まれるか（先に判定しておき、
   " 関係ピッカーで「ノート」の代わりに「索引」を出すかどうかに使う）。
+  " 現在のノート自身が グループ / 小グループ 属性の場合も同様に「索引」を出す
+  " （nc/np と同じ判定基準。自分が容器なら、相手が普通のノートでも「索引」）。
   let l:attr_targets = {}
   for l:t in l:targets
     if s:v2_target_attr(l:t) !=# '' | let l:attr_targets[l:t] = 1 | endif
   endfor
-  let l:all_attr = !empty(l:attr_targets) && len(l:attr_targets) == len(l:targets)
+  let l:self_attr = !empty(s:v2_buf_attr())
+  let l:all_attr = l:self_attr || (!empty(l:attr_targets) && len(l:attr_targets) == len(l:targets))
 
   " 関係: 複数件なら「一括で同じ関係」か「一つずつ選ぶ」かを先に聞く
   let l:rel_fixed = a:0 > 1 && a:2 !=# '' ? a:2 : ''
@@ -3963,7 +3966,7 @@ function! yurii_pkm#v2_add_link(...) abort
   let l:entries = []
   for l:tgt in l:targets
     let l:is_attr = has_key(l:attr_targets, l:tgt)
-    let l:rel = !empty(l:batch_rel) ? l:batch_rel : s:v2_pick_relation(l:is_attr)
+    let l:rel = !empty(l:batch_rel) ? l:batch_rel : s:v2_pick_relation(l:self_attr || l:is_attr)
     if l:rel ==# ''
       echo 'yurii_PKM: ' . l:tgt . ' はキャンセルしてスキップ'
       continue
