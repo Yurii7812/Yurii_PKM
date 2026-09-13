@@ -3739,6 +3739,84 @@ function! s:v2_boundaries() abort
   return [0, 0]
 endfunction
 
+" s:v2_insert_link の行配列版（現在のバッファに限らず、任意ファイルの行に
+" 対して同じ処理をするために使う）。target_dir は重複チェックの相対パス
+" 解決基準（そのファイル自身のディレクトリ）。戻り値: {lines, ok, reason}
+function! s:v2_insert_link_in_lines(lines, target_dir, rel, linktext, below) abort
+  let l:lines = a:lines
+  let [l:up_m, l:dn_m] = s:v2_boundaries_in_lines(l:lines)
+  if l:up_m == 0
+    return {'lines': l:lines, 'ok': 0, 'reason': 'no_marks'}
+  endif
+  let l:n = len(l:lines)
+  if a:below
+    let l:lo = l:dn_m
+    let l:hi = l:n + 1
+  else
+    let l:lo = l:up_m
+    let l:hi = l:dn_m
+  endif
+
+  let l:new_tgt = s:extract_target(a:linktext)
+  if !empty(l:new_tgt)
+    let l:new_fp = fnamemodify(yurii_pkm#resolve_link(l:new_tgt, a:target_dir), ':p')
+    for l:i in range(l:lo + 1, min([l:hi - 1, l:n]))
+      let l:old = s:extract_target(get(l:lines, l:i - 1, ''))
+      if empty(l:old) | continue | endif
+      if fnamemodify(yurii_pkm#resolve_link(l:old, a:target_dir), ':p') ==# l:new_fp
+        return {'lines': l:lines, 'ok': 0, 'reason': 'dup'}
+      endif
+    endfor
+  endif
+
+  let l:hdr = 0
+  for l:i in range(l:lo + 1, l:hi - 1)
+    if get(l:lines, l:i - 1, '') =~# '^\V' . escape(a:rel, '\') . '\m\s*:'
+      let l:hdr = l:i | break
+    endif
+  endfor
+
+  if l:hdr == 0
+    call extend(l:lines, [a:rel . ':', a:linktext], l:hi - 1)
+    return {'lines': l:lines, 'ok': 1}
+  endif
+
+  let l:inline = matchstr(get(l:lines, l:hdr - 1, ''), ':\s*\zs.*$')
+  if l:inline =~# '\S'
+    let l:lines[l:hdr - 1] = a:rel . ':'
+    call extend(l:lines, [l:inline, a:linktext], l:hdr)
+    return {'lines': l:lines, 'ok': 1}
+  endif
+
+  let l:end = l:hdr
+  for l:i in range(l:hdr + 1, l:hi - 1)
+    if get(l:lines, l:i - 1, '') =~# '^\s*\[[^]]*\]([^)]*)'
+      let l:end = l:i
+    else
+      break
+    endif
+  endfor
+  call insert(l:lines, a:linktext, l:end)
+  return {'lines': l:lines, 'ok': 1}
+endfunction
+
+" ca/bc/cu/at でカスタムラベルを選んだ時、相手ファイルへその場でラベル付き
+" バックリンクを直接書き込む。a:below は「自分から見てどちら側に足したか」
+" （0=こっちにとって/1=そっちにとって）。相手からは向きが逆になるので
+" 書き込みは !a:below 側へ行う。
+function! s:v2_write_other_side_label(target_path, label, cur_path, cur_title, below) abort
+  if !filereadable(a:target_path) | return 0 | endif
+  let l:lines = readfile(a:target_path)
+  let l:target_dir = fnamemodify(a:target_path, ':h')
+  let l:linktext = s:make_link_from_dir(a:cur_path, a:cur_title, l:target_dir)
+  let l:result = s:v2_insert_link_in_lines(l:lines, l:target_dir, a:label, l:linktext, !a:below)
+  if !l:result.ok
+    return l:result.reason ==# 'dup' ? 1 : 0
+  endif
+  call writefile(l:result.lines, a:target_path)
+  return 1
+endfunction
+
 " a:below … 0 = 上側（こっちにとって、見張りの間）、1 = 下側（そっちにとって、最後の見張り以降）
 function! s:v2_insert_link(rel, linktext, ...) abort
   let l:below = a:0 > 0 ? a:1 : 0
@@ -3868,6 +3946,10 @@ function! yurii_pkm#v2_add_link(...) abort
     let l:manual_name = (l:nm ==# '一つずつ入力')
   endif
 
+  let l:cur_path  = expand('%:p')
+  let l:cur_title = yurii_pkm#current_title()
+  if l:cur_title ==# '' | let l:cur_title = fnamemodify(l:cur_path, ':t:r') | endif
+
   let l:added = 0
   for l:tgt in l:targets
     let l:is_attr = has_key(l:attr_targets, l:tgt)
@@ -3890,6 +3972,21 @@ function! yurii_pkm#v2_add_link(...) abort
     if s:v2_insert_link(l:rel, '[' . l:title . '](' . l:tgt . ')', l:below)
       let l:added += 1
       echo 'yurii_PKM: ' . l:rel . (l:below ? ' ↓ ' : ' ') . '+= ' . l:title
+      " ノート/関連 以外（方向性を持ちうる関係）を選んだ時は、相手側にも
+      " 今その場で書くか聞く。「自動のまま」なら何もしない（次の sync が
+      " 括弧付き既定値を生成する）。
+      if s:v2_is_custom_relation(l:rel)
+        let l:choice = s:v2_pick('[' . l:tgt . '] 相手側のラベル（既定: (' . l:rel . ')）',
+              \ ['自動のまま', '書く'])
+        if l:choice ==# '書く'
+          let l:other_label = trim(input('[' . l:tgt . '] 相手側のラベル: '))
+          if !empty(l:other_label)
+            let l:tgt_path = yurii_pkm#resolve_link(l:tgt)
+            call s:v2_write_other_side_label(l:tgt_path, l:other_label,
+                  \ l:cur_path, l:cur_title, l:below)
+          endif
+        endif
+      endif
     endif
   endfor
   if l:added > 0 | silent! write | endif

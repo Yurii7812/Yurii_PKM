@@ -29,10 +29,13 @@
   ``バックリンク:`` として現れる。
 - 関係ラベルは方向性を持つことが多い（例: ``きっかけ:`` は A 視点の言葉で、
   B からそのままミラーすると意味が通らない）ため、``関連``（対称）と
-  ``グループ``（attribute による強制）を除き自動ではミラーしない。新規の
-  ペアでは ``ノート`` はそのまま、それ以外は ``(ラベル):`` と括弧付きの
+  ``グループ``（attribute による強制）を除き自動ではミラーしない。
+  上側・下側どちらの方向から書いても対称に扱う: 自分の側に既に何か書いて
+  あればそれをそのまま使い、無ければ（＝相手側が先にそのペアを書いていた
+  場合）``ノート`` はそのまま、それ以外は ``(ラベル):`` と括弧付きの
   既定値になる。一度その位置に行ができたら、以後 sync はラベルを変えない
-  （表示名と同じ sticky な扱い）。
+  （表示名と同じ sticky な扱い。再パースするたびに読み直すだけなので
+  自然に sticky になる）。
 - リンク表示名は上側・下側とも同じ判定で追従するかどうかが決まる：今書かれて
   いる表示名が前回 sync 時点の相手のタイトルと同じ（＝手で変えていない）なら
   現タイトルへ追従、違っていれば（＝手で変えた）そのまま残す
@@ -649,6 +652,21 @@ def sync_vault(root) -> int:
     def far_label(pair: tuple[str, str]) -> str:
         return down_label.get(pair) or up_label.get(pair) or "ノート"
 
+    def up_side_label(pair: tuple[str, str]) -> str:
+        """sid 自身の こっちにとって 側を再構築する時のラベル判定。
+
+        sid 自身が既にその相手向けに書いている（up_label にある）なら、
+        それは sid 自身の主張なのでそのまま使う（再パースするたびに読み直す
+        だけなので、これが sticky にもなる）。sid 自身は何も書いていないが
+        相手（そっちにとって）の方が先にこのペアを書いていた場合は、それは
+        「相手から見た呼び方」を押し付けられているだけなので、下側の新規
+        ペアと同じルールで括弧付きにする（`ノート` はそのまま）。
+        """
+        if pair in up_label:
+            return up_label[pair]
+        raw = down_label.get(pair) or "ノート"
+        return raw if raw == "ノート" else f"({raw})"
+
     # --- 上側を再構築。相手が attribute 持ちなら自分側ラベルは常に `カテゴリー:` ---
     # incoming[to] = [(from_id, raw_label, forced)]。forced=True（カテゴリー属性に
     # よる強制）だけは常にそのラベルを使う。forced=False の生ラベルは、下側の
@@ -668,7 +686,7 @@ def sync_vault(root) -> int:
             continue
         # 相手（b）が attribute 持ち（カテゴリー / キーワードどちらでも）なら、
         # 値に関わらず自分の こっちにとって は常に `カテゴリー:`。
-        outgoing = [(b, (CATEGORY_ATTR if b in attr_of else far_label((sid, b))))
+        outgoing = [(b, (CATEGORY_ATTR if b in attr_of else up_side_label((sid, b))))
                     for (a, b) in present if a == sid]
         # 既存の並び順と、手で打った表示名を尊重
         order: list[str] = []

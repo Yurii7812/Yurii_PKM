@@ -117,7 +117,8 @@ def test_sync_symmetric_down_edit() -> None:
         note(root / "20250120.md", "C", down="論点: [A](20250104.md)")
         v2.sync_vault(root)
         up, _dn = regions((root / "20250104.md").read_text(encoding="utf-8"))
-        check("論点:\n[C](20250120.md)" in up, "A の上側に『論点: C』が入る")
+        check("(論点):\n[C](20250120.md)" in up,
+              "A の上側に入るが、C の下側からの言葉なので括弧付き既定値『(論点): C』になる")
 
 
 def test_kanren_down_edit_mirrors() -> None:
@@ -569,6 +570,30 @@ def test_hand_written_label_before_first_sync_is_respected() -> None:
         _u, dn = regions((root / "20250111.md").read_text(encoding="utf-8"))
         check("後押し:\n[A](20250104.md)" in dn,
               "初回 sync 前から手で書いてあった『後押し:』は括弧付き既定値で上書きされない")
+
+
+def test_down_authored_label_is_parenthesized_on_up_side() -> None:
+    print("sync: 相手（そっちにとって）が先に書いたラベルも、自分の上側では括弧付きになる"
+          "（nc/ca のようにダウン側から書くケース）")
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        # C の下側（そっちにとって）から「論点: [A]」を書く（nc/ca が下側へ
+        # 書き込むのと同じ経路）。A 自身は何も書いていない。
+        note(root / "20250104.md", "A")
+        note(root / "20250120.md", "C", down="論点: [A](20250104.md)")
+        v2.sync_vault(root)
+        up, _dn = regions((root / "20250104.md").read_text(encoding="utf-8"))
+        check("(論点):\n[C](20250120.md)" in up,
+              "A は何も書いていないので、C 発のラベルは括弧付き既定値になる")
+
+        # 手で括弧を外して自分の言葉に書き換える
+        a_path = root / "20250104.md"
+        a_text = a_path.read_text(encoding="utf-8")
+        a_path.write_text(a_text.replace("(論点):", "参照元:"), encoding="utf-8")
+        v2.sync_vault(root)
+        up2, _dn2 = regions(a_path.read_text(encoding="utf-8"))
+        check("参照元:\n[C](20250120.md)" in up2,
+              "手で書き換えた『参照元:』はそのまま残り、(論点) には戻らない（上側も sticky）")
 
 
 def main() -> int:
