@@ -279,9 +279,13 @@ nnoremap <nowait> <silent> ,/  <Cmd>call yurii_pkm#jump_down_bottom()<CR>
 " は使わない前提（<nowait> は付けない — 付けると nc/np 等より n が即座に
 " 確定してしまい、それらに繋がらなくなる。timeoutlen 経過後だけ発火する）。
 nnoremap <silent> n <Nop>
-" \n / \N … 検索リピートが欲しい時だけ使う（待たずに即座に動く）。
-nnoremap <nowait> <silent> \n n
-nnoremap <nowait> <silent> \N N
+" \n / \N … 検索リピートが欲しい時だけ使う。<nowait> は付けない ── リンク
+" ジャンプの \a1〜\z9 ラベル（10番目以降）は、リンクが127個を超えると
+" \n1〜\n9 も使うため、<nowait> だと \n が即座に確定してそれらが二度と
+" 発火できなくなる。<nowait>無しなら普段（\n1等が存在しない時）は
+" 従来通り即座に動き、その状況でだけ正しく待ってくれる。
+nnoremap <silent> \n n
+nnoremap <silent> \N N
 nnoremap <nowait> <silent> nc  <Cmd>call yurii_pkm#v2_new_child()<CR>
 nnoremap <nowait> <silent> np  <Cmd>call yurii_pkm#v2_new_parent()<CR>
 nnoremap <nowait> <silent> nh  <Cmd>call yurii_pkm#v2_new_here()<CR>
