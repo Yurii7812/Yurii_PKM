@@ -6053,22 +6053,42 @@ function! yurii_pkm#linkify_selection_new_note() abort range
   let l:parent_link_lines = s:parent_link_lines(l:parent_file, l:parent_title, expand('%:p:h'))
 
   if !filereadable(l:new_file)
-    let l:new_content = [
-          \ '---',
-          \ 'time: ' . yurii_pkm#timestamp_yaml(),
-          \ 'title: ' . l:text,
-          \ '---',
-          \ '',
-          \ '# ' . l:text,
-          \ '',
-          \ '',
-          \ '',
-          \ s:canonical_section_title('up'),
-          \ ] + l:parent_link_lines + [
-          \ s:canonical_section_title('down'),
-          \ s:canonical_section_title('backlink'),
-          \ '[Index](index.md)'
-          \ ]
+    if s:pkm_format() ==# 'v2'
+      let l:new_content = [
+            \ '---',
+            \ 'time: ' . yurii_pkm#timestamp_yaml(),
+            \ 'title: ' . l:text,
+            \ '---',
+            \ '',
+            \ '# ' . l:text,
+            \ '',
+            \ '',
+            \ '',
+            \ s:v2_up_mark,
+            \ ]
+      if !empty(l:parent_link_lines)
+        call add(l:new_content, 'ノート:')
+        call extend(l:new_content, l:parent_link_lines)
+      endif
+      call add(l:new_content, s:v2_down_mark)
+    else
+      let l:new_content = [
+            \ '---',
+            \ 'time: ' . yurii_pkm#timestamp_yaml(),
+            \ 'title: ' . l:text,
+            \ '---',
+            \ '',
+            \ '# ' . l:text,
+            \ '',
+            \ '',
+            \ '',
+            \ s:canonical_section_title('up'),
+            \ ] + l:parent_link_lines + [
+            \ s:canonical_section_title('down'),
+            \ s:canonical_section_title('backlink'),
+            \ '[Index](index.md)'
+            \ ]
+    endif
     call writefile(l:new_content, l:new_file)
 
   endif
