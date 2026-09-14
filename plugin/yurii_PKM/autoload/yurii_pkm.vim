@@ -2727,24 +2727,27 @@ endfunction
 
 " ---------------------------------------------------------------------------
 " リンクへのラベルジャンプ（本文 → Parent/Child の通し番号）
-"   1-9      … その番号のリンクへ直接
-"   文字+数字 … 10番目以降（a1, a2, …, a9, b1, … の2打）
-" 実際に見えている番号・文字がリンクの手前に仮想テキストで表示されるので、
+"   1-9        … その番号のリンクを直接開く（生の数字キー）
+"   \文字+数字 … 10番目以降（\a1, \a2, …, \a9, \b1, … の3打）
+" 実際に見えている番号・ラベルがリンクの手前に仮想テキストで表示されるので、
 " 数えなくても押すキーが分かる（g:yurii_pkm_link_hints=0 で無効化）。
+" 10番目以降は既存の \xx 系コマンド（\ca, \at 等）と同じ「バックスラッシュ
+" リーダー」に乗せる。素の文字キー（a, i, o, …）は一切奪わない ─ 生の a を
+" 奪うと、押した瞬間に Insert に入らず次の1打を待つ分だけ体感が遅くなる。
 " ---------------------------------------------------------------------------
 
 let s:hint_prop_type = 'yuriiLinkHint'
 let s:hint_label_letters = 'abcdefghijklmnopqrstuvwxyz'
 
-" 通し番号(1始まり)からラベル文字列を作る。1-9はそのまま、以降は文字+数字。
-" 割り当て切れ（26文字×9 を超える）なら空文字を返す。
+" 通し番号(1始まり)からラベル文字列を作る。1-9はそのまま、以降は
+" \文字+数字（\a1, \a2, …）。割り当て切れ（26文字×9 を超える）なら空文字。
 function! s:hint_label(idx) abort
   if a:idx <= 9 | return string(a:idx) | endif
   let l:n = a:idx - 10
   let l:letter_i = l:n / 9
   let l:digit = (l:n % 9) + 1
   if l:letter_i >= strlen(s:hint_label_letters) | return '' | endif
-  return s:hint_label_letters[l:letter_i] . l:digit
+  return '\' . s:hint_label_letters[l:letter_i] . l:digit
 endfunction
 
 " 現在バッファの候補位置（本文 → Parent/Child の順、digit_key と同じ並び）。
@@ -2774,45 +2777,6 @@ function! s:hint_ensure_prop_type() abort
   return 1
 endfunction
 
-" 使わなくなった文字プレフィクスの一時マッピングを外し、新しく必要な分を張る。
-function! s:hint_sync_letter_maps(letters) abort
-  let l:have = get(b:, 'yurii_hint_letters', [])
-  for l:c in l:have
-    if index(a:letters, l:c) < 0
-      silent! execute 'nunmap <buffer> ' . l:c
-    endif
-  endfor
-  for l:c in a:letters
-    if index(l:have, l:c) < 0
-      execute printf('nnoremap <silent><buffer> %s <Cmd>call yurii_pkm#hint_letter_key(%s)<CR>', l:c, string(l:c))
-    endif
-  endfor
-  let b:yurii_hint_letters = a:letters
-endfunction
-
-" 本文・Parent/Child のリンク手前に、ラベル（1-9 / 文字+数字）を仮想テキストで表示する。
-function! yurii_pkm#refresh_link_hints() abort
-  if !get(g:, 'yurii_pkm_link_hints', 1) || !has('textprop') | return | endif
-  if &l:filetype !=# 'markdown' && &l:filetype !=# 'vimwiki' | return | endif
-  if !s:hint_ensure_prop_type() | return | endif
-  call prop_remove({'type': s:hint_prop_type, 'all': v:true})
-  let b:yurii_hint_map = s:hint_build_map()
-  if empty(b:yurii_hint_map)
-    call s:hint_sync_letter_maps([])
-    return
-  endif
-  let l:letters = []
-  for [l:label, l:pos] in items(b:yurii_hint_map)
-    call prop_add(l:pos.lnum, l:pos.col, {'type': s:hint_prop_type, 'text': l:label})
-    if strlen(l:label) > 1 && index(l:letters, l:label[0]) < 0
-      call add(l:letters, l:label[0])
-    endif
-  endfor
-  call s:hint_sync_letter_maps(l:letters)
-endfunction
-
-" 数字キー … 本文 → Parent/Child の順で通し番号にした N 番目のリンクへ移動。
-" 該当が無ければ通常のカウントとして送る。
 " ラベル位置へ移動してそのままリンクを開く（Enter を省く）。
 function! s:hint_go(pos) abort
   normal! m'
@@ -2821,6 +2785,45 @@ function! s:hint_go(pos) abort
   call yurii_pkm#open_link_under_cursor()
 endfunction
 
+" 使わなくなった \ラベル の一時マッピングを外し、新しく必要な分を張る。
+" \ で始まるラベル（10番目以降）だけが対象 ─ \ はこのプラグインの他の
+" コマンド（\ca, \at 等）と同じリーダーなので、待たされても違和感が無い。
+function! s:hint_sync_full_maps(labels) abort
+  let l:have = get(b:, 'yurii_hint_full_labels', [])
+  for l:label in l:have
+    if index(a:labels, l:label) < 0
+      silent! execute 'nunmap <buffer> ' . l:label
+    endif
+  endfor
+  for l:label in a:labels
+    if index(l:have, l:label) < 0
+      execute printf('nnoremap <silent><buffer> %s <Cmd>call yurii_pkm#hint_goto(%s)<CR>', l:label, string(l:label))
+    endif
+  endfor
+  let b:yurii_hint_full_labels = a:labels
+endfunction
+
+" 本文・Parent/Child のリンク手前に、ラベル（1-9 / \文字+数字）を仮想テキストで表示する。
+function! yurii_pkm#refresh_link_hints() abort
+  if !get(g:, 'yurii_pkm_link_hints', 1) || !has('textprop') | return | endif
+  if &l:filetype !=# 'markdown' && &l:filetype !=# 'vimwiki' | return | endif
+  if !s:hint_ensure_prop_type() | return | endif
+  call prop_remove({'type': s:hint_prop_type, 'all': v:true})
+  let b:yurii_hint_map = s:hint_build_map()
+  if empty(b:yurii_hint_map)
+    call s:hint_sync_full_maps([])
+    return
+  endif
+  let l:full_labels = []
+  for [l:label, l:pos] in items(b:yurii_hint_map)
+    call prop_add(l:pos.lnum, l:pos.col, {'type': s:hint_prop_type, 'text': l:label})
+    if l:label[0] ==# '\' | call add(l:full_labels, l:label) | endif
+  endfor
+  call s:hint_sync_full_maps(l:full_labels)
+endfunction
+
+" 数字キー（生の 1-9）… 本文 → Parent/Child の順で通し番号にした N 番目の
+" リンクを直接開く。該当が無ければ通常のカウントとして送る。
 function! yurii_pkm#digit_key(idx, key) abort
   let l:pos = s:hint_positions()
   if !empty(l:pos) && a:idx >= 1 && a:idx <= len(l:pos)
@@ -2830,18 +2833,12 @@ function! yurii_pkm#digit_key(idx, key) abort
   call feedkeys((v:count > 0 ? v:count : '') . a:key, 'n')
 endfunction
 
-" 文字キー（10番目以降のラベルの1文字目）… 次の1打（数字）を読んで
-" ラベルが揃えば移動してそのまま開く。揃わなければ、押された2打をそのまま
-" 普通のキー入力として送り返す（この文字の本来の意味は保たれる）。
-function! yurii_pkm#hint_letter_key(letter) abort
-  let l:c = getcharstr()
-  let l:label = a:letter . l:c
+" \文字+数字（10番目以降のラベル）… 対応する位置を開く。
+function! yurii_pkm#hint_goto(label) abort
   let l:pos = get(b:, 'yurii_hint_map', {})
-  if has_key(l:pos, l:label)
-    call s:hint_go(l:pos[l:label])
-    return
+  if has_key(l:pos, a:label)
+    call s:hint_go(l:pos[a:label])
   endif
-  call feedkeys(a:letter . l:c, 'n')
 endfunction
 
 function! yurii_pkm#get_link_under_cursor() abort
