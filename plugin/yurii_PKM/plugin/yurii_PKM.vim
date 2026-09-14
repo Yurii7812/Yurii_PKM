@@ -12,7 +12,7 @@ let g:loaded_yurii_pkm = 1
 " デフォルト設定
 " ---------------------------------------------------------------------------
 
-" このプラグインは nc/np/ca/at/bu/bc/mp/mm/tt/yn/gm/gp/gs/pe 等、素の単発
+" このプラグインは nc/np/ca/bu/bc/mp/mm/tt/yn/gm/gp/pe 等、素の単発
 " コマンド（a, n, c, b, m, t, y, g, p, …）と1文字目が被る2文字マッピングを
 " 大量に持つ。Vimの既定 timeoutlen=1000ms のままだと、それらの素の1文字
 " キーを押すたびに「2文字目が来るかどうか」を最大1秒待ってから確定する
@@ -298,9 +298,11 @@ nnoremap <nowait> <silent> nL  <Cmd>call yurii_pkm#rename_link_text('')<CR>
 " nd: Child: のリンク表示名をリンク先 YAML title に更新
 nnoremap <nowait> <silent> nd  <Cmd>RenameChildLinkTitles<CR>
 vnoremap <nowait> <silent> nd  :<C-u>'<,'>RenameChildLinkTitles<CR>
-" at: クリップボードのファイルのChildに現在ファイルへのリンクを追加
-nnoremap <nowait> <silent> at  <Cmd>call yurii_pkm#at_add()<CR>
-" \at: at と同じ向きだが括弧が逆。今開いているノート側が (ラベル)、相手側に生のラベルを書く
+" ta: クリップボードのファイルのChildに現在ファイルへのリンクを追加
+" （旧 at。素の a と1文字目が被り timeoutlen 待ちが発生していたため改名。
+"   t は本来「次の1文字を待つ」動作なので、この待ちは違和感が出にくい）
+nnoremap <nowait> <silent> ta  <Cmd>call yurii_pkm#at_add()<CR>
+" \at: ta と同じ向きだが括弧が逆。今開いているノート側が (ラベル)、相手側に生のラベルを書く
 nnoremap <nowait> <silent> \at  <Cmd>call yurii_pkm#at_add_reverse()<CR>
 " bc: クリップボードのファイル名をChildに追加
 nnoremap <nowait> <silent> bc  <Cmd>call yurii_pkm#add_from_clipboard()<CR>
