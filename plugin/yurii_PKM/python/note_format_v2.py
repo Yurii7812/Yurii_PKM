@@ -64,6 +64,9 @@ from pathlib import Path
 RELATIONS: tuple[str, ...] = (
     "グループ", "小グループ", "索引", "前提", "論点", "見解", "ノート", "関連", "補足", "資料",
 )
+# 既定の関係（無指定のリンク）。他の関係と混在しない側では見出し省略で書く
+# （区別する必要が無いので）。混在する側でだけ `ノート:` を明示する。
+DEFAULT_REL = "ノート"
 # 関係名の読み替え（既定は無し。グループ: はそのまま残す）
 RELATION_ALIASES: dict[str, str] = {"ワード": "キーワード"}
 # ノード属性: `attribute: グループ` / `attribute: 小グループ`（容器ノート・サブグループの印）。
@@ -186,6 +189,15 @@ def _parse_sections(lines: list[str], allow_body: bool):
             continue
         lm = LINK_LINE_RE.match(s)
         if lm and cur is not None:
+            sections[cur].append((lm.group(1), lm.group(2), lm.group(3) or None))
+            i += 1
+            continue
+        if lm and cur is None:
+            # 見出しの無いリンク行 = 既定関係（ノート）。他と混在しない側では
+            # 見出し省略で書く運用（render 側も参照）なので、読む側でも許容する。
+            cur = DEFAULT_REL
+            seen_header = True
+            sections.setdefault(cur, [])
             sections[cur].append((lm.group(1), lm.group(2), lm.group(3) or None))
             i += 1
             continue
@@ -366,7 +378,8 @@ def _links_in(lines: list[str]) -> list[str]:
 # render
 # ---------------------------------------------------------------------------
 
-def _render_section(t: str, entries: list[tuple[str, str, str | None]]) -> list[str]:
+def _render_section(t: str, entries: list[tuple[str, str, str | None]],
+                     with_header: bool = True) -> list[str]:
     """常にブロック形で書く。
 
         ラベル:
@@ -374,11 +387,15 @@ def _render_section(t: str, entries: list[tuple[str, str, str | None]]) -> list[
 
     1 本でもインラインにしない。増えたときに行の形が変わらず、追記が
     「1 行足すだけ」で済むため。読み込み側はインライン形も受け付ける。
+
+    with_header=False なら見出し行（`ラベル:`）を省く。既定関係（ノート）
+    しか無い側では、他と区別する必要が無いので見出しごと省略する
+    （_render_group が判断する）。
     """
     if not entries:
         return []
     # ラベルが `;` 終端（例: `きっかけ;`）ならそのまま、それ以外は `:` を付ける。
-    out = [t if t.endswith(";") else f"{t}:"]
+    out = [t if t.endswith(";") else f"{t}:"] if with_header else []
     for ti, tg, ann in entries:
         s = f"[{ti}]({tg})"
         out.append(s + f" — {ann}" if ann else s)
@@ -388,9 +405,14 @@ def _render_section(t: str, entries: list[tuple[str, str, str | None]]) -> list[
 def _render_group(d: dict[str, list], is_down: bool = False) -> list[str]:
     out: list[str] = []
     done: set[str] = set()
+    # この側に既定関係（ノート）しか無いなら、見出しを省いて素のリンク列で書く。
+    # グループ/資料 等と混在する側でだけ `ノート:` を明示して区別する。
+    real_types = [t for t, v in d.items() if t not in _RESERVED and v]
+    bare_default = real_types == [DEFAULT_REL]
     for t in RELATIONS:
         if d.get(t):
-            out += _render_section(t, d[t])
+            with_header = not (bare_default and t == DEFAULT_REL)
+            out += _render_section(t, d[t], with_header=with_header)
             done.add(t)
     for t in d:
         if t in _RESERVED or t in done:
