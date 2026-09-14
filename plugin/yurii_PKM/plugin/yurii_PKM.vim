@@ -273,6 +273,10 @@ nnoremap <nowait> <silent> ,/  <Cmd>call yurii_pkm#jump_down_bottom()<CR>
 "   nw … 属性ノート（数字ピッカーで種類を選ぶ。1=グループ 2=小グループ、末尾=自由入力。
 "        グループは関係固定 → そのまま c=子 / p=親。小グループ（と自由入力）は
 "        続けて関係も選ぶ → c=子 / p=親）。属性ノートは nw でのみ作れる
+" n 単体（nc/np 等に続かず確定した場合）は何もしない。素のVimの検索リピート
+" は使わない前提（<nowait> は付けない — 付けると nc/np 等より n が即座に
+" 確定してしまい、それらに繋がらなくなる。timeoutlen 経過後だけ発火する）。
+nnoremap <silent> n <Nop>
 nnoremap <nowait> <silent> nc  <Cmd>call yurii_pkm#v2_new_child()<CR>
 nnoremap <nowait> <silent> np  <Cmd>call yurii_pkm#v2_new_parent()<CR>
 nnoremap <nowait> <silent> nh  <Cmd>call yurii_pkm#v2_new_here()<CR>
