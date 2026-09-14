@@ -12,6 +12,19 @@ let g:loaded_yurii_pkm = 1
 " デフォルト設定
 " ---------------------------------------------------------------------------
 
+" このプラグインは nc/np/ca/at/bu/bc/mp/mm/tt/yn/gm/gp/gs/pe 等、素の単発
+" コマンド（a, n, c, b, m, t, y, g, p, …）と1文字目が被る2文字マッピングを
+" 大量に持つ。Vimの既定 timeoutlen=1000ms のままだと、それらの素の1文字
+" キーを押すたびに「2文字目が来るかどうか」を最大1秒待ってから確定する
+" ため、素のVimと比べて a 等の反応が明らかに遅く感じる。
+" 該当キーの体感を悪化させずに待ち時間だけ短縮する（0 で変更しない）。
+if !exists('g:yurii_pkm_timeoutlen')
+  let g:yurii_pkm_timeoutlen = 300
+endif
+if g:yurii_pkm_timeoutlen > 0
+  let &timeoutlen = g:yurii_pkm_timeoutlen
+endif
+
 if !exists('g:yurii_pkm_root')
   let g:yurii_pkm_root = ''
 endif
