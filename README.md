@@ -319,7 +319,7 @@ Normal モードへ戻ったときの英語入力化は、状態取得に失敗�
 | `g:yurii_pkm_recent_max` | `500` | 最近訪問を覚えるノート数 |
 | `g:yurii_search_legacy` | `0` | `gs` を旧ポップアップに戻す |
 | `g:yurii_pkm_link_hints` | `1` | `1`〜`9`/文字+数字リンクジャンプのラベル仮想テキスト表示（`0` で非表示。移動機能自体は残る） |
-| `g:yurii_pkm_timeoutlen` | `300` | `&timeoutlen`（ms）をこの値に短縮。`nc`/`ca`等の2文字マッピングと素の`n`/`c`等の単発コマンドが1文字目を共有するため、既定の1000msだと素のキーの反応が遅く感じる。`0`で変更しない |
+| `g:yurii_pkm_timeoutlen` | `500` | `&timeoutlen`（ms）をこの値に短縮。`nc`/`ca`等の2文字マッピングと素の`n`/`c`等の単発コマンドが1文字目を共有するため、既定の1000msだと素のキーの反応が遅く感じる。短すぎると`nt`等が2文字目の入力前にタイムアウトして無反応になるので、体感と両立する値として500に調整。`0`で変更しない |
 | `g:yurii_pkm_python` | `{plugin}/python/yurii_pkm_sync.py` | 同期スクリプト |
 | `g:yurii_pkm_expand_s_python` | `{plugin}/python/expand_s.py` | S展開スクリプト |
 

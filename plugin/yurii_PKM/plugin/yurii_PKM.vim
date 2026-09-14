@@ -18,8 +18,10 @@ let g:loaded_yurii_pkm = 1
 " キーを押すたびに「2文字目が来るかどうか」を最大1秒待ってから確定する
 " ため、素のVimと比べて a 等の反応が明らかに遅く感じる。
 " 該当キーの体感を悪化させずに待ち時間だけ短縮する（0 で変更しない）。
+" 300msだと nt 等（1文字目と2文字目の間隔が nc 等より空きがち）が
+" タイムアウトで無反応になることがあったため 500ms に調整。
 if !exists('g:yurii_pkm_timeoutlen')
-  let g:yurii_pkm_timeoutlen = 300
+  let g:yurii_pkm_timeoutlen = 500
 endif
 if g:yurii_pkm_timeoutlen > 0
   let &timeoutlen = g:yurii_pkm_timeoutlen
