@@ -131,8 +131,8 @@ def test_semicolon_suppresses_auto_mirror() -> None:
         up, dn2 = regions((root / "20250104.md").read_text(encoding="utf-8"))
         _u, dn = regions((root / "20250111.md").read_text(encoding="utf-8"))
         check("論点;\n[問い](20250111.md)" in up, "書いた側はそのまま `論点;`")
-        check("ノート:" not in dn and "[集中と気づき](20250104.md)" in dn,
-              "`;` なので相手側は自動ミラーされず既定の『ノート』のまま（見出しも省略される）")
+        check("ノート:\n[集中と気づき](20250104.md)" in dn,
+              "`;` なので相手側は自動ミラーされず既定の『ノート』のまま")
 
 
 def test_kanren_down_edit_mirrors() -> None:
@@ -327,8 +327,7 @@ def test_typed_link_from_down_side_suppresses_backlink() -> None:
         note(root / "20250111.md", "B")
         v2.sync_vault(root)
         up, dn = regions((root / "20250111.md").read_text(encoding="utf-8"))
-        check("ノート:" not in up and "[A](20250104.md)" in up,
-              "B の こっちにとって に A は出る（既定関係しか無いので見出しは省略）")
+        check("ノート:\n[A](20250104.md)" in up, "B の こっちにとって に ノート: A は出る")
         check("バックリンク" not in dn, "B の そっちにとって に バックリンク: A は出さない（重複のため）")
 
 
@@ -553,8 +552,8 @@ def test_semicolon_on_new_pair_stays_plain_note() -> None:
         _u, dn = regions((root / "20250111.md").read_text(encoding="utf-8"))
         check("きっかけ;\n[就職について考え始めたきっかけ](20250111.md)" in up,
               "書いた側（A の上側）はそのまま『きっかけ;』")
-        check("ノート:" not in dn and "[何もしないは苦痛だから](20250104.md)" in dn,
-              "相手側（B の下側）は `;` なので自動ミラーされず、既定の『ノート』のまま（見出しも省略される）")
+        check("ノート:\n[何もしないは苦痛だから](20250104.md)" in dn,
+              "相手側（B の下側）は `;` なので自動ミラーされず、既定の『ノート』のまま")
 
 
 def test_default_note_label_is_not_parenthesized() -> None:
@@ -565,42 +564,8 @@ def test_default_note_label_is_not_parenthesized() -> None:
         note(root / "20250111.md", "B")
         v2.sync_vault(root)
         _u, dn = regions((root / "20250111.md").read_text(encoding="utf-8"))
-        check("ノート:" not in dn and "[A](20250104.md)" in dn,
-              "既定関係しか無いので見出し自体が省略される（『(ノート)』のように括弧も付かない）")
+        check("ノート:\n[A](20250104.md)" in dn, "『ノート』はそのまま『ノート:』（括弧なし）")
         check("(ノート)" not in dn, "『(ノート)』のように括弧は付かない")
-
-
-def test_default_only_side_omits_header() -> None:
-    print("render: 既定関係（ノート）しか無い側は見出しを省略する")
-    with tempfile.TemporaryDirectory() as d:
-        root = Path(d)
-        note(root / "20250104.md", "A", up="ノート: [B](20250111.md)\n[C](20250120.md)")
-        note(root / "20250111.md", "B")
-        note(root / "20250120.md", "C")
-        v2.sync_vault(root)
-        up, _dn = regions((root / "20250104.md").read_text(encoding="utf-8"))
-        check("ノート:" not in up, "既定関係しか無いので見出しは書かれない")
-        check("[B](20250111.md)" in up and "[C](20250120.md)" in up,
-              "見出しが無くてもリンク自体はそのまま残る")
-        before = (root / "20250104.md").read_text(encoding="utf-8")
-        v2.sync_vault(root)
-        after = (root / "20250104.md").read_text(encoding="utf-8")
-        check(before == after, "見出し省略形のまま再syncしても安定（往復できる）")
-
-
-def test_default_mixed_with_other_shows_header() -> None:
-    print("render: 既定関係（ノート）が他の関係と混在する側では見出しを出す")
-    with tempfile.TemporaryDirectory() as d:
-        root = Path(d)
-        note(root / "20250104.md", "A",
-             up="グループ: [G](20250111.md)\nノート: [B](20250120.md)")
-        note(root / "20250111.md", "G")
-        note(root / "20250120.md", "B")
-        v2.sync_vault(root)
-        up, _dn = regions((root / "20250104.md").read_text(encoding="utf-8"))
-        check("グループ:\n[G](20250111.md)" in up, "グループ: は通常通り出る")
-        check("ノート:\n[B](20250120.md)" in up,
-              "他の関係と混在するので、区別のため ノート: も明示される")
 
 
 def test_label_is_sticky_once_written() -> None:
@@ -667,8 +632,8 @@ def test_semicolon_down_authored_stays_plain_note_on_up_side() -> None:
         note(root / "20250120.md", "C", down="論点; [A](20250104.md)")
         v2.sync_vault(root)
         up, _dn = regions((root / "20250104.md").read_text(encoding="utf-8"))
-        check("ノート:" not in up and "[C](20250120.md)" in up,
-              "C が `;` で書いたので、A の上側は自動ミラーされず既定の『ノート』のまま（見出しも省略される）")
+        check("ノート:\n[C](20250120.md)" in up,
+              "C が `;` で書いたので、A の上側は自動ミラーされず既定の『ノート』のまま")
 
 
 def test_attribute_container_down_authored_keeps_picked_relation_on_own_up_side() -> None:
