@@ -233,14 +233,19 @@ nnoremap <silent> \0       <Cmd>call yurii_pkm#hub_list()<CR>
 " <S-Space> … ポップアップを出さずカーソルだけ次の関係リンクへ（従来動作）。
 nnoremap <silent> <Space>   <Cmd>call yurii_pkm#relation_link_popup()<CR>
 nnoremap <silent> <S-Space> <Cmd>call yurii_pkm#jump_relation_link(1)<CR>
-" 数字 1-9 → 0 … 本文 → Parent/Child の順で通し番号にした N 番目のリンクへ
-" （0 は10番目）。該当リンクが無い所ではそのままカウント（5j 等）・
-" 0 は行頭移動として働く。
+" 数字 1-9 … 本文 → Parent/Child の順で通し番号にした N 番目のリンクへ移動。
+" 該当リンクが無い所ではそのままカウント（5j 等）として働く。
+" 10番目以降は「文字+数字」の2打（a1, a2, …, b1, …）。リンクの手前に
+" ラベルが仮想テキストで表示されるので、数えずに押すキーが分かる
+" （g:yurii_pkm_link_hints=0 で表示だけ無効化）。
 for s:n in range(1, 9)
   execute printf('nnoremap <silent> %d <Cmd>call yurii_pkm#digit_key(%d, "%d")<CR>', s:n, s:n, s:n)
 endfor
 unlet s:n
-nnoremap <silent> 0 <Cmd>call yurii_pkm#digit_key(10, '0')<CR>
+augroup yurii_pkm_link_hints
+  autocmd!
+  autocmd BufEnter,BufWinEnter,TextChanged,InsertLeave *.md call yurii_pkm#refresh_link_hints()
+augroup END
 " 標準のジャンプリスト戻りでも、E37 を出さず保存してから移動する
 nnoremap <silent> <C-O>    <Cmd>call yurii_pkm#save_before_normal_jump("\<C-O>")<CR>
 nnoremap <nowait> <silent> bu  <Cmd>call yurii_pkm#jump_last_link_before_up()<CR>

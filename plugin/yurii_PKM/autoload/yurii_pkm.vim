@@ -2725,18 +2725,119 @@ function! yurii_pkm#note_navigator(scope) abort
   endif
 endfunction
 
-" 数字キー … 本文 → Parent/Child の順で通し番号にした N 番目のリンクへ。
-" 該当が無ければ通常のカウント／0(行頭)として送る。
-" a:idx … リンクの通し番号（1-9 はそのまま、0キーは10番目として扱う）
-" a:key … 該当リンクが無かった場合に送り返す実際のキー文字（'0' はそのまま '0'）
+" ---------------------------------------------------------------------------
+" リンクへのラベルジャンプ（本文 → Parent/Child の通し番号）
+"   1-9      … その番号のリンクへ直接
+"   文字+数字 … 10番目以降（a1, a2, …, a9, b1, … の2打）
+" 実際に見えている番号・文字がリンクの手前に仮想テキストで表示されるので、
+" 数えなくても押すキーが分かる（g:yurii_pkm_link_hints=0 で無効化）。
+" ---------------------------------------------------------------------------
+
+let s:hint_prop_type = 'yuriiLinkHint'
+let s:hint_label_letters = 'abcdefghijklmnopqrstuvwxyz'
+
+" 通し番号(1始まり)からラベル文字列を作る。1-9はそのまま、以降は文字+数字。
+" 割り当て切れ（26文字×9 を超える）なら空文字を返す。
+function! s:hint_label(idx) abort
+  if a:idx <= 9 | return string(a:idx) | endif
+  let l:n = a:idx - 10
+  let l:letter_i = l:n / 9
+  let l:digit = (l:n % 9) + 1
+  if l:letter_i >= strlen(s:hint_label_letters) | return '' | endif
+  return s:hint_label_letters[l:letter_i] . l:digit
+endfunction
+
+" 現在バッファの候補位置（本文 → Parent/Child の順、digit_key と同じ並び）。
+function! s:hint_positions() abort
+  return s:v2_body_link_positions() + s:v2_relation_link_positions()
+endfunction
+
+" ラベル→位置の対応表を作る。割り当て切れの位置は含めない。
+function! s:hint_build_map() abort
+  let l:map = {}
+  let l:idx = 0
+  for l:p in s:hint_positions()
+    let l:idx += 1
+    let l:label = s:hint_label(l:idx)
+    if empty(l:label) | break | endif
+    let l:map[l:label] = l:p
+  endfor
+  return l:map
+endfunction
+
+function! s:hint_ensure_prop_type() abort
+  if !has('textprop') | return 0 | endif
+  highlight default link YuriiLinkHint Special
+  if empty(prop_type_get(s:hint_prop_type))
+    call prop_type_add(s:hint_prop_type, {'highlight': 'YuriiLinkHint'})
+  endif
+  return 1
+endfunction
+
+" 使わなくなった文字プレフィクスの一時マッピングを外し、新しく必要な分を張る。
+function! s:hint_sync_letter_maps(letters) abort
+  let l:have = get(b:, 'yurii_hint_letters', [])
+  for l:c in l:have
+    if index(a:letters, l:c) < 0
+      silent! execute 'nunmap <buffer> ' . l:c
+    endif
+  endfor
+  for l:c in a:letters
+    if index(l:have, l:c) < 0
+      execute printf('nnoremap <silent><buffer> %s <Cmd>call yurii_pkm#hint_letter_key(%s)<CR>', l:c, string(l:c))
+    endif
+  endfor
+  let b:yurii_hint_letters = a:letters
+endfunction
+
+" 本文・Parent/Child のリンク手前に、ラベル（1-9 / 文字+数字）を仮想テキストで表示する。
+function! yurii_pkm#refresh_link_hints() abort
+  if !get(g:, 'yurii_pkm_link_hints', 1) || !has('textprop') | return | endif
+  if &l:filetype !=# 'markdown' && &l:filetype !=# 'vimwiki' | return | endif
+  if !s:hint_ensure_prop_type() | return | endif
+  call prop_remove({'type': s:hint_prop_type, 'all': v:true})
+  let b:yurii_hint_map = s:hint_build_map()
+  if empty(b:yurii_hint_map)
+    call s:hint_sync_letter_maps([])
+    return
+  endif
+  let l:letters = []
+  for [l:label, l:pos] in items(b:yurii_hint_map)
+    call prop_add(l:pos.lnum, l:pos.col, {'type': s:hint_prop_type, 'text': l:label})
+    if strlen(l:label) > 1 && index(l:letters, l:label[0]) < 0
+      call add(l:letters, l:label[0])
+    endif
+  endfor
+  call s:hint_sync_letter_maps(l:letters)
+endfunction
+
+" 数字キー … 本文 → Parent/Child の順で通し番号にした N 番目のリンクへ移動。
+" 該当が無ければ通常のカウントとして送る。
 function! yurii_pkm#digit_key(idx, key) abort
-  let l:pos = s:v2_body_link_positions() + s:v2_relation_link_positions()
+  let l:pos = s:hint_positions()
   if !empty(l:pos) && a:idx >= 1 && a:idx <= len(l:pos)
+    normal! m'
     call cursor(l:pos[a:idx - 1].lnum, l:pos[a:idx - 1].col)
     normal! zv
     return
   endif
   call feedkeys((v:count > 0 ? v:count : '') . a:key, 'n')
+endfunction
+
+" 文字キー（10番目以降のラベルの1文字目）… 次の1打（数字）を読んで
+" ラベルが揃えば移動。揃わなければ、押された2打をそのまま普通のキー入力
+" として送り返す（この文字の本来の意味は保たれる）。
+function! yurii_pkm#hint_letter_key(letter) abort
+  let l:c = getcharstr()
+  let l:label = a:letter . l:c
+  let l:pos = get(b:, 'yurii_hint_map', {})
+  if has_key(l:pos, l:label)
+    normal! m'
+    call cursor(l:pos[l:label].lnum, l:pos[l:label].col)
+    normal! zv
+    return
+  endif
+  call feedkeys(a:letter . l:c, 'n')
 endfunction
 
 function! yurii_pkm#get_link_under_cursor() abort
