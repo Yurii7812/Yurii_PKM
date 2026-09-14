@@ -2725,15 +2725,18 @@ function! yurii_pkm#note_navigator(scope) abort
   endif
 endfunction
 
-" 数字キー … 本文の N 番目のリンクへ。該当が無ければ通常のカウントとして送る。
-function! yurii_pkm#digit_key(d) abort
-  let l:pos = s:v2_body_link_positions()
-  if !empty(l:pos) && a:d >= 1 && a:d <= len(l:pos)
-    call cursor(l:pos[a:d - 1].lnum, l:pos[a:d - 1].col)
+" 数字キー … 本文 → Parent/Child の順で通し番号にした N 番目のリンクへ。
+" 該当が無ければ通常のカウント／0(行頭)として送る。
+" a:idx … リンクの通し番号（1-9 はそのまま、0キーは10番目として扱う）
+" a:key … 該当リンクが無かった場合に送り返す実際のキー文字（'0' はそのまま '0'）
+function! yurii_pkm#digit_key(idx, key) abort
+  let l:pos = s:v2_body_link_positions() + s:v2_relation_link_positions()
+  if !empty(l:pos) && a:idx >= 1 && a:idx <= len(l:pos)
+    call cursor(l:pos[a:idx - 1].lnum, l:pos[a:idx - 1].col)
     normal! zv
     return
   endif
-  call feedkeys((v:count > 0 ? v:count : '') . a:d, 'n')
+  call feedkeys((v:count > 0 ? v:count : '') . a:key, 'n')
 endfunction
 
 function! yurii_pkm#get_link_under_cursor() abort

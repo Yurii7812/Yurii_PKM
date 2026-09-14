@@ -233,12 +233,14 @@ nnoremap <silent> \0       <Cmd>call yurii_pkm#hub_list()<CR>
 " <S-Space> … ポップアップを出さずカーソルだけ次の関係リンクへ（従来動作）。
 nnoremap <silent> <Space>   <Cmd>call yurii_pkm#relation_link_popup()<CR>
 nnoremap <silent> <S-Space> <Cmd>call yurii_pkm#jump_relation_link(1)<CR>
-" 数字 1-9 … 本文（こっちにとって の見張りより前）の N 番目のリンクへ。
-" 本文リンクが無い所ではそのままカウント（5j 等）として働く。
+" 数字 1-9 → 0 … 本文 → Parent/Child の順で通し番号にした N 番目のリンクへ
+" （0 は10番目）。該当リンクが無い所ではそのままカウント（5j 等）・
+" 0 は行頭移動として働く。
 for s:n in range(1, 9)
-  execute printf('nnoremap <silent> %d <Cmd>call yurii_pkm#digit_key(%d)<CR>', s:n, s:n)
+  execute printf('nnoremap <silent> %d <Cmd>call yurii_pkm#digit_key(%d, "%d")<CR>', s:n, s:n, s:n)
 endfor
 unlet s:n
+nnoremap <silent> 0 <Cmd>call yurii_pkm#digit_key(10, '0')<CR>
 " 標準のジャンプリスト戻りでも、E37 を出さず保存してから移動する
 nnoremap <silent> <C-O>    <Cmd>call yurii_pkm#save_before_normal_jump("\<C-O>")<CR>
 nnoremap <nowait> <silent> bu  <Cmd>call yurii_pkm#jump_last_link_before_up()<CR>
