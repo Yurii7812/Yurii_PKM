@@ -3206,12 +3206,12 @@ function! s:link_from_target(target) abort
   endif
   let l:display_target = s:display_target_from_current_dir(l:target)
   let l:name = fnamemodify(l:display_target, ':t')
-  " md は YAML/H1 タイトルをリンク文字列にする。非mdは拡張子ごとのファイル名
+  " md は YAML/H1 タイトルをリンク文字列にする。非mdは拡張子を除いたファイル名
   let l:title = s:existing_title_for_target(l:display_target)
   if s:is_markdown_target(l:display_target)
     let l:text = empty(l:title) ? fnamemodify(l:name, ':r') : l:title
   else
-    let l:text = l:name
+    let l:text = fnamemodify(l:name, ':r')
   endif
   return '[' . l:text . '](' . l:display_target . ')'
 endfunction
