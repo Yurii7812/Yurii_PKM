@@ -674,6 +674,43 @@ def test_down_side_order_is_sticky() -> None:
               "ID 順（20250101 が先）ではなく、手で書いた順（20250199 が先）のまま")
 
 
+def test_down_section_order_is_sticky() -> None:
+    print("sync: 下側のセクション順（複数の関係ラベル）も並べ替えたらその順を保つ")
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        note(root / "20250104.md", "A")
+        note(root / "20250111.md", "B", up="索引: [A](20250104.md)")
+        note(root / "20250120.md", "C", up="ノート: [A](20250104.md)")
+        v2.sync_vault(root)
+        a_path = root / "20250104.md"
+        text1 = a_path.read_text(encoding="utf-8")
+        _u, dn = regions(text1)
+        check("(索引):" in dn and "ノート:" in dn,
+              "索引は新規ペアなので (索引): として、ノートはそのまま反映される")
+
+        # 実際に生成された並びを取得し、手で逆順に並べ替える
+        idx_note = dn.index("ノート:")
+        idx_sk = dn.index("(索引):")
+        first_is_note = idx_note < idx_sk
+        block_note = "ノート:\n[C](20250120.md)"
+        block_sk = "(索引):\n[B](20250111.md)"
+        if first_is_note:
+            swapped = a_path.read_text(encoding="utf-8").replace(
+                block_note + "\n" + block_sk, block_sk + "\n" + block_note)
+        else:
+            swapped = a_path.read_text(encoding="utf-8").replace(
+                block_sk + "\n" + block_note, block_note + "\n" + block_sk)
+        check(swapped != text1, "テスト前提: 並べ替えの置換が実際に効いた")
+        a_path.write_text(swapped, encoding="utf-8")
+        v2.sync_vault(root)
+        _u2, dn2 = regions(a_path.read_text(encoding="utf-8"))
+        idx_note2 = dn2.index("ノート:")
+        idx_sk2 = dn2.index("(索引):")
+        new_first_is_note = idx_note2 < idx_sk2
+        check(new_first_is_note != first_is_note,
+              "並べ替え後に再syncしても、入れ替えた順のまま強制的に戻されない")
+
+
 def main() -> int:
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

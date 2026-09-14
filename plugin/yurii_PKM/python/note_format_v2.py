@@ -386,18 +386,17 @@ def _render_section(t: str, entries: list[tuple[str, str, str | None]]) -> list[
 
 
 def _render_group(d: dict[str, list], is_down: bool = False) -> list[str]:
+    """セクションの並びは d の順序（＝ユーザーが最後に書いた/並べ替えた順）を
+    尊重する。RELATIONS の並び順は「新規に増えた関係をどこに挿す既定順」
+    としてのみ使う（sync 側で新規キーを足す時の挿入位置の目安）。
+    一度ファイルに存在する並びは sync で強制的に戻さない。
+    """
     out: list[str] = []
-    done: set[str] = set()
-    for t in RELATIONS:
-        if d.get(t):
-            out += _render_section(t, d[t])
-            done.add(t)
     for t in d:
-        if t in _RESERVED or t in done:
+        if t in _RESERVED:
             continue
         if d.get(t):
             out += _render_section(t, d[t])
-            done.add(t)
     if is_down and d.get(BACKLINK):
         out += _render_section(BACKLINK, d[BACKLINK])
     out += list(d.get(_EXTRA, []))
@@ -766,9 +765,12 @@ def sync_vault(root) -> int:
             orig_down_title: dict[str, str] = {}
             orig_down_label: dict[str, str] = {}
             orig_down_order: list[str] = []
+            orig_label_order: list[str] = []
             for t, es in n.down.items():
                 if t == _EXTRA:
                     continue
+                if t not in orig_label_order:
+                    orig_label_order.append(t)
                 for _ti, tg, _ann in es:
                     r = rid(tg, n.path.parent)
                     if r:
@@ -800,7 +802,13 @@ def sync_vault(root) -> int:
                 other = b if a == nid else (a if b == nid else None)
                 if other is not None:
                     by_lbl.setdefault(t, []).append(other)
-            for lbl, srcs in by_lbl.items():
+            # セクションの並びも sticky にする: 既存ラベルはファイル内の元の
+            # 順序のまま、新規に増えたラベルだけ末尾に足す（RELATIONS の
+            # 固定順には戻さない）。
+            ordered_lbls = [l for l in orig_label_order if l in by_lbl]
+            ordered_lbls += [l for l in by_lbl if l not in orig_label_order]
+            for lbl in ordered_lbls:
+                srcs = by_lbl[lbl]
                 new_down[lbl] = [
                     (_tracked_disp(s, orig_down_title.get(s), by_path[id_to_path[s]].title,
                                    prev_titles),
