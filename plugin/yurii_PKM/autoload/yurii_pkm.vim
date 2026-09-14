@@ -2813,28 +2813,32 @@ endfunction
 
 " 数字キー … 本文 → Parent/Child の順で通し番号にした N 番目のリンクへ移動。
 " 該当が無ければ通常のカウントとして送る。
+" ラベル位置へ移動してそのままリンクを開く（Enter を省く）。
+function! s:hint_go(pos) abort
+  normal! m'
+  call cursor(a:pos.lnum, a:pos.col)
+  normal! zv
+  call yurii_pkm#open_link_under_cursor()
+endfunction
+
 function! yurii_pkm#digit_key(idx, key) abort
   let l:pos = s:hint_positions()
   if !empty(l:pos) && a:idx >= 1 && a:idx <= len(l:pos)
-    normal! m'
-    call cursor(l:pos[a:idx - 1].lnum, l:pos[a:idx - 1].col)
-    normal! zv
+    call s:hint_go(l:pos[a:idx - 1])
     return
   endif
   call feedkeys((v:count > 0 ? v:count : '') . a:key, 'n')
 endfunction
 
 " 文字キー（10番目以降のラベルの1文字目）… 次の1打（数字）を読んで
-" ラベルが揃えば移動。揃わなければ、押された2打をそのまま普通のキー入力
-" として送り返す（この文字の本来の意味は保たれる）。
+" ラベルが揃えば移動してそのまま開く。揃わなければ、押された2打をそのまま
+" 普通のキー入力として送り返す（この文字の本来の意味は保たれる）。
 function! yurii_pkm#hint_letter_key(letter) abort
   let l:c = getcharstr()
   let l:label = a:letter . l:c
   let l:pos = get(b:, 'yurii_hint_map', {})
   if has_key(l:pos, l:label)
-    normal! m'
-    call cursor(l:pos[l:label].lnum, l:pos[l:label].col)
-    normal! zv
+    call s:hint_go(l:pos[l:label])
     return
   endif
   call feedkeys(a:letter . l:c, 'n')
