@@ -3773,6 +3773,58 @@ function! s:v2_pick_relation(...) abort
   return l:r ==# 'なし' ? 'ノート' : l:r
 endfunction
 
+" 自由入力（ピッカーの選択肢に無い言葉）を選ぶ枠を「相手側にも書く」/
+" 「相手側には書かない」の 2 つに分けたピッカー。固定の選択肢（ノート/補足/
+" 資料/関連 等）を選んだ場合は {rel: ..., write: 1} を返す（write は使われない）。
+" 自由入力なら選んだ枠に応じて write が 1/0 になる。キャンセルなら {} を返す。
+"   a:1 … 1 なら グループ / 小グループ ノードへリンクする時の変種
+"   a:2 … 1 なら「自分側にも書く/書かない」の文言（\ca/\at の逆モード用）。
+"          省略時は「相手側」文言
+function! s:v2_pick_relation2(...) abort
+  let l:items = (a:0 > 0 && a:1) ? s:v2_relations_attr : s:v2_relations
+  let l:self  = a:0 > 1 ? a:2 : 0
+  let l:side  = l:self ? '自分側' : '相手側'
+
+  let l:menu = []
+  let l:i = 1
+  for l:t in l:items
+    call add(l:menu, l:i . ' ' . l:t)
+    let l:i += 1
+  endfor
+  let l:write_idx = l:i
+  call add(l:menu, l:i . ' 入力(' . l:side . 'にも書く)')
+  let l:i += 1
+  let l:nowrite_idx = l:i
+  call add(l:menu, l:i . ' 入力(' . l:side . 'には書かない)')
+
+  echo 'relation  ' . join(l:menu, '   ') . '    (Esc / q: キャンセル)'
+  let l:c = getchar()
+  redraw
+  if type(l:c) == v:t_number && (l:c == 27 || l:c == 3)
+    return {}
+  endif
+  let l:ch = type(l:c) == v:t_number ? nr2char(l:c) : l:c
+  if l:ch ==? 'q' || l:ch !~# '^[0-9]$'
+    return {}
+  endif
+  let l:n = str2nr(l:ch)
+  if l:n >= 1 && l:n <= len(l:items)
+    return {'rel': l:items[l:n - 1], 'write': 1}
+  endif
+  if l:n == l:write_idx || l:n == l:nowrite_idx
+    let l:v = ''
+    try
+      let l:v = trim(input('relation（空でキャンセル）: '))
+    catch /^Vim:Interrupt$/
+      let l:v = ''
+    endtry
+    redraw
+    if empty(l:v) | return {} | endif
+    return {'rel': l:v, 'write': l:n == l:write_idx ? 1 : 0}
+  endif
+  return {}
+endfunction
+
 " sync がラベルをミラーせず自動生成する対象かどうか。`ノート`/`関連` に加え
 " `索引` も対象外（グループ/小グループ 文脈での `ノート` の言い換えに過ぎず、
 " 容器自身の側は sync 側の例外処理が実際に選んだ語をそのまま反映するため、
@@ -4200,8 +4252,17 @@ function! s:v2_new_related(below, attr, ...) abort
   " 現ノートが属性ノート（グループ / 小グループ）なら、関係ピッカーは
   " 「ノート」の代わりに「索引」を出す変種を使う（§2）。
   let l:cur_attr = s:v2_buf_attr()
-  let l:rel = (a:0 > 0 && a:1 !=# '') ? a:1 : s:v2_pick_relation(!empty(l:cur_attr))
-  if l:rel ==# '' | echo 'yurii_PKM: キャンセル' | return | endif
+  if a:0 > 0 && a:1 !=# ''
+    let l:rel = a:1
+    " a:2 で write を明示できる（nw が事前にピッカーで選んだ結果を渡す用）。
+    " 省略時は 1（nn 等、固定関係を渡すだけの呼び出しに合わせる）。
+    let l:write = a:0 > 1 ? a:2 : 1
+  else
+    let l:pick = s:v2_pick_relation2(!empty(l:cur_attr))
+    if empty(l:pick) | echo 'yurii_PKM: キャンセル' | return | endif
+    let l:rel   = l:pick.rel
+    let l:write = l:pick.write
+  endif
   " 関係ごとの向きの制約（関連=対称）。属性ノート（グループ / 小グループ）は
   " nw が c/p の選択どおりの a:below を渡してくるので、ここでは上書きしない
   " （上書きすると c/p の意味が反転する）。
@@ -4217,17 +4278,18 @@ function! s:v2_new_related(below, attr, ...) abort
   " グループ / 小グループ どちらの属性でも、値に関わらず常に グループ。
   " below=0（np: backlink は新ノートの そっちにとって）: 現ノート自身が
   " グループ の場合だけ上書き（サブ容器）。小グループは上書きしない。
-  " 属性による強制が無く、かつ選んだ関係が方向性を持ちうる（ノート/関連/索引
-  " 以外）場合、自由入力の言葉だけ書くかどうかを聞く。ピッカーの選択肢
-  " （補足/資料 等）は聞かず、常に括弧付きで書く。書かない場合は新ノートへは
-  " 何も書かず（sync が既定の『ノート』を生成する）、代わりに現ノート側を
-  " `;` 終端で書く（sync の自動ミラー対象外にするため。ca/at と同じ規約。§4）。
+  " 属性による強制が無く、かつ自由入力の言葉を選んだ場合、相手側にも書くかは
+  " ピッカーの 5/6（入力枠が「書く」/「書かない」の 2 つに分かれている）で
+  " 決まる（l:write。確認ダイアログは出さない）。ピッカーの選択肢（補足/資料
+  " 等）は常に括弧付きで書く。書かない場合は新ノートへは何も書かず（sync が
+  " 既定の『ノート』を生成する）、代わりに現ノート側を `;` 終端で書く
+  " （sync の自動ミラー対象外にするため。ca/at と同じ規約。§4）。
   let l:forced_group = a:below ? !empty(l:cur_attr) : (l:cur_attr ==# 'グループ')
   let l:own_write_rel = l:rel
   if l:forced_group
     let l:back_rel = 'グループ'
   elseif s:v2_is_custom_relation(l:rel) && !s:v2_is_menu_relation(l:rel)
-    if s:v2_ask_write_same_label(l:rel)
+    if l:write
       let l:back_rel = '(' . l:rel . ')'
     else
       let l:back_rel = ''
@@ -4308,9 +4370,12 @@ function! yurii_pkm#v2_new_attr() abort
   if l:attr ==# '' | echo 'yurii_PKM: キャンセル' | return | endif
   if l:attr ==# 'グループ'
     let l:rel = 'グループ'
+    let l:write = 1
   else
-    let l:rel = s:v2_pick_relation(1)
-    if l:rel ==# '' | echo 'yurii_PKM: キャンセル' | return | endif
+    let l:pick = s:v2_pick_relation2(1)
+    if empty(l:pick) | echo 'yurii_PKM: キャンセル' | return | endif
+    let l:rel   = l:pick.rel
+    let l:write = l:pick.write
   endif
   echo '新' . l:attr . 'を  c=子（現ノートの中） / p=親（現ノートを含む）  (既定 c, Esc/q キャンセル)'
   let l:ch = nr2char(getchar())
@@ -4319,7 +4384,7 @@ function! yurii_pkm#v2_new_attr() abort
     echo 'yurii_PKM: キャンセル' | return
   endif
   let l:below = (l:ch ==? 'p') ? 0 : 1
-  call s:v2_new_related(l:below, l:attr, l:rel)
+  call s:v2_new_related(l:below, l:attr, l:rel, l:write)
 endfunction
 
 " pe: 現ノートを起点に 親/子/文中 を辿って 1 つの展開ファイルへ集約する。
