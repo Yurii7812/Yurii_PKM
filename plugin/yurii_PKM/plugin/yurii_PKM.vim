@@ -290,6 +290,9 @@ nnoremap <nowait> <silent> nc  <Cmd>call yurii_pkm#v2_new_child()<CR>
 nnoremap <nowait> <silent> np  <Cmd>call yurii_pkm#v2_new_parent()<CR>
 nnoremap <nowait> <silent> nh  <Cmd>call yurii_pkm#v2_new_here()<CR>
 nnoremap <nowait> <silent> nw  <Cmd>call yurii_pkm#v2_new_attr()<CR>
+" nn: 普通のノート。現ノートとは無関係（リンクも関係も一切張らない）な
+" 新規ノートを、現ノートと同じディレクトリに作って開くだけ
+nnoremap <nowait> <silent> nn  <Cmd>call yurii_pkm#v2_new_plain()<CR>
 " pe: 現ノートを起点に親/子/文中を辿って 1 つの md へ展開（v2 専用、_tmp/T_<timestamp>.md）。
 " シンプル（深さ1つ）/ 詳細（親・子・文中を別々の深さ、前回設定を再利用可）を選ぶ
 nnoremap <nowait> <silent> pe  <Cmd>call yurii_pkm#v2_expand()<CR>

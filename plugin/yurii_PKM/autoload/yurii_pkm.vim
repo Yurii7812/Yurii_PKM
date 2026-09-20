@@ -4426,6 +4426,24 @@ function! yurii_pkm#v2_new_here() abort
   execute 'edit ' . fnameescape(l:file)
 endfunction
 
+" nn: 普通のノート（選択なし）。現ノートとの関係を一切書かず、
+" 現ノートと同じディレクトリに新規ノートを作って開くだけ。
+function! yurii_pkm#v2_new_plain() abort
+  let l:cur = expand('%:p')
+  let l:dir = empty(l:cur) ? s:get_pkm_root() : expand('%:p:h')
+  if empty(l:dir)
+    echohl WarningMsg | echo 'yurii_PKM: PKM root が未設定' | echohl NONE
+    return
+  endif
+  let l:ts   = yurii_pkm#timestamp_filename()
+  let l:file = s:join_path(l:dir, l:ts . '.md')
+  call writefile(yurii_pkm#note_template(l:ts, 0), l:file)
+  execute 'edit ' . fnameescape(l:file)
+  let l:h1 = search('^#\s', 'nw')
+  if l:h1 > 0 | call cursor(l:h1 + 2, 1) | endif
+  startinsert
+endfunction
+
 " 旧形式（v1 の Parent:/Child: / 旧 `---`）を v2 へ明示変換。
 "   :V2Migrate       … PKM ルート全体
 "   :V2Migrate %     … 現在のファイルだけ
