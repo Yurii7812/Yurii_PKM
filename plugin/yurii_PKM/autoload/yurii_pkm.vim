@@ -5902,6 +5902,16 @@ function! yurii_pkm#add_clipboard_to_branch() abort
 endfunction
 
 
+" na: ca と同じ そっちにとって 側だが、関係は常に既定の「ノート」固定
+" （ピッカーも「相手にも書くか」の質問も出さない）。
+function! yurii_pkm#add_clipboard_before_up_note() abort
+  if s:pkm_format() ==# 'v2'
+    call yurii_pkm#v2_add_link('', 'ノート', 1)
+    return
+  endif
+  call yurii_pkm#add_clipboard_before_up()
+endfunction
+
 " \ca: ca と同じ そっちにとって 側だが、括弧が付く側が逆。今開いているノート
 " 側を `(ラベル)` にし、相手側にはその場で生のラベルを書く（質問なし）。
 function! yurii_pkm#add_clipboard_before_up_reverse() abort

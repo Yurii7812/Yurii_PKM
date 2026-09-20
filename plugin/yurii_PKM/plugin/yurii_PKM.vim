@@ -293,6 +293,9 @@ nnoremap <nowait> <silent> nw  <Cmd>call yurii_pkm#v2_new_attr()<CR>
 " nn: 普通のノート。nc と同じ子ノート作成だが、関係ピッカーを出さず
 " 既定の「ノート」関係で固定する（現ノート側に「ノート:」として入る）
 nnoremap <nowait> <silent> nn  <Cmd>call yurii_pkm#v2_new_plain()<CR>
+" na: ca（クリップボードのノートを child に追加）と同じだが、関係ピッカーを
+" 出さず既定の「ノート」関係で固定する
+nnoremap <nowait> <silent> na  <Cmd>call yurii_pkm#add_clipboard_before_up_note()<CR>
 " pe: 現ノートを起点に親/子/文中を辿って 1 つの md へ展開（v2 専用、_tmp/T_<timestamp>.md）。
 " シンプル（深さ1つ）/ 詳細（親・子・文中を別々の深さ、前回設定を再利用可）を選ぶ
 nnoremap <nowait> <silent> pe  <Cmd>call yurii_pkm#v2_expand()<CR>
