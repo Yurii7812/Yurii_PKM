@@ -273,33 +273,26 @@ nnoremap <nowait> <silent> ,.  <Cmd>call yurii_pkm#jump_down_top()<CR>
 nnoremap <nowait> <silent> ,/  <Cmd>call yurii_pkm#jump_down_bottom()<CR>
 
 " ノート作成（関係を数字で選択、Esc/q でキャンセル）
-"   nc … 子ノート（リンクは現ノートの そっちにとって 側）
-"   np … 親ノート（リンクは現ノートの こっちにとって 側）
-"   nh … カーソル直下にリンク（本文リンク → 相手には バックリンク: として出る）
-"   nw … 属性ノート（数字ピッカーで種類を選ぶ。1=グループ 2=小グループ、末尾=自由入力。
+"   zc … 子ノート（リンクは現ノートの そっちにとって 側）
+"   zp … 親ノート（リンクは現ノートの こっちにとって 側）
+"   zh … カーソル直下にリンク（本文リンク → 相手には バックリンク: として出る）
+"   zw … 属性ノート（数字ピッカーで種類を選ぶ。1=グループ 2=小グループ、末尾=自由入力。
 "        グループは関係固定 → そのまま c=子 / p=親。小グループ（と自由入力）は
-"        続けて関係も選ぶ → c=子 / p=親）。属性ノートは nw でのみ作れる
-" n 単体（nc/np 等に続かず確定した場合）は何もしない。素のVimの検索リピート
-" は使わない前提（<nowait> は付けない — 付けると nc/np 等より n が即座に
-" 確定してしまい、それらに繋がらなくなる。timeoutlen 経過後だけ発火する）。
-nnoremap <silent> n <Nop>
-" \n / \N … 検索リピートが欲しい時だけ使う。<nowait> は付けない ── リンク
-" ジャンプの \a1〜\z9 ラベル（10番目以降）は、リンクが127個を超えると
-" \n1〜\n9 も使うため、<nowait> だと \n が即座に確定してそれらが二度と
-" 発火できなくなる。<nowait>無しなら普段（\n1等が存在しない時）は
-" 従来通り即座に動き、その状況でだけ正しく待ってくれる。
-nnoremap <silent> \n n
-nnoremap <silent> \N N
-nnoremap <nowait> <silent> nc  <Cmd>call yurii_pkm#v2_new_child()<CR>
-nnoremap <nowait> <silent> np  <Cmd>call yurii_pkm#v2_new_parent()<CR>
-nnoremap <nowait> <silent> nh  <Cmd>call yurii_pkm#v2_new_here()<CR>
-nnoremap <nowait> <silent> nw  <Cmd>call yurii_pkm#v2_new_attr()<CR>
-" nn: 普通のノート。nc と同じ子ノート作成だが、関係ピッカーを出さず
+"        続けて関係も選ぶ → c=子 / p=親）。属性ノートは zw でのみ作れる
+" 頭文字は n ではなく z を使う（z は素のVimでも単独では何も起きない接頭辞
+" なので、検索リピートの n/N とバッティングしない）。<nowait> は付けない
+" — 付けると zc/zp 等より z が即座に確定してしまい、それらに繋がらなくなる。
+" timeoutlen 経過後だけ発火する。
+nnoremap <nowait> <silent> zc  <Cmd>call yurii_pkm#v2_new_child()<CR>
+nnoremap <nowait> <silent> zp  <Cmd>call yurii_pkm#v2_new_parent()<CR>
+nnoremap <nowait> <silent> zh  <Cmd>call yurii_pkm#v2_new_here()<CR>
+nnoremap <nowait> <silent> zw  <Cmd>call yurii_pkm#v2_new_attr()<CR>
+" zn: 普通のノート。zc と同じ子ノート作成だが、関係ピッカーを出さず
 " 既定の「ノート」関係で固定する（現ノート側に「ノート:」として入る）
-nnoremap <nowait> <silent> nn  <Cmd>call yurii_pkm#v2_new_plain()<CR>
-" na: ca（クリップボードのノートを child に追加）と同じだが、関係ピッカーを
+nnoremap <nowait> <silent> zn  <Cmd>call yurii_pkm#v2_new_plain()<CR>
+" za: ca（クリップボードのノートを child に追加）と同じだが、関係ピッカーを
 " 出さず既定の「ノート」関係で固定する
-nnoremap <nowait> <silent> na  <Cmd>call yurii_pkm#add_clipboard_before_up_note()<CR>
+nnoremap <nowait> <silent> za  <Cmd>call yurii_pkm#add_clipboard_before_up_note()<CR>
 " pe: 現ノートを起点に親/子/文中を辿って 1 つの md へ展開（v2 専用、_tmp/T_<timestamp>.md）。
 " シンプル（深さ1つ）/ 詳細（親・子・文中を別々の深さ、前回設定を再利用可）を選ぶ
 nnoremap <nowait> <silent> pe  <Cmd>call yurii_pkm#v2_expand()<CR>
@@ -310,17 +303,17 @@ nnoremap <nowait> <silent> ca  <Cmd>call yurii_pkm#add_clipboard_before_up()<CR>
 " \ca: ca と同じ向きだが括弧が逆。今開いているノート側が (ラベル)、相手側に生のラベルを書く
 nnoremap <nowait> <silent> \ca  <Cmd>call yurii_pkm#add_clipboard_before_up_reverse()<CR>
 nnoremap <nowait> <silent> tt  <Cmd>call yurii_pkm#add_clipboard_to_top()<CR>
-" nt: タイトル変更（空欄から開始）
-nnoremap <nowait> <silent> nt  <Cmd>call yurii_pkm#rename_title_with_default('')<CR>
-" nT: 現在タイトルを残して編集
-nnoremap <nowait> <silent> nT  <Cmd>call yurii_pkm#rename_title('')<CR>
-" nl: リンク表示名変更（空欄から開始）
-nnoremap <nowait> <silent> nl  <Cmd>call yurii_pkm#rename_link_text_with_default('')<CR>
-" nL: 現在のリンク表示名を残して編集
-nnoremap <nowait> <silent> nL  <Cmd>call yurii_pkm#rename_link_text('')<CR>
-" nd: Child: のリンク表示名をリンク先 YAML title に更新
-nnoremap <nowait> <silent> nd  <Cmd>RenameChildLinkTitles<CR>
-vnoremap <nowait> <silent> nd  :<C-u>'<,'>RenameChildLinkTitles<CR>
+" zt: タイトル変更（空欄から開始）
+nnoremap <nowait> <silent> zt  <Cmd>call yurii_pkm#rename_title_with_default('')<CR>
+" zT: 現在タイトルを残して編集
+nnoremap <nowait> <silent> zT  <Cmd>call yurii_pkm#rename_title('')<CR>
+" zl: リンク表示名変更（空欄から開始）
+nnoremap <nowait> <silent> zl  <Cmd>call yurii_pkm#rename_link_text_with_default('')<CR>
+" zL: 現在のリンク表示名を残して編集
+nnoremap <nowait> <silent> zL  <Cmd>call yurii_pkm#rename_link_text('')<CR>
+" zd: Child: のリンク表示名をリンク先 YAML title に更新
+nnoremap <nowait> <silent> zd  <Cmd>RenameChildLinkTitles<CR>
+vnoremap <nowait> <silent> zd  :<C-u>'<,'>RenameChildLinkTitles<CR>
 " ta: クリップボードのファイルのChildに現在ファイルへのリンクを追加
 " （旧 at。素の a と1文字目が被り timeoutlen 待ちが発生していたため改名。
 "   t は本来「次の1文字を待つ」動作なので、この待ちは違和感が出にくい）

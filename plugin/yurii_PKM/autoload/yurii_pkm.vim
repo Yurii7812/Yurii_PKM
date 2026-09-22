@@ -2728,21 +2728,22 @@ endfunction
 " ---------------------------------------------------------------------------
 " リンクへのラベルジャンプ（本文 → Parent/Child の通し番号）
 "   1-9,0    … その番号のリンクを直接開く（生の数字キー、0は10番目）
-"   文字+数字 … 11番目以降（n1, n2, …, n9, n0, c1, … の2打、1→0順）
+"   文字+数字 … 11番目以降（z1, z2, …, z9, z0, t1, … の2打、1→0順）
 " 実際に見えている番号・ラベルがリンクの手前に仮想テキストで表示されるので、
 " 数えなくても押すキーが分かる（g:yurii_pkm_link_hints=0 で無効化）。
 " 11番目以降の文字は、このプラグインがすでに2打コマンドの頭文字として
-" 使っている文字だけを使う（n, t, c, b, m, p, y ─ nc/np/ta/tt/cu/ca/
-" bu/bc/mp/mx/pe/yn 等）。これらの生キーはすでに「次の1打を待つ」状態に
-" なっているので、数字を後ろに続けても新たな干渉や体感速度の悪化は発生
-" しない。a, i, o, … など他の生キーには一切手を出さない。
+" 使っている文字だけを使う（z, t, c, b, m, p, y ─ zc/zp/ta/tt/cu/ca/
+" bu/bc/mp/mx/pe/yn 等）。n は検索リピート（n/N）に使うので外してある。
+" これらの生キーはすでに「次の1打を待つ」状態になっているので、数字を
+" 後ろに続けても新たな干渉や体感速度の悪化は発生しない。a, i, o, … など
+" 他の生キーには一切手を出さない。
 " ---------------------------------------------------------------------------
 
 let s:hint_prop_type = 'yuriiLinkHint'
-let s:hint_label_letters = 'ntcbmpy'
+let s:hint_label_letters = 'ztcbmpy'
 
 " 通し番号(1始まり)からラベル文字列を作る。1-9,0はそのまま（0は10番目）、
-" 以降は文字+数字（n1, n2, …, n9, n0, c1, …、キー配列と同じ 1→0 順で
+" 以降は文字+数字（z1, z2, …, z9, z0, t1, …、キー配列と同じ 1→0 順で
 " 10個ずつ）。生の 0 キーは vim 標準の「行頭へ移動」を上書きするが、
 " 該当リンクが無ければ digit_key() 側で通常の 0 に素通しされる。
 " 割り当て切れ（7文字×10 を超える）なら空文字。
@@ -2793,9 +2794,9 @@ function! s:hint_go(pos) abort
 endfunction
 
 " 使わなくなった2文字ラベルの一時マッピングを外し、新しく必要な分を張る。
-" 対象は10番目以降の文字+数字ラベルのみ（例: n3, c7）。頭文字は
-" n/t/c/b/m/p/y に限定しており、このプラグインの既存2打コマンド
-" （nc, ta, cu, bu, mp, pe, yn 等）と完全一致することはない
+" 対象は10番目以降の文字+数字ラベルのみ（例: z3, c7）。頭文字は
+" z/t/c/b/m/p/y に限定しており、このプラグインの既存2打コマンド
+" （zc, ta, cu, bu, mp, pe, yn 等）と完全一致することはない
 " （2文字目が数字 vs 既存は文字なので重複しない）。
 function! s:hint_sync_full_maps(labels) abort
   let l:have = get(b:, 'yurii_hint_full_labels', [])
@@ -3722,7 +3723,7 @@ endfunction
 " ピッカーで選べる関係。論点 / 見解 / 前提 は廃止。
 " 既存ノートの 論点: / 見解: / 前提: はそのまま残り、sync の並び替えでも壊れない。
 " グループ は選ばせない（相手が attribute: グループ なら sync が自動で付ける。
-" 手動で選べると向きが固定で壊れる — nw 専用で s:v2_new_attr から直接渡す）。
+" 手動で選べると向きが固定で壊れる — zw 専用で s:v2_new_attr から直接渡す）。
 let s:v2_relations = ['ノート', '補足', '資料', '関連']
 " グループ / 小グループ ノードへリンクする時も、既定は変わらず「ノート」。
 " （以前は「索引」という言い換えを出していたが、素の「ノート」で統一する）
@@ -3858,7 +3859,7 @@ function! s:v2_ask_write_same_label(rel, ...) abort
   return s:v2_pick(l:side . 'にも「' . a:rel . '」と書く？', ['はい', 'いいえ（自動）']) ==# 'はい'
 endfunction
 
-" nw で作れる属性ノードの種類。今後増やす時はここに足すだけでいい
+" zw で作れる属性ノードの種類。今後増やす時はここに足すだけでいい
 " （末尾の自由入力枠は s:v2_pick が自動で足す）。
 let s:v2_attr_types = ['グループ', '小グループ']
 
@@ -4107,7 +4108,7 @@ function! yurii_pkm#v2_add_link(...) abort
   " 対象にグループ / 小グループ属性のファイルが含まれるか（先に判定しておき、
   " 関係ピッカーで「ノート」の代わりに「索引」を出すかどうかに使う）。
   " 現在のノート自身が グループ / 小グループ 属性の場合も同様に「索引」を出す
-  " （nc/np と同じ判定基準。自分が容器なら、相手が普通のノートでも「索引」）。
+  " （zc/zp と同じ判定基準。自分が容器なら、相手が普通のノートでも「索引」）。
   let l:attr_targets = {}
   for l:t in l:targets
     if s:v2_target_attr(l:t) !=# '' | let l:attr_targets[l:t] = 1 | endif
@@ -4263,7 +4264,7 @@ function! s:v2_new_related(below, attr, ...) abort
   let l:cur_attr = s:v2_buf_attr()
   if a:0 > 0 && a:1 !=# ''
     let l:rel = a:1
-    " a:2 で write を明示できる（nw が事前にピッカーで選んだ結果を渡す用）。
+    " a:2 で write を明示できる（zw が事前にピッカーで選んだ結果を渡す用）。
     " 省略時は 1（nn 等、固定関係を渡すだけの呼び出しに合わせる）。
     let l:write = a:0 > 1 ? a:2 : 1
   else
@@ -4273,7 +4274,7 @@ function! s:v2_new_related(below, attr, ...) abort
     let l:write = l:pick.write
   endif
   " 関係ごとの向きの制約（関連=対称）。属性ノート（グループ / 小グループ）は
-  " nw が c/p の選択どおりの a:below を渡してくるので、ここでは上書きしない
+  " zw が c/p の選択どおりの a:below を渡してくるので、ここでは上書きしない
   " （上書きすると c/p の意味が反転する）。
   let l:side = !empty(a:attr) ? -1 : s:v2_relation_side(l:rel)
   let l:below = l:side >= 0 ? l:side : a:below
@@ -4323,7 +4324,7 @@ function! s:v2_new_related(below, attr, ...) abort
   endif
 
   " 新ノートを組み立てる。相手へのリンクを先に入れておく（sync が確認するだけ）。
-  " nc: 相手は新ノートの こっちにとって 側 / np: そっちにとって 側。
+  " zc: 相手は新ノートの こっちにとって 側 / zp: そっちにとって 側。
   " 常にブロック形（『ラベル:』の次行にリンク）。back_rel が空（書かない
   " を選んだ）なら新ノートには何も書かず、sync が既定の『ノート』を生成する。
   let l:backlink = empty(l:back_rel) ? [] :
@@ -4357,12 +4358,12 @@ function! s:v2_buf_attr() abort
   return ''
 endfunction
 
-" nc: 子ノート（リンクは現ノートの そっちにとって 側）
+" zc: 子ノート（リンクは現ノートの そっちにとって 側）
 function! yurii_pkm#v2_new_child(...) abort
   call call('s:v2_new_related', [1, ''] + a:000)
 endfunction
 
-" np: 親ノート（リンクは現ノートの こっちにとって 側）
+" zp: 親ノート（リンクは現ノートの こっちにとって 側）
 function! yurii_pkm#v2_new_parent(...) abort
   call call('s:v2_new_related', [0, ''] + a:000)
 endfunction
@@ -4476,7 +4477,7 @@ function! s:v2_expand_prefs(root, py) abort
   return {'child': l:parts[0], 'parent': l:parts[1], 'backlink': l:parts[2]}
 endfunction
 
-" カーソル直下ノート（nh）: 新ノートを作り、そのリンクをカーソル行の直下（本文）に置く。
+" カーソル直下ノート（zh）: 新ノートを作り、そのリンクをカーソル行の直下（本文）に置く。
 " 関係セクションには入れない → 相手には バックリンク: として現れる。
 function! yurii_pkm#v2_new_here() abort
   if s:pkm_format() !=# 'v2'
@@ -4500,7 +4501,7 @@ function! yurii_pkm#v2_new_here() abort
   execute 'edit ' . fnameescape(l:file)
 endfunction
 
-" nn: 普通のノート（選択なし）。nc（子ノート）と同じだが、関係ピッカーを
+" zn: 普通のノート（選択なし）。zc（子ノート）と同じだが、関係ピッカーを
 " 出さず既定の関係「ノート」で固定する（現ノート側に「ノート:」として入る）。
 function! yurii_pkm#v2_new_plain() abort
   call s:v2_new_related(1, '', 'ノート')
@@ -5911,7 +5912,7 @@ function! yurii_pkm#add_clipboard_to_branch() abort
 endfunction
 
 
-" na: ca と同じ そっちにとって 側だが、関係は常に既定の「ノート」固定
+" za: ca と同じ そっちにとって 側だが、関係は常に既定の「ノート」固定
 " （ピッカーも「相手にも書くか」の質問も出さない）。
 function! yurii_pkm#add_clipboard_before_up_note() abort
   if s:pkm_format() ==# 'v2'
