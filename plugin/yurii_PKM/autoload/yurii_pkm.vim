@@ -2728,7 +2728,7 @@ endfunction
 " ---------------------------------------------------------------------------
 " リンクへのラベルジャンプ（本文 → Parent/Child の通し番号）
 "   1-9      … その番号のリンクを直接開く（生の数字キー）
-"   文字+数字 … 10番目以降（n0, n1, …, n9, c0, … の2打、0始まり）
+"   文字+数字 … 10番目以降（n1, n2, …, n9, n0, c1, … の2打、1→0順）
 " 実際に見えている番号・ラベルがリンクの手前に仮想テキストで表示されるので、
 " 数えなくても押すキーが分かる（g:yurii_pkm_link_hints=0 で無効化）。
 " 10番目以降の文字は、このプラグインがすでに2打コマンドの頭文字として
@@ -2742,13 +2742,16 @@ let s:hint_prop_type = 'yuriiLinkHint'
 let s:hint_label_letters = 'ntcbmpy'
 
 " 通し番号(1始まり)からラベル文字列を作る。1-9はそのまま、以降は
-" 文字+数字（n0, n1, …, n9, c0, …、0始まり10個ずつ）。
+" 文字+数字（n1, n2, …, n9, n0, c1, …、キー配列と同じ 1→0 順で10個ずつ）。
+" 生の 0 キーは「行頭へ移動」のため単独ラベルにはできない（1-9 のみ）が、
+" 文字の後ろに続く2打目の 0 は他コマンドと衝突しないのでここでは使える。
 " 割り当て切れ（7文字×10 を超える）なら空文字。
 function! s:hint_label(idx) abort
   if a:idx <= 9 | return string(a:idx) | endif
   let l:n = a:idx - 10
   let l:letter_i = l:n / 10
-  let l:digit = l:n % 10
+  let l:pos_in_group = l:n % 10
+  let l:digit = (l:pos_in_group == 9) ? 0 : l:pos_in_group + 1
   if l:letter_i >= strlen(s:hint_label_letters) | return '' | endif
   return s:hint_label_letters[l:letter_i] . l:digit
 endfunction
