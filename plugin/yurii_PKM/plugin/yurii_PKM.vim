@@ -250,9 +250,11 @@ nnoremap <silent> <Space>   <Cmd>call yurii_pkm#relation_link_popup()<CR>
 nnoremap <silent> <S-Space> <Cmd>call yurii_pkm#jump_relation_link(1)<CR>
 " 数字 1-9 … 本文 → Parent/Child の順で通し番号にした N 番目のリンクへ移動。
 " 該当リンクが無い所ではそのままカウント（5j 等）として働く。
-" 10番目以降は「文字+数字」の2打（a1, a2, …, b1, …）。リンクの手前に
-" ラベルが仮想テキストで表示されるので、数えずに押すキーが分かる
-" （g:yurii_pkm_link_hints=0 で表示だけ無効化）。
+" 10番目以降は「文字+数字」の2打、0始まり（n0, n1, …, n9, c0, …）。
+" 頭文字はこのプラグインが既に2打コマンドの頭文字として使っている
+" n/t/c/b/m/p/y のみを使うので、他の生キー（a, i, o 等）とは干渉しない。
+" リンクの手前にラベルが仮想テキストで表示されるので、数えずに押す
+" キーが分かる（g:yurii_pkm_link_hints=0 で表示だけ無効化）。
 for s:n in range(1, 9)
   execute printf('nnoremap <silent> %d <Cmd>call yurii_pkm#digit_key(%d, "%d")<CR>', s:n, s:n, s:n)
 endfor

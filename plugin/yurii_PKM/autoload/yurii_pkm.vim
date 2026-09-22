@@ -2727,27 +2727,30 @@ endfunction
 
 " ---------------------------------------------------------------------------
 " リンクへのラベルジャンプ（本文 → Parent/Child の通し番号）
-"   1-9        … その番号のリンクを直接開く（生の数字キー）
-"   \文字+数字 … 10番目以降（\a1, \a2, …, \a9, \b1, … の3打）
+"   1-9      … その番号のリンクを直接開く（生の数字キー）
+"   文字+数字 … 10番目以降（n0, n1, …, n9, c0, … の2打、0始まり）
 " 実際に見えている番号・ラベルがリンクの手前に仮想テキストで表示されるので、
 " 数えなくても押すキーが分かる（g:yurii_pkm_link_hints=0 で無効化）。
-" 10番目以降は既存の \xx 系コマンド（\ca, \at 等）と同じ「バックスラッシュ
-" リーダー」に乗せる。素の文字キー（a, i, o, …）は一切奪わない ─ 生の a を
-" 奪うと、押した瞬間に Insert に入らず次の1打を待つ分だけ体感が遅くなる。
+" 10番目以降の文字は、このプラグインがすでに2打コマンドの頭文字として
+" 使っている文字だけを使う（n, t, c, b, m, p, y ─ nc/np/ta/tt/cu/ca/
+" bu/bc/mp/mx/pe/yn 等）。これらの生キーはすでに「次の1打を待つ」状態に
+" なっているので、数字を後ろに続けても新たな干渉や体感速度の悪化は発生
+" しない。a, i, o, … など他の生キーには一切手を出さない。
 " ---------------------------------------------------------------------------
 
 let s:hint_prop_type = 'yuriiLinkHint'
-let s:hint_label_letters = 'abcdefghijklmnopqrstuvwxyz'
+let s:hint_label_letters = 'ntcbmpy'
 
 " 通し番号(1始まり)からラベル文字列を作る。1-9はそのまま、以降は
-" \文字+数字（\a1, \a2, …）。割り当て切れ（26文字×9 を超える）なら空文字。
+" 文字+数字（n0, n1, …, n9, c0, …、0始まり10個ずつ）。
+" 割り当て切れ（7文字×10 を超える）なら空文字。
 function! s:hint_label(idx) abort
   if a:idx <= 9 | return string(a:idx) | endif
   let l:n = a:idx - 10
-  let l:letter_i = l:n / 9
-  let l:digit = (l:n % 9) + 1
+  let l:letter_i = l:n / 10
+  let l:digit = l:n % 10
   if l:letter_i >= strlen(s:hint_label_letters) | return '' | endif
-  return '\' . s:hint_label_letters[l:letter_i] . l:digit
+  return s:hint_label_letters[l:letter_i] . l:digit
 endfunction
 
 " 現在バッファの候補位置（本文 → Parent/Child の順、digit_key と同じ並び）。
@@ -2785,9 +2788,11 @@ function! s:hint_go(pos) abort
   call yurii_pkm#open_link_under_cursor()
 endfunction
 
-" 使わなくなった \ラベル の一時マッピングを外し、新しく必要な分を張る。
-" \ で始まるラベル（10番目以降）だけが対象 ─ \ はこのプラグインの他の
-" コマンド（\ca, \at 等）と同じリーダーなので、待たされても違和感が無い。
+" 使わなくなった2文字ラベルの一時マッピングを外し、新しく必要な分を張る。
+" 対象は10番目以降の文字+数字ラベルのみ（例: n3, c7）。頭文字は
+" n/t/c/b/m/p/y に限定しており、このプラグインの既存2打コマンド
+" （nc, ta, cu, bu, mp, pe, yn 等）と完全一致することはない
+" （2文字目が数字 vs 既存は文字なので重複しない）。
 function! s:hint_sync_full_maps(labels) abort
   let l:have = get(b:, 'yurii_hint_full_labels', [])
   for l:label in l:have
@@ -2803,7 +2808,7 @@ function! s:hint_sync_full_maps(labels) abort
   let b:yurii_hint_full_labels = a:labels
 endfunction
 
-" 本文・Parent/Child のリンク手前に、ラベル（1-9 / \文字+数字）を仮想テキストで表示する。
+" 本文・Parent/Child のリンク手前に、ラベル（1-9 / 文字+数字）を仮想テキストで表示する。
 function! yurii_pkm#refresh_link_hints() abort
   if !get(g:, 'yurii_pkm_link_hints', 1) || !has('textprop') | return | endif
   if &l:filetype !=# 'markdown' && &l:filetype !=# 'vimwiki' | return | endif
@@ -2817,7 +2822,7 @@ function! yurii_pkm#refresh_link_hints() abort
   let l:full_labels = []
   for [l:label, l:pos] in items(b:yurii_hint_map)
     call prop_add(l:pos.lnum, l:pos.col, {'type': s:hint_prop_type, 'text': l:label})
-    if l:label[0] ==# '\' | call add(l:full_labels, l:label) | endif
+    if strchars(l:label) > 1 | call add(l:full_labels, l:label) | endif
   endfor
   call s:hint_sync_full_maps(l:full_labels)
 endfunction
