@@ -248,9 +248,10 @@ nnoremap <silent> \0       <Cmd>call yurii_pkm#hub_list()<CR>
 " <S-Space> … ポップアップを出さずカーソルだけ次の関係リンクへ（従来動作）。
 nnoremap <silent> <Space>   <Cmd>call yurii_pkm#relation_link_popup()<CR>
 nnoremap <silent> <S-Space> <Cmd>call yurii_pkm#jump_relation_link(1)<CR>
-" 数字 1-9 … 本文 → Parent/Child の順で通し番号にした N 番目のリンクへ移動。
-" 該当リンクが無い所ではそのままカウント（5j 等）として働く。
-" 10番目以降は「文字+数字」の2打、1→0順（n1, n2, …, n9, n0, c1, …）。
+" 数字 1-9,0 … 本文 → Parent/Child の順で通し番号にした N 番目のリンクへ移動
+"（0 は10番目）。該当リンクが無い所ではそのままカウント/行頭移動として働く
+"（v:count 付きの 0 や、該当リンクが無いときの生の 0 は素通しされる）。
+" 11番目以降は「文字+数字」の2打、1→0順（n1, n2, …, n9, n0, c1, …）。
 " 頭文字はこのプラグインが既に2打コマンドの頭文字として使っている
 " n/t/c/b/m/p/y のみを使うので、他の生キー（a, i, o 等）とは干渉しない。
 " リンクの手前にラベルが仮想テキストで表示されるので、数えずに押す
@@ -258,6 +259,7 @@ nnoremap <silent> <S-Space> <Cmd>call yurii_pkm#jump_relation_link(1)<CR>
 for s:n in range(1, 9)
   execute printf('nnoremap <silent> %d <Cmd>call yurii_pkm#digit_key(%d, "%d")<CR>', s:n, s:n, s:n)
 endfor
+nnoremap <silent> 0 <Cmd>call yurii_pkm#digit_key(10, "0")<CR>
 unlet s:n
 augroup yurii_pkm_link_hints
   autocmd!

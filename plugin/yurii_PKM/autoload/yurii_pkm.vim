@@ -2727,11 +2727,11 @@ endfunction
 
 " ---------------------------------------------------------------------------
 " リンクへのラベルジャンプ（本文 → Parent/Child の通し番号）
-"   1-9      … その番号のリンクを直接開く（生の数字キー）
-"   文字+数字 … 10番目以降（n1, n2, …, n9, n0, c1, … の2打、1→0順）
+"   1-9,0    … その番号のリンクを直接開く（生の数字キー、0は10番目）
+"   文字+数字 … 11番目以降（n1, n2, …, n9, n0, c1, … の2打、1→0順）
 " 実際に見えている番号・ラベルがリンクの手前に仮想テキストで表示されるので、
 " 数えなくても押すキーが分かる（g:yurii_pkm_link_hints=0 で無効化）。
-" 10番目以降の文字は、このプラグインがすでに2打コマンドの頭文字として
+" 11番目以降の文字は、このプラグインがすでに2打コマンドの頭文字として
 " 使っている文字だけを使う（n, t, c, b, m, p, y ─ nc/np/ta/tt/cu/ca/
 " bu/bc/mp/mx/pe/yn 等）。これらの生キーはすでに「次の1打を待つ」状態に
 " なっているので、数字を後ろに続けても新たな干渉や体感速度の悪化は発生
@@ -2741,14 +2741,15 @@ endfunction
 let s:hint_prop_type = 'yuriiLinkHint'
 let s:hint_label_letters = 'ntcbmpy'
 
-" 通し番号(1始まり)からラベル文字列を作る。1-9はそのまま、以降は
-" 文字+数字（n1, n2, …, n9, n0, c1, …、キー配列と同じ 1→0 順で10個ずつ）。
-" 生の 0 キーは「行頭へ移動」のため単独ラベルにはできない（1-9 のみ）が、
-" 文字の後ろに続く2打目の 0 は他コマンドと衝突しないのでここでは使える。
+" 通し番号(1始まり)からラベル文字列を作る。1-9,0はそのまま（0は10番目）、
+" 以降は文字+数字（n1, n2, …, n9, n0, c1, …、キー配列と同じ 1→0 順で
+" 10個ずつ）。生の 0 キーは vim 標準の「行頭へ移動」を上書きするが、
+" 該当リンクが無ければ digit_key() 側で通常の 0 に素通しされる。
 " 割り当て切れ（7文字×10 を超える）なら空文字。
 function! s:hint_label(idx) abort
   if a:idx <= 9 | return string(a:idx) | endif
-  let l:n = a:idx - 10
+  if a:idx == 10 | return '0' | endif
+  let l:n = a:idx - 11
   let l:letter_i = l:n / 10
   let l:pos_in_group = l:n % 10
   let l:digit = (l:pos_in_group == 9) ? 0 : l:pos_in_group + 1
@@ -2830,8 +2831,8 @@ function! yurii_pkm#refresh_link_hints() abort
   call s:hint_sync_full_maps(l:full_labels)
 endfunction
 
-" 数字キー（生の 1-9）… 本文 → Parent/Child の順で通し番号にした N 番目の
-" リンクを直接開く。該当が無ければ通常のカウントとして送る。
+" 数字キー（生の 1-9,0）… 本文 → Parent/Child の順で通し番号にした N 番目の
+" リンクを直接開く（0は10番目）。該当が無ければ通常のカウント/行頭移動として送る。
 function! yurii_pkm#digit_key(idx, key) abort
   let l:pos = s:hint_positions()
   if !empty(l:pos) && a:idx >= 1 && a:idx <= len(l:pos)
@@ -2841,7 +2842,7 @@ function! yurii_pkm#digit_key(idx, key) abort
   call feedkeys((v:count > 0 ? v:count : '') . a:key, 'n')
 endfunction
 
-" \文字+数字（10番目以降のラベル）… 対応する位置を開く。
+" 文字+数字（11番目以降のラベル）… 対応する位置を開く。
 function! yurii_pkm#hint_goto(label) abort
   let l:pos = get(b:, 'yurii_hint_map', {})
   if has_key(l:pos, a:label)
