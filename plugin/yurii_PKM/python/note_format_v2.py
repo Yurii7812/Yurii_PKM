@@ -444,11 +444,12 @@ def _join_blocks(blocks: list[list[str]]) -> list[str]:
 
 
 def _render_group(d: dict[str, list], is_down: bool = False) -> list[str]:
-    """上側（Parent）の並びは グループ → ノート → その他（手で書いた ワード:
-    など）の順に固定する。下側（Child）は d の順序（＝ユーザーが最後に
-    書いた/並べ替えた順）をそのまま尊重する（`関連` は対称、`バックリンク`
-    は最後）。どちらもブロックの間は空行 1 つで区切る（既定の `ノート` は
-    見出しが無いので、空行が無いと前のブロックのリンクと区別できないため）。
+    """上側（Parent）は **グループ（`group`）を先頭に固定**するだけ。それ以外
+    のブロック（既定の `ノート` や手で書いた `ワード:`）の並びは d の順序
+    （＝ユーザーが最後に書いた/並べ替えた順）をそのまま尊重する。下側（Child）
+    も d の順序を尊重する（`関連` は対称、`バックリンク` は最後）。どちらも
+    ブロックの間は空行 1 つで区切る（既定の `ノート` は見出しが無いので、
+    空行が無いと前のブロックのリンクと区別できないため）。
     """
     if is_down:
         blocks = [
@@ -465,12 +466,12 @@ def _render_group(d: dict[str, list], is_down: bool = False) -> list[str]:
             out += extra
         return out
 
+    # グループだけ先頭に固定。それ以外は d の順序（ユーザーの並び）のまま。
     labels: list[str] = []
-    for key in (CATEGORY_ATTR, "ノート"):
-        if d.get(key):
-            labels.append(key)
+    if d.get(CATEGORY_ATTR):
+        labels.append(CATEGORY_ATTR)
     for t in d:
-        if t in _RESERVED or t in (CATEGORY_ATTR, "ノート"):
+        if t in _RESERVED or t == CATEGORY_ATTR:
             continue
         if d.get(t):
             labels.append(t)
