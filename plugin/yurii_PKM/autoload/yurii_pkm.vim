@@ -3860,19 +3860,13 @@ function! s:v2_ask_write_same_label(rel, ...) abort
   return s:v2_pick(l:side . 'にも「' . a:rel . '」と書く？', ['はい', 'いいえ（自動）']) ==# 'はい'
 endfunction
 
-" zw で作れる属性ノードの種類。今後増やす時はここに足すだけでいい
-" （末尾の自由入力枠は s:v2_pick が自動で足す）。
-let s:v2_attr_types = ['グループ', '小グループ']
-
-function! s:v2_pick_attr() abort
-  return s:v2_pick('属性', s:v2_attr_types)
-endfunction
-
-" 旧名（カテゴリー / キーワード）を新名（グループ / 小グループ）へ読み替える。
+" 属性ノードは グループ だけ（小グループはグループに統合して廃止）。
+" 旧名（カテゴリー / キーワード / 小グループ）はすべて グループ へ読み替える。
 " 既存ノートの front matter はそのままでも、機能としては新しい規則で動く。
 function! s:v2_normalize_attr(v) abort
   if a:v ==# 'カテゴリー' | return 'グループ' | endif
-  if a:v ==# 'キーワード' | return '小グループ' | endif
+  if a:v ==# 'キーワード' | return 'グループ' | endif
+  if a:v ==# '小グループ' | return 'グループ' | endif
   return a:v
 endfunction
 
@@ -4360,42 +4354,18 @@ function! s:v2_buf_attr() abort
 endfunction
 
 " zc: 子ノート（リンクは現ノートの そっちにとって 側）
+" zc/zp は zn に一本化して廃止。コマンド :NC / :NP からの互換のためだけに残す。
 function! yurii_pkm#v2_new_child(...) abort
-  call call('s:v2_new_related', [1, ''] + a:000)
+  call s:v2_new_interactive('')
 endfunction
 
-" zp: 親ノート（リンクは現ノートの こっちにとって 側）
 function! yurii_pkm#v2_new_parent(...) abort
-  call call('s:v2_new_related', [0, ''] + a:000)
+  call s:v2_new_interactive('')
 endfunction
 
-" nw: 属性ノートを作る。まず属性の種類を選ぶ（1=グループ 2=小グループ、末尾=自由入力。
-" 今後属性の種類が増えても s:v2_attr_types に足すだけで選べるようになる）。
-" グループ は関係固定（常に `グループ`）── 相手が違う関係を選べると向きが固定で
-" 壊れるため、関係ピッカーを飛ばしてそのまま c/p を聞く。
-" 小グループ（と自由入力の属性）は関係も選ばせる ── グループと違って小グループは
-" 自分がソースの時に sync が関係名を上書きしないので、実際に何の関係か選べる
-" ことに意味がある（§3）。この時のピッカーは「ノート」の代わりに「索引」を出す。
+" zw は廃止して zk（グループノート）に置き換え。互換のため名前だけ残す。
 function! yurii_pkm#v2_new_attr() abort
-  let l:attr = s:v2_pick_attr()
-  if l:attr ==# '' | echo 'yurii_PKM: キャンセル' | return | endif
-  if l:attr ==# 'グループ'
-    let l:rel = 'グループ'
-    let l:write = 1
-  else
-    let l:pick = s:v2_pick_relation2(1)
-    if empty(l:pick) | echo 'yurii_PKM: キャンセル' | return | endif
-    let l:rel   = l:pick.rel
-    let l:write = l:pick.write
-  endif
-  echo '新' . l:attr . 'を  c=子（現ノートの中） / p=親（現ノートを含む）  (既定 c, Esc/q キャンセル)'
-  let l:ch = nr2char(getchar())
-  redraw
-  if l:ch ==? 'q' || char2nr(l:ch) == 27 || char2nr(l:ch) == 3
-    echo 'yurii_PKM: キャンセル' | return
-  endif
-  let l:below = (l:ch ==? 'p') ? 0 : 1
-  call s:v2_new_related(l:below, l:attr, l:rel, l:write)
+  call s:v2_new_interactive('グループ')
 endfunction
 
 " pe: 現ノートを起点に 親/子/文中 を辿って 1 つの展開ファイルへ集約する。
@@ -4502,10 +4472,70 @@ function! yurii_pkm#v2_new_here() abort
   execute 'edit ' . fnameescape(l:file)
 endfunction
 
-" zn: 普通のノート（選択なし）。zc（子ノート）と同じだが、関係ピッカーを
-" 出さず既定の関係「ノート」で固定する（現ノート側に「ノート:」として入る）。
+" zn: ノート作成。リレーションは書かず、位置だけ h/Enter/o/p で選ぶ。
 function! yurii_pkm#v2_new_plain() abort
-  call s:v2_new_related(1, '', 'ノート')
+  call s:v2_new_interactive('')
+endfunction
+
+" zk: グループノート作成（attribute: グループ）。位置は zn と同じ h/Enter/o/p。
+function! yurii_pkm#v2_new_group() abort
+  call s:v2_new_interactive('グループ')
+endfunction
+
+" zn / zk の共通本体。
+"   a:attr が空なら普通のノート、'グループ' なら容器ノート（attribute: グループ）。
+"   作成時にリレーション（ノート: など）は一切書かない。置くのは素のリンク 1 行で、
+"   あとから手で グループ / きっかけ: などを書く。`:` / `;` は sync がそのまま扱う。
+"   位置キー: h=カーソル直下 / Enter=Child末尾 / o=リンク無し(孤立) / p=Parent末尾。
+function! s:v2_new_interactive(attr) abort
+  if s:pkm_format() !=# 'v2'
+    echo 'yurii_PKM: v2 専用' | return
+  endif
+  let l:cur = expand('%:p')
+  if empty(l:cur)
+    echohl WarningMsg | echo 'yurii_PKM: 名前付きバッファで実行して' | echohl NONE | return
+  endif
+  let l:dir = expand('%:p:h')
+  let l:ts  = yurii_pkm#timestamp_filename()
+  let l:file = s:join_path(l:dir, l:ts . '.md')
+
+  echo 'h=カーソル直下 / Enter=Child末尾 / o=リンク無し(孤立) / p=Parent  (Esc/q キャンセル)'
+  let l:ch = nr2char(getchar())
+  redraw
+  if l:ch ==? 'q' || char2nr(l:ch) == 27 || char2nr(l:ch) == 3
+    echo 'yurii_PKM: キャンセル' | return
+  endif
+
+  " 新ノートを先に作る（sync がリンク先を解決できるように）
+  call writefile(yurii_pkm#note_template(l:ts, !empty(a:attr) ? 1 : 0), l:file)
+
+  let l:link = '[' . l:ts . '](' . l:ts . '.md)'
+  let l:added = 0
+  let l:save_ai = &autoindent | let l:save_si = &smartindent
+  setlocal noautoindent nosmartindent
+  if l:ch ==# "\<CR>" || l:ch ==# "\<NL>"
+    call append(line('$'), l:link)      " Child の最後尾
+    let l:added = 1
+  elseif l:ch ==? 'p'
+    let [l:up_m, l:dn_m] = s:v2_boundaries()
+    if l:up_m > 0
+      call append(l:dn_m - 1, l:link)   " Parent の末尾（## Child の直前）
+      let l:added = 1
+    endif
+  elseif l:ch ==? 'h'
+    call append(line('.'), l:link)      " カーソル直下（本文）
+    let l:added = 1
+  endif
+  let &autoindent = l:save_ai | let &smartindent = l:save_si
+  silent noautocmd write
+  if l:added
+    call s:run_update_one_for(l:cur)
+  endif
+  call yurii_pkm#push_history()
+  execute 'edit ' . fnameescape(l:file)
+  let l:h1 = search('^#\s', 'nw')
+  if l:h1 > 0 | call cursor(l:h1 + 2, 1) | endif
+  startinsert
 endfunction
 
 " 旧形式（v1 の Parent:/Child: / 旧 `---`）を v2 へ明示変換。

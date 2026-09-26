@@ -273,24 +273,19 @@ nnoremap <nowait> <silent> ,,  <Cmd>call yurii_pkm#jump_up()<CR>
 nnoremap <nowait> <silent> ,.  <Cmd>call yurii_pkm#jump_down_top()<CR>
 nnoremap <nowait> <silent> ,/  <Cmd>call yurii_pkm#jump_down_bottom()<CR>
 
-" ノート作成（関係を数字で選択、Esc/q でキャンセル）
-"   zc … 子ノート（リンクは現ノートの そっちにとって 側）
-"   zp … 親ノート（リンクは現ノートの こっちにとって 側）
-"   zh … カーソル直下にリンク（本文リンク → 相手には バックリンク: として出る）
-"   zw … 属性ノート（数字ピッカーで種類を選ぶ。1=グループ 2=小グループ、末尾=自由入力。
-"        グループは関係固定 → そのまま c=子 / p=親。小グループ（と自由入力）は
-"        続けて関係も選ぶ → c=子 / p=親）。属性ノートは zw でのみ作れる
+" ノート作成（リレーションは書かず、位置だけを選ぶ）
+"   zn … ノート作成。作成後に位置キー1つで、素のリンク 1 行を現ノート側に置く:
+"        h=カーソル直下（本文 → 相手には バックリンク:）/ Enter=Child末尾 /
+"        o=リンク無し(孤立) / p=Parent末尾。関係（ノート: 等）はあとから手で書く。
+"   zk … グループノート作成（attribute: グループ）。位置キーは zn と同じ。
+"   zh … カーソル直下にリンク（zn の h と同じ。本文リンク扱い）
 " 頭文字は n ではなく z を使う（z は素のVimでも単独では何も起きない接頭辞
 " なので、検索リピートの n/N とバッティングしない）。<nowait> は付けない
-" — 付けると zc/zp 等より z が即座に確定してしまい、それらに繋がらなくなる。
+" — 付けると zk/zn 等より z が即座に確定してしまい、それらに繋がらなくなる。
 " timeoutlen 経過後だけ発火する。
-nnoremap <nowait> <silent> zc  <Cmd>call yurii_pkm#v2_new_child()<CR>
-nnoremap <nowait> <silent> zp  <Cmd>call yurii_pkm#v2_new_parent()<CR>
 nnoremap <nowait> <silent> zh  <Cmd>call yurii_pkm#v2_new_here()<CR>
-nnoremap <nowait> <silent> zw  <Cmd>call yurii_pkm#v2_new_attr()<CR>
-" zn: 普通のノート。zc と同じ子ノート作成だが、関係ピッカーを出さず
-" 既定の「ノート」関係で固定する（現ノート側に「ノート:」として入る）
 nnoremap <nowait> <silent> zn  <Cmd>call yurii_pkm#v2_new_plain()<CR>
+nnoremap <nowait> <silent> zk  <Cmd>call yurii_pkm#v2_new_group()<CR>
 " za: ca（クリップボードのノートを child に追加）と同じだが、関係ピッカーを
 " 出さず既定の「ノート」関係で固定する
 nnoremap <nowait> <silent> za  <Cmd>call yurii_pkm#add_clipboard_before_up_note()<CR>

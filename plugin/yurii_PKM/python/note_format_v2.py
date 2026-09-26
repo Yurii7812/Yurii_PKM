@@ -67,14 +67,18 @@ RELATIONS: tuple[str, ...] = (
 )
 # 関係名の読み替え（既定は無し。グループ: はそのまま残す）
 RELATION_ALIASES: dict[str, str] = {"ワード": "キーワード"}
-# ノード属性: `attribute: グループ` / `attribute: 小グループ`（容器ノート・サブグループの印）。
+# ノード属性: `attribute: グループ`（容器ノートの印）。小グループ / 大グループの
+# 区別は廃止し、グループはグループに一本化した。
 ATTR_KEYS = ("attribute", "属性")
 CATEGORY_ATTR = "グループ"  # attribute の値 / 関係名でもある
-KEYWORD_ATTR = "小グループ"  # attribute の値
-# 旧名からの前方互換（既存ノートの `attribute: カテゴリー` / `attribute: キーワード` を
-# そのまま新しい値として扱う。front matter 自体は書き換えない）。
-ATTR_ALIASES: dict[str, str] = {"カテゴリー": CATEGORY_ATTR, "キーワード": KEYWORD_ATTR}
-ATTR_LABELS: frozenset[str] = frozenset({CATEGORY_ATTR, KEYWORD_ATTR})  # attribute として使える値
+# 旧 小グループ（および カテゴリー / キーワード）はすべて `グループ` として扱う
+# （既存ノートの front matter 自体は書き換えない）。
+ATTR_ALIASES: dict[str, str] = {
+    "カテゴリー": CATEGORY_ATTR,
+    "キーワード": CATEGORY_ATTR,
+    "小グループ": CATEGORY_ATTR,
+}
+ATTR_LABELS: frozenset[str] = frozenset({CATEGORY_ATTR})  # attribute として使える値
 # 対称関係: 上側には出さず、両ノートの下側に現れる。
 SYMMETRIC: frozenset[str] = frozenset({"関連"})
 BACKLINK = "バックリンク"
@@ -402,20 +406,41 @@ def _render_section(t: str, entries: list[tuple[str, str, str | None]]) -> list[
 
 
 def _render_group(d: dict[str, list], is_down: bool = False) -> list[str]:
-    """セクションの並びは d の順序（＝ユーザーが最後に書いた/並べ替えた順）を
-    尊重する。RELATIONS の並び順は「新規に増えた関係をどこに挿す既定順」
-    としてのみ使う（sync 側で新規キーを足す時の挿入位置の目安）。
-    一度ファイルに存在する並びは sync で強制的に戻さない。
+    """上側（Parent）の並びは グループ → ノート → その他（手で書いた ワード:
+    など）の順に固定し、ブロックの間を空行で区切る。下側（Child）は完全に
+    自由で、d の順序（＝ユーザーが最後に書いた/並べ替えた順）をそのまま尊重する
+    （`関連` は対称、`バックリンク` は最後）。
     """
     out: list[str] = []
+    if is_down:
+        for t in d:
+            if t in _RESERVED:
+                continue
+            if d.get(t):
+                out += _render_section(t, d[t])
+        if d.get(BACKLINK):
+            out += _render_section(BACKLINK, d[BACKLINK])
+        out += list(d.get(_EXTRA, []))
+        return out
+
+    labels: list[str] = []
+    for key in (CATEGORY_ATTR, "ノート"):
+        if d.get(key):
+            labels.append(key)
     for t in d:
-        if t in _RESERVED:
+        if t in _RESERVED or t in (CATEGORY_ATTR, "ノート"):
             continue
         if d.get(t):
-            out += _render_section(t, d[t])
-    if is_down and d.get(BACKLINK):
-        out += _render_section(BACKLINK, d[BACKLINK])
-    out += list(d.get(_EXTRA, []))
+            labels.append(t)
+    for i, t in enumerate(labels):
+        if i > 0:
+            out.append("")
+        out += _render_section(t, d[t])
+    extra = list(d.get(_EXTRA, []))
+    if extra:
+        if labels:
+            out.append("")
+        out += extra
     return out
 
 

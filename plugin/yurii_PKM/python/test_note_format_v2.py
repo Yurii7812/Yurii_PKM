@@ -479,47 +479,46 @@ def test_attribute_group_subgroup_labels_down_side_too() -> None:
 
 
 def test_attribute_subgroup_target_forces_group_not_subgroup() -> None:
-    print("相手が attribute: 小グループ でも、自分の上側は 小グループ: ではなく グループ: になる")
+    print("旧 attribute: 小グループ も グループ 扱い：自分の上側は グループ: になる")
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
-        _note_with_attr(root / "20250101.md", "実在論", v2.KEYWORD_ATTR)
+        _note_with_attr(root / "20250101.md", "実在論", "小グループ")
         note(root / "20250104.md", "普遍は実在するか", up="資料: [実在論](20250101.md)")
         v2.sync_vault(root)
         up, _dn = regions((root / "20250104.md").read_text(encoding="utf-8"))
         _u, dn = regions((root / "20250101.md").read_text(encoding="utf-8"))
         check("グループ:\n[実在論](20250101.md)" in up,
-              "手で 資料 を選んでいても、相手が 小グループ ノードなら上側は グループ:（小グループ: にはならない）")
+              "手で 資料 を選んでいても、相手が グループ（旧 小グループ）なら上側は グループ:")
         check("資料:\n[普遍は実在するか](20250104.md)" in dn,
-              "実在論 側の下側は打った実際の関係名（資料:）がそのまま並ぶ（§3 の例外）。"
-              "小グループは相手を下位に置く容器ではない")
+              "容器ノート自身の下側は打った実際の関係名（資料:）がそのまま並ぶ（§3 の例外）")
 
 
-def test_attribute_subgroup_source_does_not_force_target_down_side() -> None:
-    print("自分が attribute: 小グループ でも、相手の下側は上書きしない（打った関係名のまま）")
+def test_attribute_subgroup_alias_forces_target_down_side_like_group() -> None:
+    print("旧 attribute: 小グループ も グループ として扱う（相手の下側も グループ: になる）")
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
         note(root / "20250101.md", "実在論")
-        _note_with_attr(root / "20250104.md", "唯名論", v2.KEYWORD_ATTR,
-                         up="関連: [実在論](20250101.md)")
+        _note_with_attr(root / "20250104.md", "唯名論", "小グループ",
+                         up="論点: [実在論](20250101.md)")
         v2.sync_vault(root)
         _u, dn = regions((root / "20250101.md").read_text(encoding="utf-8"))
-        check("関連:\n[唯名論](20250104.md)" in dn,
-              "自分（唯名論）が 小グループ ノードでも、相手（実在論）の下側は打った関係名（関連:）のまま")
-        check("小グループ:\n[唯名論](20250104.md)" not in dn,
-              "グループと違い、小グループのサブノードは相手の下側を 小グループ: に上書きしない")
+        check("グループ:\n[唯名論](20250104.md)" in dn,
+              "小グループ はグループに統合されたので、相手（実在論）の下側も グループ: になる")
+        check("論点:\n[唯名論](20250104.md)" not in dn,
+              "打った関係名（論点:）は容器の下側では グループ: に上書きされる")
 
 
 def test_attribute_subgroup_child_view_differs_by_side() -> None:
-    print("小グループノードの子：小グループ側の下側は打った関係名、子自身の上側は グループ:")
+    print("グループ（旧 小グループ）ノードの子：容器側の下側は打った関係名、子自身の上側は グループ:")
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
-        _note_with_attr(root / "20250101.md", "実在論", v2.KEYWORD_ATTR)
+        _note_with_attr(root / "20250101.md", "実在論", "小グループ")
         note(root / "20250104.md", "普遍は実在するか", up="資料: [実在論](20250101.md)")
         v2.sync_vault(root)
         up, _dn = regions((root / "20250104.md").read_text(encoding="utf-8"))
         _u, dn = regions((root / "20250101.md").read_text(encoding="utf-8"))
         check("資料:\n[普遍は実在するか](20250104.md)" in dn,
-              "実在論（小グループ）側の下側からは、打った実際の関係名（資料:）で見える")
+              "実在論（グループ）側の下側からは、打った実際の関係名（資料:）で見える")
         check("グループ:\n[実在論](20250101.md)" in up,
               "その子（普遍は実在するか）自身の上側からは グループ: として見える")
 
