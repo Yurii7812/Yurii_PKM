@@ -3693,9 +3693,9 @@ function! yurii_pkm#note_template(title, ...) abort
   endif
   call add(l:header, '---')
   if s:pkm_format() ==# 'v2'
-    " 普通のノート（zn）は本文の余白を 2 行、グループノート（zk）は 1 行だけ空ける
-    " （グループは容器で本文を持たないため）。
-    let l:gap = l:is_cat ? [''] : ['', '']
+    " 普通のノート（zn）は本文の余白を 3 行（最初のカーソルは真ん中）、
+    " グループノート（zk）は 1 行だけ空ける（グループは容器で本文を持たないため）。
+    let l:gap = l:is_cat ? [''] : ['', '', '']
     return l:header + ['', '# ' . a:title] + l:gap + [s:v2_up_mark, s:v2_down_mark]
   endif
   return l:header + [
