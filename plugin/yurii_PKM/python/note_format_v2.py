@@ -110,9 +110,13 @@ _RESERVED = {_EXTRA, BACKLINK}
 
 
 class Note:
-    __slots__ = ("path", "fm", "title", "body", "up", "down", "managed")
+    __slots__ = (
+        "path", "fm", "title", "body", "up", "down", "managed",
+        "down_raw", "down_rendered",
+    )
 
-    def __init__(self, path, fm, title, body, up, down, managed=True):
+    def __init__(self, path, fm, title, body, up, down, managed=True,
+                 down_raw=None):
         self.path: Path = Path(path)
         self.fm: list[str] = fm
         self.title: str = title
@@ -121,6 +125,10 @@ class Note:
         self.managed: bool = managed
         self.up: dict[str, list[tuple[str, str, str | None]]] = up
         self.down: dict[str, list[tuple[str, str, str | None]]] = down
+        # 下側（Child）の生の行。位置を保存したまま再描画するために保持する。
+        self.down_raw: list[str] | None = down_raw
+        # sync が位置保存で組み立てた下側の確定行（None なら通常描画）。
+        self.down_rendered: list[str] | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -328,7 +336,8 @@ def parse_note(path, text: str | None = None) -> Note:
     body = list(rest[:u])
     _, up = _parse_sections(rest[u + 1: d], allow_body=False)
     _, down = _parse_sections(rest[d + 1:], allow_body=False)
-    return Note(p, fm, title, body, up, down)
+    # 下側の生の行を保持（位置を変えずに再描画するため）。
+    return Note(p, fm, title, body, up, down, down_raw=list(rest[d + 1:]))
 
 
 def migrate_note(text: str, path: str = "note.md") -> str | None:
@@ -476,6 +485,77 @@ def _squeeze_blanks(lines: list[str]) -> list[str]:
     return res
 
 
+def _render_down_preserving(note: Note, key_fn) -> list[str] | None:
+    """Child（下側）を「リンクの並びを変えずに」組み立てる。
+
+    既存のリンク行の**順序**をそのまま保ち、ラベルと表示名だけ更新する。
+    消えた関係の行は取り除き、新しい関係の行は末尾に足す。並べ替え・
+    まとめ直し（離れた同ラベルの融合）は一切しない。位置はユーザーが
+    h/Enter/o/p と手編集で決めるもので、sync は動かさない。
+    """
+    raw = note.down_raw
+    if raw is None:
+        return None
+
+    def key(tg: str):
+        k = key_fn(tg)
+        return k if k is not None else ("raw", tg)
+
+    desired: dict[object, tuple[str, str, str | None, str]] = {}
+    for label, entries in note.down.items():
+        if label == _EXTRA:
+            continue
+        for disp, tg, ann in entries:
+            desired.setdefault(key(tg), (disp, tg, ann, label))
+
+    # 元ファイルに現れる順のリンク（(key, target_text, annotation, 表示名)）。
+    ordered: list[tuple[object, str, str | None, str]] = []
+    used: set = set()
+    for ln in raw:
+        lm = LINK_LINE_RE.match(ln.strip())
+        if lm:
+            k = key_fn(lm.group(2))
+            if k is None:
+                continue
+            if k in desired and k not in used:
+                used.add(k)
+                ordered.append((k, lm.group(2), lm.group(3) or None, lm.group(1)))
+            continue
+        # 見出し行などにインラインでリンクがある場合（使用済みに記録）
+        for m in ANY_LINK_RE.finditer(ln):
+            k = key_fn(m.group(1))
+            if k is not None and k in desired:
+                if k not in used:
+                    used.add(k)
+                    ordered.append((k, m.group(1), None, m.group(0)))
+    # まだ出ていない新しい関係（末尾に足す）
+    for k, (disp, tg, ann, _label) in desired.items():
+        if k not in used:
+            used.add(k)
+            ordered.append((k, tg, None, disp))
+
+    out: list[str] = []
+    prev_label: str | None = None
+    for k, raw_tg, raw_ann, raw_text in ordered:
+        disp, _tg, ann, label = desired[k]
+        ann2 = ann if ann else raw_ann
+        s = f"[{disp}]({raw_tg})"
+        line = s + f" — {ann2}" if ann2 else s
+        if label != prev_label:
+            if out:
+                out.append("")
+            if label not in ("ノート", "グループ"):
+                out.append(label if label.endswith(";") else f"{label}:")
+            prev_label = label
+        out.append(line)
+    extra = list(note.down.get(_EXTRA, []))
+    if extra:
+        if out:
+            out.append("")
+        out += extra
+    return out
+
+
 def render_note(note: Note) -> str:
     """本文はユーザーのもの。空行を含めてそのまま通す。
 
@@ -496,7 +576,11 @@ def render_note(note: Note) -> str:
     out.append(UP_MARK)
     out += _squeeze_blanks(_render_group(note.up))
     out.append(DOWN_MARK)
-    out += _squeeze_blanks(_render_group(note.down, is_down=True))
+    if note.down_rendered is not None:
+        # sync が位置保存で組み立てた生の下側をそのまま使う（並べ替えない）。
+        out += note.down_rendered
+    else:
+        out += _squeeze_blanks(_render_group(note.down, is_down=True))
 
     while out and out[-1].strip() == "":
         out.pop()
@@ -754,11 +838,18 @@ def sync_vault(root) -> int:
         （§3: 容器ノード自身の関係表示は実際に選んだ関係名のまま、という
         既存の非対称ルールを、通常と逆方向＝容器側から見た場合にも保つ）。
         """
-        if pair in up_label:
-            return up_label[pair]
         sid = pair[0]
         if attr_of.get(sid) in ATTR_LABELS:
             return down_label.get(pair) or "ノート"
+        if pair in up_label:
+            cur = up_label[pair]
+            mirrored = _mirrored_default(down_label.get(pair))
+            # 既定 `ノート` のままなら、相手側が `語:` で書いたラベルをミラーして
+            # 格上げする（相手が後から `資料:` 等に変えたのに、こちらが既定の
+            # ままだと反映されないため）。手で別ラベルにしていれば sticky。
+            if cur == "ノート" and mirrored != "ノート":
+                return mirrored
+            return cur
         return _mirrored_default(down_label.get(pair))
 
     # --- 上側を再構築。相手が attribute 持ちなら自分側はグループ扱い（先頭表示） ---
@@ -898,6 +989,9 @@ def sync_vault(root) -> int:
         if n.down.get(_EXTRA):
             new_down[_EXTRA] = n.down[_EXTRA]
         n.down = new_down
+        if nid is not None:
+            n.down_rendered = _render_down_preserving(
+                n, lambda tg, base=n.path.parent: rid(tg, base))
 
     _save_state(root, set(present) | present_sym)
     _save_title_state(root, {i: by_path[p].title for i, p in id_to_path.items()})
