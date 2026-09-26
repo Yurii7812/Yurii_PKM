@@ -645,6 +645,41 @@ def test_label_is_sticky_once_written() -> None:
               "手で書き換えた『後押し:』はそのまま残り、(きっかけ) には戻らない")
 
 
+def test_mirror_label_follows_source_change_and_delete() -> None:
+    print("自動ミラー (括弧付き) は相手側のラベル変更・削除・リンク削除に追従する")
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        a = root / "20250104.md"
+        b = root / "20250111.md"
+        note(a, "A", up="aa: [B](20250111.md)")
+        note(b, "B")
+        v2.sync_vault(root)
+        _u, dn = regions(b.read_text(encoding="utf-8"))
+        check("(aa):\n[A](20250104.md)" in dn, "初回 (aa): が自動ミラー")
+
+        note(a, "A", up="[B](20250111.md)")  # ラベルを消す
+        v2.sync_vault(root)
+        _u, dn = regions(b.read_text(encoding="utf-8"))
+        check("(aa)" not in dn and "[A](20250104.md)" in dn, "削除すると裸リンクに戻る")
+
+        note(a, "A", up="bb: [B](20250111.md)")  # 別のラベルに変更
+        v2.sync_vault(root)
+        _u, dn = regions(b.read_text(encoding="utf-8"))
+        check("(bb):\n[A](20250104.md)" in dn and "(aa)" not in dn,
+              "変更すると (bb): に追従")
+
+        # 手で別の言葉に書き換えたら sticky（もう自動追従しない）
+        b.write_text(b.read_text(encoding="utf-8").replace("(bb):", "手書き:"), encoding="utf-8")
+        v2.sync_vault(root)
+        _u, dn = regions(b.read_text(encoding="utf-8"))
+        check("手書き:\n[A](20250104.md)" in dn, "手書きラベルは sticky のまま")
+
+        note(a, "A")  # リンク自体を削除
+        v2.sync_vault(root)
+        _u, dn = regions(b.read_text(encoding="utf-8"))
+        check("[A](20250104.md)" not in dn, "リンクを消すと相手側からも消える")
+
+
 def test_hand_written_label_before_first_sync_is_respected() -> None:
     print("sync: 初回 sync 前から両側に別々の言葉が手書きされていても、そのまま尊重する")
     with tempfile.TemporaryDirectory() as d:

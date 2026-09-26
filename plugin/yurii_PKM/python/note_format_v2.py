@@ -528,15 +528,17 @@ def _render_down_preserving(note: Note, key_fn) -> list[str] | None:
 
     out: list[str] = []
     used: set = set()
-    pending: str | None = None   # 直近の見出し行（リンクが来たら確定して出す）
-    pending_open = False
+    prev_label: str | None = None  # 直前に出したリンクのラベル
 
-    def flush_pending() -> None:
-        nonlocal pending, pending_open
-        if pending is not None and not pending_open:
-            out.append(pending)  # リンクが続かなかった見出しは元のまま
-        pending = None
-        pending_open = False
+    def emit_link(disp: str, tg: str, ann: str | None, label: str) -> None:
+        nonlocal prev_label
+        if label != prev_label:
+            hl = header_line(label)
+            if hl is not None:
+                out.append(hl)
+            prev_label = label
+        t = f"[{disp}]({tg})"
+        out.append(t + f" — {ann}" if ann else t)
 
     for i, ln in enumerate(raw):
         s = ln.strip()
@@ -546,50 +548,33 @@ def _render_down_preserving(note: Note, key_fn) -> list[str] | None:
             if k is not None and k in desired and k not in used:
                 used.add(k)
                 disp, _tg, ann, label = desired[k]
-                if pending is not None and not pending_open:
-                    hl = header_line(label)
-                    if hl is not None:
-                        out.append(hl)
-                    pending_open = True
                 ann2 = ann if ann else (lm.group(3) or None)
-                t = f"[{disp}]({lm.group(2)})"
-                out.append(t + f" — {ann2}" if ann2 else t)
+                emit_link(disp, lm.group(2), ann2, label)
                 continue
             if k is not None:
-                continue  # 消えた関係 or 重複
-            # 解決できないリンクはそのまま残す
-            flush_pending()
-            out.append(ln)
+                continue  # 消えた関係 / 重複
+            out.append(ln)  # 解決できないリンクはそのまま残す
+            prev_label = None
             continue
         # リンク行以外（空行・見出し・散文）
-        flush_pending()
         m = HEADER_RE.match(s)
         if m and _looks_like_header(m, raw, i):
-            pending = ln
-            continue
+            continue  # 管理対象の見出しはスキップ（リンク直前に出す）
         out.append(ln)
-        # 見出し行内のインラインリンクも使用済みに記録
+        if s != "":
+            prev_label = None  # 散文などでブロックが切れる
         for mm in ANY_LINK_RE.finditer(ln):
             kk = key_fn(mm.group(1))
             if kk is not None and kk in desired:
                 used.add(kk)
-    flush_pending()
 
-    added: list[str] = []
     for k, (disp, tg, ann, label) in desired.items():
         if k in used:
             continue
-        hl = header_line(label)
-        if hl is not None and added and added[-1] != "":
-            added.append("")
-        if hl is not None:
-            added.append(hl)
-        t = f"[{disp}]({tg})"
-        added.append(t + f" — {ann}" if ann else t)
-    if added:
-        if out and out[-1].strip() != "":
+        used.add(k)
+        if label != prev_label and out and out[-1].strip() != "":
             out.append("")
-        out += added
+        emit_link(disp, tg, ann, label)
     return out
 
 
@@ -863,18 +848,21 @@ def sync_vault(root) -> int:
         base = raw[:-1] if raw.endswith(":") else raw  # `group:` -> `group`
         return base if base == "ノート" else f"({base})"
 
+    def _is_mirror(lbl: str) -> bool:
+        """相手側の自動ミラー表記 `(語)` かどうか。手打ちラベルと区別する。"""
+        return len(lbl) >= 2 and lbl.startswith("(") and lbl.endswith(")")
+
     def up_side_label(pair: tuple[str, str]) -> str:
         """sid 自身の こっちにとって 側を再構築する時のラベル判定。
 
-        sid 自身が既にその相手向けに書いている（up_label にある）なら、
-        それは sid 自身の主張なのでそのまま使う（再パースするたびに読み直す
-        だけなので、これが sticky にもなる）。sid 自身は何も書いていないなら、
-        相手（そっちにとって）の書き方に従う（`_mirrored_default`）。
+        - 既に自分で書いている（up_label）ラベルは sticky。ただし `(語)` の
+          括弧付き（＝相手側からの自動ミラー）は自分で消しても追従できるよう
+          自動扱いにし、相手の現在の書き方に従って更新・削除する。
+        - 既定 `ノート` のときに相手が `語:` で書いていればミラーして格上げ。
+        - 何も書いていなければ相手の書き方に従う（`_mirrored_default`）。
 
-        例外: sid 自身が attribute（グループ / 小グループ）を持つ容器ノードの
-        場合だけは、相手（そっちにとって）が書いた実際の関係名をそのまま使う
-        （§3: 容器ノード自身の関係表示は実際に選んだ関係名のまま、という
-        既存の非対称ルールを、通常と逆方向＝容器側から見た場合にも保つ）。
+        例外: sid 自身が attribute（group）を持つ容器ノードの場合は、相手が
+        書いた実際の関係名をそのまま使う（§3 の非対称ルールを逆方向にも保つ）。
         """
         sid = pair[0]
         if attr_of.get(sid) in ATTR_LABELS:
@@ -882,9 +870,9 @@ def sync_vault(root) -> int:
         if pair in up_label:
             cur = up_label[pair]
             mirrored = _mirrored_default(down_label.get(pair))
-            # 既定 `ノート` のままなら、相手側が `語:` で書いたラベルをミラーして
-            # 格上げする（相手が後から `資料:` 等に変えたのに、こちらが既定の
-            # ままだと反映されないため）。手で別ラベルにしていれば sticky。
+            if _is_mirror(cur):
+                # 自動ミラーは相手の現在の書き方に追従（変更・削除も反映）
+                return mirrored
             if cur == "ノート" and mirrored != "ノート":
                 return mirrored
             return cur
@@ -990,7 +978,15 @@ def sync_vault(root) -> int:
                     # へ戻す（そうしないと一度ミラーされたラベルが消せない）。
                     lbl = "ノート"
                 elif a in orig_down_label:
-                    lbl = orig_down_label[a]
+                    cur = orig_down_label[a]
+                    if _is_mirror(cur):
+                        # 自動ミラー `(語)` は相手の現在の書き方に追従（変更・削除も）
+                        lbl = _mirrored_default(src_raw)
+                    elif cur == "ノート" and _mirrored_default(src_raw) != "ノート":
+                        # 既定の裸リンクは、相手が `語:` に変えたら自動ミラーへ格上げ
+                        lbl = _mirrored_default(src_raw)
+                    else:
+                        lbl = cur  # 手で書いたラベルは sticky
                 elif attr_of.get(nid) in ATTR_LABELS:
                     # §3 の例外: 容器ノード自身の そっちにとって には、実際に
                     # 選んだ関係名がそのまま並ぶ（ノート の既定値に落とさない）。
