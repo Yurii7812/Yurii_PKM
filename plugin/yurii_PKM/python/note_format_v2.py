@@ -188,6 +188,15 @@ def _parse_sections(lines: list[str], allow_body: bool):
             i += 1
             continue
         lm = LINK_LINE_RE.match(s)
+        if lm and cur is None and not allow_body:
+            # 見張りの直下にラベル無しで書かれたリンクは、既定の `ノート:`
+            # （特別な役割の無い関係）とみなす。手でリンクだけ書いた子/親も
+            # 相方へちゃんと反映されるようにするため（旧 v1 的な書き方の救済）。
+            cur = "ノート"
+            sections.setdefault(cur, [])
+            sections[cur].append((lm.group(1), lm.group(2), lm.group(3) or None))
+            i += 1
+            continue
         if lm and cur is not None:
             sections[cur].append((lm.group(1), lm.group(2), lm.group(3) or None))
             i += 1
@@ -793,17 +802,24 @@ def sync_vault(root) -> int:
             for (a, forced) in incoming.get(nid, []):
                 if (nid, a) in present:  # 相互は下側に出さない
                     continue
+                src_raw = up_label.get((a, nid)) or down_label.get((a, nid))
                 if forced:
                     lbl = CATEGORY_ATTR
+                elif src_raw is not None and src_raw.endswith(";"):
+                    # 相手（a）が `語;` で書いている = 「このラベルは相手側に
+                    # 見せない」の意（§4）。既に自動ミラーで入った行が残って
+                    # いても、sticky より `;` の意図を優先して既定の『ノート』
+                    # へ戻す（そうしないと一度ミラーされたラベルが消せない）。
+                    lbl = "ノート"
                 elif a in orig_down_label:
                     lbl = orig_down_label[a]
                 elif attr_of.get(nid) in ATTR_LABELS:
                     # §3 の例外: 容器ノード（グループ / 小グループ）自身の
                     # そっちにとって には、実際に選んだ関係名がそのまま並ぶ
                     # （ノート の既定値に落とさない）。
-                    lbl = up_label.get((a, nid)) or down_label.get((a, nid)) or "ノート"
+                    lbl = src_raw or "ノート"
                 else:
-                    lbl = _mirrored_default(up_label.get((a, nid)) or down_label.get((a, nid)))
+                    lbl = _mirrored_default(src_raw)
                 by_lbl.setdefault(lbl, []).append(a)
             for (a, t, b) in present_sym:
                 other = b if a == nid else (a if b == nid else None)

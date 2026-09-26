@@ -135,6 +135,41 @@ def test_semicolon_suppresses_auto_mirror() -> None:
               "`;` なので相手側は自動ミラーされず既定の『ノート』のまま")
 
 
+def test_semicolon_clears_previous_mirrored_label() -> None:
+    print("sync: 相手側に既に自動ミラー行があっても、`;` に変えたら既定の『ノート』へ戻す")
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        note(root / "20250104.md", "A", up="きっかけ: [B](20250111.md)")
+        note(root / "20250111.md", "B")
+        v2.sync_vault(root)
+        b = root / "20250111.md"
+        check("(きっかけ):\n[A](20250104.md)" in regions(b.read_text(encoding="utf-8"))[1],
+              "まず `:` 終端なので括弧付きで自動ミラーされる")
+        # A が `;` 終端に変える = 「このラベルは相手側に見せない」の意。
+        note(root / "20250104.md", "A", up="きっかけ; [B](20250111.md)")
+        v2.sync_vault(root)
+        _u, dn = regions(b.read_text(encoding="utf-8"))
+        check("きっかけ" not in dn, "相手側から『きっかけ』が消える")
+        check("ノート:\n[A](20250104.md)" in dn,
+              "`;` なので相手側は既定の『ノート』へ戻る（sticky より優先）")
+
+
+def test_bare_link_under_marker_defaults_to_note() -> None:
+    print("sync: 見張りの直下にラベル無しで書いたリンクは既定の『ノート』として相方へ反映")
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        note(root / "20250104.md", "A")
+        (root / "20250111.md").write_text(
+            f"---\ntime: 2026-01-01 00:00:00\ntitle: B\n---\n\n# B\n\n本文。\n\n"
+            f"{UP_MARK}\n{DOWN_MARK}\n[A](20250104.md)\n",
+            encoding="utf-8",
+        )
+        v2.sync_vault(root)
+        up_a, _ = regions((root / "20250104.md").read_text(encoding="utf-8"))
+        check("ノート:\n[B](20250111.md)" in up_a,
+              "ラベル無しリンクでも A の上側に ノート: B が入る（親子が反映される）")
+
+
 def test_kanren_down_edit_mirrors() -> None:
     print("sync: 関連 を下側に手書き → 相方の下側にも入る")
     with tempfile.TemporaryDirectory() as d:
