@@ -399,7 +399,10 @@ def _render_section(t: str, entries: list[tuple[str, str, str | None]]) -> list[
     if not entries:
         return []
     out: list[str] = []
-    if t != "ノート":  # `ノート;` など `;` 付きは明示なので見出しを残す
+    # 既定の `ノート` と強制ラベルの `グループ` は、位置（ブロック順）で
+    # 分かるので見出しを書かない。`グループ;` / `ノート;` のように `;` を
+    # 明示した時だけ見出しを残す（自動ミラー抑止の意思表示のため）。
+    if t not in ("ノート", "グループ"):
         # ラベルが `;` 終端（例: `きっかけ;`）ならそのまま、それ以外は `:` を付ける。
         out.append(t if t.endswith(";") else f"{t}:")
     for ti, tg, ann in entries:
@@ -867,11 +870,21 @@ def sync_vault(root) -> int:
                 other = b if a == nid else (a if b == nid else None)
                 if other is not None:
                     by_lbl.setdefault(t, []).append(other)
-            # セクションの並びも sticky にする: 既存ラベルはファイル内の元の
-            # 順序のまま、新規に増えたラベルだけ末尾に足す（RELATIONS の
-            # 固定順には戻さない）。
-            ordered_lbls = [l for l in orig_label_order if l in by_lbl]
-            ordered_lbls += [l for l in by_lbl if l not in orig_label_order]
+            # セクションの並びは基本 sticky（既存ラベルはファイル内の元の順、
+            # 新規は末尾）。ただし `グループ` だけは常に先頭に固定する ──
+            # `グループ` と既定 `ノート` はどちらも見出し無しの裸リンクなので、
+            # パースすると 1 つの `ノート` に融合し、順序が保存されない。
+            # 先頭固定にしておくと「グループが上、ノートが下」で安定する
+            # （これが無いと初回 sync で並びが一度入れ替わってしまう）。
+            ordered_lbls = [CATEGORY_ATTR] if CATEGORY_ATTR in by_lbl else []
+            ordered_lbls += [
+                l for l in orig_label_order
+                if l in by_lbl and l != CATEGORY_ATTR
+            ]
+            ordered_lbls += [
+                l for l in by_lbl
+                if l not in orig_label_order and l != CATEGORY_ATTR
+            ]
             for lbl in ordered_lbls:
                 srcs = by_lbl[lbl]
                 new_down[lbl] = [
