@@ -3693,14 +3693,10 @@ function! yurii_pkm#note_template(title, ...) abort
   endif
   call add(l:header, '---')
   if s:pkm_format() ==# 'v2'
-    return l:header + [
-          \ '',
-          \ '# ' . a:title,
-          \ '',
-          \ '',
-          \ s:v2_up_mark,
-          \ s:v2_down_mark,
-          \ ]
+    " 普通のノート（zn）は本文の余白を 2 行、グループノート（zk）は 1 行だけ空ける
+    " （グループは容器で本文を持たないため）。
+    let l:gap = l:is_cat ? [''] : ['', '']
+    return l:header + ['', '# ' . a:title] + l:gap + [s:v2_up_mark, s:v2_down_mark]
   endif
   return l:header + [
         \ '',
@@ -4534,8 +4530,9 @@ function! s:v2_new_interactive(attr) abort
   endif
   call yurii_pkm#push_history()
   execute 'edit ' . fnameescape(l:file)
+  " 本文入力位置へ。zn は余白 2 行なので 2 行下、zk（グループ）は 1 行下。
   let l:h1 = search('^#\s', 'nw')
-  if l:h1 > 0 | call cursor(l:h1 + 2, 1) | endif
+  if l:h1 > 0 | call cursor(l:h1 + (empty(a:attr) ? 2 : 1), 1) | endif
   startinsert
 endfunction
 
