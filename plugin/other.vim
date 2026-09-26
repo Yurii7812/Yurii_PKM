@@ -127,6 +127,16 @@ function! s:windows_file_uri(path) abort
   return 'file:///' . l:uri
 endfunction
 
+" 外部コマンドを端末に縛られず起動する（Vim 終了時に巻き込まれないよう
+" job_start を使う。無ければ shell のバックグラウンド）。
+function! s:spawn(cmd) abort
+  if has('job') && has('channel')
+    call job_start(a:cmd, {'in_io': 'null', 'out_io': 'null', 'err_io': 'null'})
+  else
+    call system(join(map(copy(a:cmd), 'shellescape(v:val)'), ' ') . ' >/dev/null 2>&1 &')
+  endif
+endfunction
+
 " 既定アプリで開く。WSL では Windows 側の既定ブラウザを使う。
 function! s:open_with_default_app(path) abort
   let l:path = empty(a:path) ? expand('%:p') : a:path
@@ -137,7 +147,7 @@ function! s:open_with_default_app(path) abort
 
   if s:is_wsl()
     if executable('wslview')
-      call system('wslview ' . shellescape(l:path) . ' >/dev/null 2>&1 &')
+      call s:spawn(['wslview', l:path])
       return
     endif
 
@@ -152,13 +162,45 @@ function! s:open_with_default_app(path) abort
       return
     endif
     let l:uri = s:windows_file_uri(l:winpath)
-    call system('cmd.exe /C start "" ' . shellescape(l:uri) . ' >/dev/null 2>&1')
+    call s:spawn(['cmd.exe', '/C', 'start', '', l:uri])
+    return
+  endif
+
+  if executable('xdg-open')
+    call s:spawn(['xdg-open', l:path])
+  elseif executable('gio')
+    call s:spawn(['gio', 'open', l:path])
   else
-    call system('xdg-open ' . shellescape(l:path) . ' >/dev/null 2>&1 &')
+    echohl WarningMsg | echom 'open-default: xdg-open / gio が見つかりません' | echohl None
   endif
 endfunction
 
-nnoremap <silent> gm :<C-u>call <SID>open_with_default_app(expand('%:p'))<CR>
+" gm: カーソル下の URL / Markdown リンクを既定アプリで開く。
+" URL が無ければ現在のファイルを既定アプリで開く。
+function! s:open_default_for_cursor() abort
+  let l:line = getline('.')
+  let l:url = matchstr(l:line, 'https\?://[^ \t)>"''\]]\+')
+  if !empty(l:url)
+    call s:open_with_default_app(l:url)
+    return
+  endif
+  let l:mt = matchlist(l:line, '\[[^]]*\](\([^)]\+\))')
+  if !empty(l:mt)
+    let l:target = substitute(l:mt[1], '#.*$', '', '')
+    if l:target =~? '^https\?://'
+      call s:open_with_default_app(l:target)
+      return
+    endif
+    let l:fp = fnamemodify(expand('%:p:h') . '/' . l:target, ':p')
+    if filereadable(l:fp)
+      call s:open_with_default_app(l:fp)
+      return
+    endif
+  endif
+  call s:open_with_default_app(expand('%:p'))
+endfunction
+
+nnoremap <silent> gm :<C-u>call <SID>open_default_for_cursor()<CR>
 
 " すべての変更済みバッファを保存するショートカット
 nnoremap \w :wa<CR>
