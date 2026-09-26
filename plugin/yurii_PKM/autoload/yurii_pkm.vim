@@ -4241,16 +4241,15 @@ function! yurii_pkm#v2_add_link(...) abort
 
   " 表示名: 対象にグループ / 小グループ属性のファイルが含まれるなら、
   " その表示名の付け方を聞く（複数あれば「一つずつ入力」か「タイトルのまま」を先に選ぶ）。
+  " ただし呼び出し側が関係を固定している（za など）ときは表示名を一切聞かず、
+  " 相手のタイトルのまま追加する（複数対象でもピッカーを出さない）。
   let l:manual_name = !empty(l:attr_targets) && len(l:attr_targets) == 1
-  if !empty(l:attr_targets) && len(l:attr_targets) > 1
+  if !empty(l:rel_fixed)
+    let l:manual_name = 0
+  elseif !empty(l:attr_targets) && len(l:attr_targets) > 1
     let l:nm = s:v2_pick('属性ノートの表示名', ['一つずつ入力', 'タイトルのまま'])
     if l:nm ==# '' | echo 'yurii_PKM: キャンセル' | return | endif
     let l:manual_name = (l:nm ==# '一つずつ入力')
-  endif
-  " 呼び出し側が関係を固定している（za など）ときは表示名を聞かず、
-  " そのまま（相手のタイトルで）追加する。
-  if !empty(l:rel_fixed)
-    let l:manual_name = 0
   endif
 
   let l:cur_path  = expand('%:p')
