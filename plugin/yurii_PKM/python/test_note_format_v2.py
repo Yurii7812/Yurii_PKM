@@ -154,6 +154,27 @@ def test_semicolon_clears_previous_mirrored_label() -> None:
               "`;` なので相手側は既定の裸リンクへ戻る（sticky より優先）")
 
 
+def test_group_label_colon_and_semicolon() -> None:
+    print("group: は相手側に (group) でミラー、group; は相手側に書かない")
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        note(root / "20250104.md", "A", up="group: [B](20250111.md)")
+        note(root / "20250111.md", "B")
+        v2.sync_vault(root)
+        up, _dn = regions((root / "20250104.md").read_text(encoding="utf-8"))
+        _u, dn = regions((root / "20250111.md").read_text(encoding="utf-8"))
+        check("group:" in up and "[B](20250111.md)" in up, "書いた側は group: のまま")
+        check("(group):" in dn and "[A](20250104.md)" in dn, "相手側は (group): でミラー")
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        note(root / "20250104.md", "A", up="group; [B](20250111.md)")
+        note(root / "20250111.md", "B")
+        v2.sync_vault(root)
+        _u, dn = regions((root / "20250111.md").read_text(encoding="utf-8"))
+        check("group" not in dn and "[A](20250104.md)" in dn,
+              "group; は相手側には書かない（裸リンク）")
+
+
 def test_bare_link_under_marker_defaults_to_note() -> None:
     print("sync: 見張りの直下にラベル無しで書いたリンクは既定の『ノート』として相方へ反映")
     with tempfile.TemporaryDirectory() as d:

@@ -376,7 +376,7 @@ function! s:index_template() abort
         \ '---',
         \ 'time: ' . yurii_pkm#timestamp_yaml(),
         \ 'title: Index',
-        \ ] + (l:v2 ? ['attribute: グループ'] : []) + [
+        \ ] + (l:v2 ? ['attribute: group'] : []) + [
         \ '---',
         \ '',
         \ '# Index',
@@ -3689,7 +3689,7 @@ function! yurii_pkm#note_template(title, ...) abort
         \ 'title: ' . a:title,
         \ ]
   if l:is_cat
-    call add(l:header, 'attribute: グループ')
+    call add(l:header, 'attribute: group')
   endif
   call add(l:header, '---')
   if s:pkm_format() ==# 'v2'
@@ -3728,7 +3728,7 @@ let s:v2_relations_attr = ['ノート', '補足', '資料', '関連']
 
 " 関係ごとの向きの制約。0 = こっちにとって側のみ / 1 = そっちにとって側のみ / -1 = 制約なし
 function! s:v2_relation_side(rel) abort
-  if a:rel ==# 'グループ' | return 0 | endif
+  if a:rel ==# 'group' | return 0 | endif
   if a:rel ==# '関連'     | return 1 | endif
   return -1
 endfunction
@@ -3860,9 +3860,10 @@ endfunction
 " 旧名（カテゴリー / キーワード / 小グループ）はすべて グループ へ読み替える。
 " 既存ノートの front matter はそのままでも、機能としては新しい規則で動く。
 function! s:v2_normalize_attr(v) abort
-  if a:v ==# 'カテゴリー' | return 'グループ' | endif
-  if a:v ==# 'キーワード' | return 'グループ' | endif
-  if a:v ==# '小グループ' | return 'グループ' | endif
+  if a:v ==# 'グループ' | return 'group' | endif
+  if a:v ==# 'カテゴリー' | return 'group' | endif
+  if a:v ==# 'キーワード' | return 'group' | endif
+  if a:v ==# '小グループ' | return 'group' | endif
   return a:v
 endfunction
 
@@ -4285,10 +4286,10 @@ function! s:v2_new_related(below, attr, ...) abort
   " 等）は常に括弧付きで書く。書かない場合は新ノートへは何も書かず（sync が
   " 既定の『ノート』を生成する）、代わりに現ノート側を `;` 終端で書く
   " （sync の自動ミラー対象外にするため。ca/at と同じ規約。§4）。
-  let l:forced_group = a:below ? !empty(l:cur_attr) : (l:cur_attr ==# 'グループ')
+  let l:forced_group = a:below ? !empty(l:cur_attr) : (l:cur_attr ==# 'group')
   let l:own_write_rel = l:rel
   if l:forced_group
-    let l:back_rel = 'グループ'
+    let l:back_rel = 'group'
   elseif s:v2_is_custom_relation(l:rel) && !s:v2_is_menu_relation(l:rel)
     if l:write
       let l:back_rel = '(' . l:rel . ')'
@@ -4361,7 +4362,7 @@ endfunction
 
 " zw は廃止して zk（グループノート）に置き換え。互換のため名前だけ残す。
 function! yurii_pkm#v2_new_attr() abort
-  call s:v2_new_interactive('グループ')
+  call s:v2_new_interactive('group')
 endfunction
 
 " pe: 現ノートを起点に 親/子/文中 を辿って 1 つの展開ファイルへ集約する。
@@ -4475,7 +4476,7 @@ endfunction
 
 " zk: グループノート作成（attribute: グループ）。位置は zn と同じ h/Enter/o/p。
 function! yurii_pkm#v2_new_group() abort
-  call s:v2_new_interactive('グループ')
+  call s:v2_new_interactive('group')
 endfunction
 
 " zn / zk の共通本体。

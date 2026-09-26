@@ -63,17 +63,20 @@ import sys
 from pathlib import Path
 
 RELATIONS: tuple[str, ...] = (
-    "グループ", "小グループ", "索引", "前提", "論点", "見解", "ノート", "関連", "補足", "資料",
+    "group", "索引", "前提", "論点", "見解", "ノート", "関連", "補足", "資料",
 )
-# 関係名の読み替え（既定は無し。グループ: はそのまま残す）
-RELATION_ALIASES: dict[str, str] = {"ワード": "キーワード"}
-# ノード属性: `attribute: グループ`（容器ノートの印）。小グループ / 大グループの
-# 区別は廃止し、グループはグループに一本化した。
+# 関係名の読み替え
+RELATION_ALIASES: dict[str, str] = {
+    "ワード": "キーワード",
+    "グループ": "group",
+    "小グループ": "group",
+}
+# ノード属性: `attribute: group`（容器ノートの印）。表記は英語 `group` に統一。
+# 旧 グループ / 小グループ / カテゴリー / キーワード はすべて `group` として扱う。
 ATTR_KEYS = ("attribute", "属性")
-CATEGORY_ATTR = "グループ"  # attribute の値 / 関係名でもある
-# 旧 小グループ（および カテゴリー / キーワード）はすべて `グループ` として扱う
-# （既存ノートの front matter 自体は書き換えない）。
+CATEGORY_ATTR = "group"  # attribute の値 / 内部ラベル
 ATTR_ALIASES: dict[str, str] = {
+    "グループ": CATEGORY_ATTR,
     "カテゴリー": CATEGORY_ATTR,
     "キーワード": CATEGORY_ATTR,
     "小グループ": CATEGORY_ATTR,
@@ -175,9 +178,16 @@ def _looks_like_header(m: re.Match, lines: list[str], idx: int) -> bool:
 
 def _header_label(m: re.Match) -> str:
     """HEADER_RE のマッチから内部ラベル文字列を作る。`;` 終端なら末尾に `;` を
-    残す（例: `きっかけ;` -> `きっかけ;`）。エイリアス変換は素の語に対して行う。"""
+    残す（例: `きっかけ;` -> `きっかけ;`）。エイリアス変換は素の語に対して行う。
+
+    `group` だけは位置（先頭ブロックの裸リンク）でも表せる。明示的に `group:`
+    と書いた場合は、裸（位置）の `group` と区別して `group:` を残す ── そう
+    しないと `:` の「相手に `(group)` でミラー」が効かなくなるため。
+    """
     name = RELATION_ALIASES.get(m.group(1).strip(), m.group(1).strip())
-    return name if m.group(2) == ":" else name + ";"
+    if m.group(2) == ":":
+        return name + ":" if name == CATEGORY_ATTR else name
+    return name + ";"
 
 
 def _parse_sections(lines: list[str], allow_body: bool):
@@ -411,9 +421,10 @@ def _render_section(t: str, entries: list[tuple[str, str, str | None]]) -> list[
     # 既定の `ノート` と強制ラベルの `グループ` は、位置（ブロック順）で
     # 分かるので見出しを書かない。`グループ;` / `ノート;` のように `;` を
     # 明示した時だけ見出しを残す（自動ミラー抑止の意思表示のため）。
-    if t not in ("ノート", "グループ"):
-        # ラベルが `;` 終端（例: `きっかけ;`）ならそのまま、それ以外は `:` を付ける。
-        out.append(t if t.endswith(";") else f"{t}:")
+    if t not in ("ノート", CATEGORY_ATTR):
+        # ラベルが `;` / `:` 終端（例: `きっかけ;` / `group:`）ならそのまま、
+        # それ以外は `:` を付ける。
+        out.append(t if (t.endswith(";") or t.endswith(":")) else f"{t}:")
     for ti, tg, ann in entries:
         s = f"[{ti}]({tg})"
         out.append(s + f" — {ann}" if ann else s)
@@ -509,9 +520,11 @@ def _render_down_preserving(note: Note, key_fn) -> list[str] | None:
             desired.setdefault(key(tg), (disp, tg, ann, label))
 
     def header_line(label: str) -> str | None:
-        if label in ("ノート", "グループ"):
-            return None  # 見出しを書かない
-        return label if label.endswith(";") else f"{label}:"
+        if label in ("ノート", CATEGORY_ATTR):
+            return None  # 見出しを書かない（位置で表す裸リンク）
+        if label.endswith(";") or label.endswith(":"):
+            return label
+        return f"{label}:"
 
     out: list[str] = []
     used: set = set()
@@ -847,7 +860,8 @@ def sync_vault(root) -> int:
         """
         if raw is None or raw.endswith(";"):
             return "ノート"
-        return raw if raw == "ノート" else f"({raw})"
+        base = raw[:-1] if raw.endswith(":") else raw  # `group:` -> `group`
+        return base if base == "ノート" else f"({base})"
 
     def up_side_label(pair: tuple[str, str]) -> str:
         """sid 自身の こっちにとって 側を再構築する時のラベル判定。
@@ -888,10 +902,17 @@ def sync_vault(root) -> int:
         sid = ids.get(k)
         if sid is None:
             continue
-        # 相手（b）が attribute 持ち（カテゴリー / キーワードどちらでも）なら、
-        # 値に関わらず自分の こっちにとって は常に `カテゴリー:`。
-        outgoing = [(b, (CATEGORY_ATTR if b in attr_of else up_side_label((sid, b))))
-                    for (a, b) in present if a == sid]
+        # 相手（b）が attribute 持ち（group）でも、こちら側に明示ラベルがあれば
+        # それを尊重する。裸（既定ノート）のときだけグループ扱い（先頭の裸リンク）
+        # にする ── こうしないと、グループ宛に `aa:` と書いても `(aa)` に
+        # ミラーされず、`:` / `;` が効かなくなる。
+        def _up_label_for(b: str) -> str:
+            lbl = up_side_label((sid, b))
+            if b in attr_of and lbl == "ノート":
+                return CATEGORY_ATTR
+            return lbl
+
+        outgoing = [(b, _up_label_for(b)) for (a, b) in present if a == sid]
         # 既存の並び順と、手で打った表示名を尊重
         order: list[str] = []
         orig_title: dict[str, str] = {}
