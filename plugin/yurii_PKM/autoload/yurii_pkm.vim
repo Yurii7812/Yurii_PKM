@@ -3893,13 +3893,13 @@ endfunction
 
 " front matter 終端行と、本文側で末尾寄りの --- 2 本（上側開始 / 下側開始）を返す。
 " 2 本無ければ EOF に補って返す。本文中の --- は末尾 2 本にならないので無視される。
-let s:v2_up_mark   = 'Parent'
-let s:v2_down_mark = 'Child'
-" 旧見張り（新しい順: こっちにとって/そっちにとって -> している/されている）。
-" まだ移行していないノートも読めるように残す。sync（note_format_v2.py）が
-" 保存時に新表記（Parent/Child）へ書き換える。
-let s:v2_up_marks_legacy   = ['<!-- こっちにとって -->', '<!-- している -->']
-let s:v2_down_marks_legacy = ['<!-- そっちにとって -->', '<!-- されている -->']
+let s:v2_up_mark   = '## Parent'
+let s:v2_down_mark = '## Child'
+" 旧見張り（新しい順: `##` なしの Parent/Child -> こっちにとって/そっちにとって
+" -> している/されている）。まだ移行していないノートも読めるように残す。
+" sync（note_format_v2.py）が保存時に新表記（## Parent / ## Child）へ書き換える。
+let s:v2_up_marks_legacy   = ['Parent', '<!-- こっちにとって -->', '<!-- している -->']
+let s:v2_down_marks_legacy = ['Child', '<!-- そっちにとって -->', '<!-- されている -->']
 
 " Parent / Child の見張り行の行番号を返す。
 " 見張りはノート作成時（テンプレート）にだけ入る。無ければ [0, 0] を返し、

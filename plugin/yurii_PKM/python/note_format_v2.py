@@ -4,10 +4,11 @@
 詳細仕様は repo ルートの NOTE_FORMAT.md。要点:
 
 - ファイル名 = タイムスタンプのみ。front matter は time / title。
-- 本文の後、``Parent`` 見張り行から上側（これ＝このノートにとって そのノートが○○）。
-- ``Child`` 見張り行から下側（それ＝そのノートにとって このノートが○○）。
-  行全体がその 1 語だけ（コロンも中身も無い）。旧 v1 の ``Parent:``/``Child:``
-  （コロン付き・直後にリンク）とは別物。
+- 本文の後、``## Parent`` 見張り行から上側（これ＝このノートにとって そのノートが○○）。
+- ``## Child`` 見張り行から下側（それ＝そのノートにとって このノートが○○）。
+  行全体がそれだけ（コロンも中身も無い）。旧 v1 の ``Parent:``/``Child:``
+  （コロン付き・直後にリンク）とは別物。``##`` なしの旧 v2 見張り
+  （``Parent``/``Child``）も読める。
 - 関係: 索引 / 前提 / 論点 / 見解 / 関連 / ノート（既定）/ 自由入力。
   `グループ` は選ばない ── 相手が `attribute: グループ` / `attribute: 小グループ`
   のどちらでも、選んだ関係に関わらず自分側は自動で `グループ:` になる。
@@ -78,9 +79,11 @@ ATTR_LABELS: frozenset[str] = frozenset({CATEGORY_ATTR, KEYWORD_ATTR})  # attrib
 SYMMETRIC: frozenset[str] = frozenset({"関連"})
 BACKLINK = "バックリンク"
 
-UP_MARK = "Parent"
-DOWN_MARK = "Child"
-# 旧見張り（新しい順）。parse だけが読む。render は新表記（Parent/Child）に統一する。
+UP_MARK = "## Parent"
+DOWN_MARK = "## Child"
+# 旧見張り（新しい順）。parse だけが読む。render は新表記（## Parent / ## Child）に統一する。
+LEGACY_UP_MARK3 = "Parent"  # `##` なしの旧 v2 見張り
+LEGACY_DOWN_MARK3 = "Child"
 LEGACY_UP_MARK2 = "<!-- こっちにとって -->"
 LEGACY_DOWN_MARK2 = "<!-- そっちにとって -->"
 LEGACY_UP_MARK = "<!-- している -->"
@@ -280,15 +283,18 @@ def parse_note(path, text: str | None = None) -> Note:
 
     # sync が触るのは見張り 2 行を持つファイルだけ。
     # それ以外（旧 v1 / 旧 --- / 日記 / 素の散文）は managed=False で読むだけ。
-    # 見張りは新表記（Parent/Child）・旧表記（こっちにとって/そっちにとって の
-    # HTML コメント）・さらに旧い表記（している/されている）のどれでも読める。
+    # 見張りは新表記（## Parent / ## Child）・旧表記（`##` なしの Parent/Child）・
+    # 旧表記（こっちにとって/そっちにとって の HTML コメント）・さらに旧い表記
+    # （している/されている）のどれでも読める。
     # render は常に新表記で書き直す（＝次の sync で自動移行）。
     up_mark = UP_MARK if UP_MARK in stripped else (
-        LEGACY_UP_MARK2 if LEGACY_UP_MARK2 in stripped else (
-            LEGACY_UP_MARK if LEGACY_UP_MARK in stripped else None))
+        LEGACY_UP_MARK3 if LEGACY_UP_MARK3 in stripped else (
+            LEGACY_UP_MARK2 if LEGACY_UP_MARK2 in stripped else (
+                LEGACY_UP_MARK if LEGACY_UP_MARK in stripped else None)))
     down_mark = DOWN_MARK if DOWN_MARK in stripped else (
-        LEGACY_DOWN_MARK2 if LEGACY_DOWN_MARK2 in stripped else (
-            LEGACY_DOWN_MARK if LEGACY_DOWN_MARK in stripped else None))
+        LEGACY_DOWN_MARK3 if LEGACY_DOWN_MARK3 in stripped else (
+            LEGACY_DOWN_MARK2 if LEGACY_DOWN_MARK2 in stripped else (
+                LEGACY_DOWN_MARK if LEGACY_DOWN_MARK in stripped else None)))
     marked = up_mark is not None and down_mark is not None
     frozen = bool(re.search(
         r"^\s*(pkm\s*:\s*raw|sync\s*:\s*(?:false|off|no))\s*$",
@@ -321,6 +327,7 @@ def migrate_note(text: str, path: str = "note.md") -> str | None:
     fm, rest = _split_front_matter(raw)
     stripped = [ln.strip() for ln in rest]
     if (UP_MARK in stripped and DOWN_MARK in stripped) or (
+            LEGACY_UP_MARK3 in stripped and LEGACY_DOWN_MARK3 in stripped) or (
             LEGACY_UP_MARK2 in stripped and LEGACY_DOWN_MARK2 in stripped) or (
             LEGACY_UP_MARK in stripped and LEGACY_DOWN_MARK in stripped):
         return None
