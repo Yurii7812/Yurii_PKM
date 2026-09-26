@@ -307,6 +307,22 @@ def test_title_refresh_preserves_first_sync_customization() -> None:
               "手で違う名前に変えた後は、相手のタイトルが変わっても追従しない")
 
 
+def test_title_refresh_when_display_is_filename_before_first_sync() -> None:
+    print("sync: 表示名がファイル名（作成時の初期表示）なら、初回 sync 前に"
+          "タイトルを変えても追従する")
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        # 作成直後: 表示名もタイトルもファイル名（まだ sync していない）
+        note(root / "20250111.md", "20250111")
+        note(root / "20250104.md", "A", up="論点: [20250111](20250111.md)")
+        # sync 前にタイトルだけ変える（リンク表示名はファイル名のまま）
+        retitle(root / "20250111.md", "みかん")
+        v2.sync_vault(root)
+        a = (root / "20250104.md").read_text(encoding="utf-8")
+        check("[みかん](20250111.md)" in a,
+              "ファイル名表示は自動扱いで、新しいタイトルへ追従する")
+
+
 def test_subdir_relative_path() -> None:
     print("sync: サブフォルダ間は相対パス")
     with tempfile.TemporaryDirectory() as d:

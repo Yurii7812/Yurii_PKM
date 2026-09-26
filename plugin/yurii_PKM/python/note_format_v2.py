@@ -743,11 +743,20 @@ def _save_title_state(root: Path, titles: dict[str, str]) -> None:
 
 def _tracked_disp(target_id: str, written: str | None, now_title: str,
                    prev_titles: dict[str, str]) -> str:
-    """表示名の追従判定。今書かれている表示名(written)が前回 sync 時点での
-    相手のタイトルと同じ（＝手で変えていない）なら現タイトルへ追従させる。
-    違っていれば（＝手で変えた）そのまま残す。前回情報が無ければ追従させる。
+    """表示名の追従判定。今書かれている表示名(written)が自動生成されたもの
+    （＝手で変えていない）なら現タイトルへ追従させる。手で変えたものは残す。
+
+    自動生成とみなすのは次のいずれか:
+      - 表示名が無い
+      - 表示名が前回 sync 時点の相手タイトルと同じ（＝追従してきただけ）
+      - 表示名が相手のファイル名（拡張子なし）と同じ（＝作成時の初期表示）
+    最後の条件が大事で、初回 sync の前にタイトルを変えても追従できる
+    （前回タイトルの記録が無くても、ファイル名表示は手書きと区別できる）。
     """
-    if written is None or written == prev_titles.get(target_id):
+    if written is None:
+        return now_title
+    stem = Path(target_id).stem
+    if written == now_title or written == prev_titles.get(target_id) or written == stem:
         return now_title
     return written
 
