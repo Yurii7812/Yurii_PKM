@@ -383,9 +383,92 @@ function! s:index_template() abort
         \ '',
         \ ]
   if l:v2
-    return l:head + [s:v2_up_mark, s:v2_down_mark]
+    " Child に操作ガイドへのリンクを 1 本置く（ガイドは Index 作成時に生成）。
+    return l:head + [s:v2_up_mark, s:v2_down_mark, s:guide_link()]
   endif
   return l:head
+endfunction
+
+" Index 作成時に生成する操作ガイド。全コマンドを簡略にまとめる。
+let s:guide_name = 'yurii_pkm_guide.md'
+
+function! s:guide_link() abort
+  return '[yurii_pkm 操作ガイド](' . s:guide_name . ')'
+endfunction
+
+function! s:guide_template() abort
+  let l:title = 'yurii_pkm 操作ガイド'
+  let l:body = [
+        \ '## ノート作成',
+        \ '',
+        \ '- `zn` … ノート作成。位置キーを 1 つ選ぶ:',
+        \ '  `h`=カーソル直下（本文） / `Enter`=Child の最後尾 / `o`=リンク無し（孤立） / `p`=Parent の末尾',
+        \ '- `zk` … グループノート作成（`attribute: group`）。位置キーは `zn` と同じ',
+        \ '- `zh` … カーソル直下にリンク（本文扱い → 相手にはバックリンク）',
+        \ '',
+        \ '## リンク移動',
+        \ '',
+        \ '- `<Tab>` / `<S-Tab>` … 次の / 前のリンクへ',
+        \ '- `<CR>` … カーソル下のリンクを開く',
+        \ '- `<BS>` … 戻る ・ `<S-BS>` / `\.` … 進む ・ `_` … 直前のノートと往復',
+        \ '- `1`〜`9` / `0` … 本文→Parent/Child の通し番号のリンクを開く',
+        \ '',
+        \ '## ナビゲータ（<Space> / gs）',
+        \ '',
+        \ '- `<Space>` … 今のノートのリンク ・ `gs` … 全ノート検索',
+        \ '- `⇥` スコープ切替 / `i` 入力 / `⏎` 開く / `l` 潜る / `⌫`・`h` 戻る',
+        \ '- 入力中は記号もそのまま打てる（`-` など）',
+        \ '',
+        \ '## 関係の追加・編集',
+        \ '',
+        \ '- `ca` / `cu` / `at` / `bc` … クリップボードのリンクを関係付きで追加',
+        \ '- `za` … クリップボードを Child に追加（既定のノート関係）',
+        \ '- `pe` … 現ノート周辺を 1 つの md に展開',
+        \ '- `zt` / `zT` … タイトル変更 ・ `zl` / `zL` … リンク表示名の変更',
+        \ '- `zd` … Child のリンク表示名をリンク先タイトルに更新',
+        \ '',
+        \ '## ラベル記法（関係の接尾辞）',
+        \ '',
+        \ '- `語:` … 相手側は `(語):` でミラー',
+        \ '- `語:;` … 相手側も `語:;`（括弧なし）',
+        \ '- `語;` … 相手側には書かない',
+        \ '- `語::` … 両方の同じセクションに `語:`',
+        \ '- 見出し無しの裸リンクは、Parent の先頭ブロックが `group`、2 番目以降が `ノート`',
+        \ '',
+        \ '## 同期',
+        \ '',
+        \ '- 保存時に自動同期（`:UpdateMD` で全体を整合）',
+        \ '- 相手側のラベルは自動でミラー。括弧を外して手書きしたら sticky',
+        \ '',
+        \ '## ハブ',
+        \ '',
+        \ '- `\1`〜`\9` … ハブへ直行 ・ `\H` … 現在ノートを登録 ・ `\0` … 一覧',
+        \ ]
+  return [
+        \ '---',
+        \ 'time: ' . yurii_pkm#timestamp_yaml(),
+        \ 'title: ' . l:title,
+        \ '---',
+        \ '',
+        \ '# ' . l:title,
+        \ '',
+        \ ] + l:body + [
+        \ '',
+        \ s:v2_up_mark,
+        \ '[Index](index.md)',
+        \ s:v2_down_mark,
+        \ ]
+endfunction
+
+" index.md と操作ガイドをまとめて作る（ガイドは無ければ作る）。
+function! s:write_index_and_guide(root) abort
+  let l:index = s:index_path(a:root)
+  let l:guide = a:root . s:sep() . s:guide_name
+  if !filereadable(l:guide)
+    call writefile(s:guide_template(), l:guide)
+  endif
+  call writefile(s:index_template(), l:index)
+  call s:mark_index_created()
 endfunction
 
 function! s:setup_persistent_undo_for_root(root) abort
@@ -488,8 +571,7 @@ function! s:startup_recover_missing_root() abort
       call mkdir(l:new_root, 'p')
     endif
     call s:setup_persistent_undo_for_root(l:new_root)
-    call writefile(s:index_template(), l:index)
-    call s:mark_index_created()
+    call s:write_index_and_guide(l:new_root)
     call yurii_pkm#clear_title_cache()
     echom 'Created: ' . l:index
   endif
@@ -541,8 +623,7 @@ function! yurii_pkm#startup_restore_root() abort
     endif
     let l:index = s:index_path(l:root)
     call s:setup_persistent_undo_for_root(l:root)
-    call writefile(s:index_template(), l:index)
-    call s:mark_index_created()
+    call s:write_index_and_guide(l:root)
     call yurii_pkm#clear_title_cache()
     execute 'cd ' . fnameescape(l:root)
     if s:consume_index_created_flag()
@@ -590,8 +671,7 @@ function! s:setup_root_and_index(open_index) abort
   if !filereadable(l:index)
     let l:ans = tolower(trim(input('Create index.md? y/n: ')))
     if l:ans ==# 'y'
-      call writefile(s:index_template(), l:index)
-      call s:mark_index_created()
+      call s:write_index_and_guide(l:root)
       call yurii_pkm#clear_title_cache()
       echom 'Created: ' . l:index
     else
@@ -663,8 +743,7 @@ function! yurii_pkm#ensure_root_and_index() abort
     let l:index = s:index_path(l:root)
     let l:ans = tolower(trim(input('Create index.md? y/n: ')))
     if l:ans ==# 'y'
-      call writefile(s:index_template(), l:index)
-      call s:mark_index_created()
+      call s:write_index_and_guide(l:root)
       call yurii_pkm#clear_title_cache()
       echom 'Created: ' . l:index
       return l:root
