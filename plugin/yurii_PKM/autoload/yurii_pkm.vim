@@ -4499,7 +4499,7 @@ function! s:v2_new_interactive(attr) abort
   let l:ts  = yurii_pkm#timestamp_filename()
   let l:file = s:join_path(l:dir, l:ts . '.md')
 
-  echo 'h=カーソル直下 / Enter=Child末尾 / o=リンク無し(孤立) / p=Parent  (Esc/q キャンセル)'
+  echo 'h=カーソル直下 / o=リンク無し(孤立) / p=Parent / Enter=Child末尾  (Esc/q キャンセル)'
   let l:ch = nr2char(getchar())
   redraw
   if l:ch ==? 'q' || char2nr(l:ch) == 27 || char2nr(l:ch) == 3
@@ -4513,8 +4513,8 @@ function! s:v2_new_interactive(attr) abort
   let l:added = 0
   let l:save_ai = &autoindent | let l:save_si = &smartindent
   setlocal noautoindent nosmartindent
-  if l:ch ==# "\<CR>" || l:ch ==# "\<NL>"
-    call append(line('$'), l:link)      " Child の最後尾
+  if l:ch ==? 'h'
+    call append(line('.'), l:link)      " カーソル直下（本文）
     let l:added = 1
   elseif l:ch ==? 'p'
     let [l:up_m, l:dn_m] = s:v2_boundaries()
@@ -4522,10 +4522,11 @@ function! s:v2_new_interactive(attr) abort
       call append(l:dn_m - 1, l:link)   " Parent の末尾（## Child の直前）
       let l:added = 1
     endif
-  elseif l:ch ==? 'h'
-    call append(line('.'), l:link)      " カーソル直下（本文）
+  elseif l:ch ==# "\<CR>" || l:ch ==# "\<NL>"
+    call append(line('$'), l:link)      " Child の最後尾
     let l:added = 1
   endif
+  " o … リンク無し（孤立）
   let &autoindent = l:save_ai | let &smartindent = l:save_si
   silent noautocmd write
   if l:added

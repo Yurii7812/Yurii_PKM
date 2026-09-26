@@ -761,18 +761,13 @@ def sync_vault(root) -> int:
             return down_label.get(pair) or "ノート"
         return _mirrored_default(down_label.get(pair))
 
-    # --- 上側を再構築。相手が attribute 持ちなら自分側ラベルは常に `カテゴリー:` ---
-    # incoming[to] = [(from_id, forced)]。forced=True（カテゴリー属性による強制）
-    # だけは常に `カテゴリー:` を使う。forced=False は、下側の再構築時に
-    # 「sticky（既存の位置を尊重）／新規なら既定の `ノート`」の判定に使う
-    # （関係ラベルを機械的にミラーすると、方向性のある言葉（例: きっかけ）が相手側でも
-    # そのまま出て意味が通らないため、相手側の言葉は勝手に借りない）。
-    incoming: dict[str, list[tuple[str, bool]]] = {}
+    # --- 上側を再構築。相手が attribute 持ちなら自分側はグループ扱い（先頭表示） ---
+    # incoming[to] = [from_id]。下側の再構築では `グループ` を特別扱いしない
+    # （普通のノートとして扱う）。Child の並びは ユーザーが h/Enter/o/p や
+    # 手編集で決めるもので、sync は並べ替えない（sticky）。
+    incoming: dict[str, list[str]] = {}
     for (a, b) in present:
-        if attr_of.get(a) == CATEGORY_ATTR:
-            incoming.setdefault(b, []).append((a, True))
-        else:
-            incoming.setdefault(b, []).append((a, False))
+        incoming.setdefault(b, []).append(a)
 
     for k, n in by_path.items():
         sid = ids.get(k)
@@ -844,13 +839,15 @@ def sync_vault(root) -> int:
                 return orig_down_order.index(s) if s in orig_down_order else 1_000_000
 
             by_lbl: dict[str, list[str]] = {}
-            for (a, forced) in incoming.get(nid, []):
+            for a in incoming.get(nid, []):
                 if (nid, a) in present:  # 相互は下側に出さない
                     continue
                 src_raw = up_label.get((a, nid)) or down_label.get((a, nid))
-                if forced:
-                    lbl = CATEGORY_ATTR
-                elif src_raw is not None and src_raw.endswith(";"):
+                # 下側（Child）では `グループ` を普通のノートとして扱う。
+                # 位置をガチガチに固定するのは Parent（上側）の表示だけ。
+                if src_raw is not None and src_raw.rstrip(";") == CATEGORY_ATTR:
+                    src_raw = "ノート" + (";" if src_raw.endswith(";") else "")
+                if src_raw is not None and src_raw.endswith(";"):
                     # 相手（a）が `語;` で書いている = 「このラベルは相手側に
                     # 見せない」の意（§4）。既に自動ミラーで入った行が残って
                     # いても、sticky より `;` の意図を優先して既定の『ノート』
@@ -859,32 +856,24 @@ def sync_vault(root) -> int:
                 elif a in orig_down_label:
                     lbl = orig_down_label[a]
                 elif attr_of.get(nid) in ATTR_LABELS:
-                    # §3 の例外: 容器ノード（グループ / 小グループ）自身の
-                    # そっちにとって には、実際に選んだ関係名がそのまま並ぶ
-                    # （ノート の既定値に落とさない）。
+                    # §3 の例外: 容器ノード自身の そっちにとって には、実際に
+                    # 選んだ関係名がそのまま並ぶ（ノート の既定値に落とさない）。
                     lbl = src_raw or "ノート"
                 else:
                     lbl = _mirrored_default(src_raw)
+                if lbl.rstrip(";") == CATEGORY_ATTR:
+                    lbl = "ノート"  # 下側では グループ を普通のノートとして扱う
                 by_lbl.setdefault(lbl, []).append(a)
             for (a, t, b) in present_sym:
                 other = b if a == nid else (a if b == nid else None)
                 if other is not None:
                     by_lbl.setdefault(t, []).append(other)
-            # セクションの並びは基本 sticky（既存ラベルはファイル内の元の順、
-            # 新規は末尾）。ただし `グループ` だけは常に先頭に固定する ──
-            # `グループ` と既定 `ノート` はどちらも見出し無しの裸リンクなので、
-            # パースすると 1 つの `ノート` に融合し、順序が保存されない。
-            # 先頭固定にしておくと「グループが上、ノートが下」で安定する
-            # （これが無いと初回 sync で並びが一度入れ替わってしまう）。
-            ordered_lbls = [CATEGORY_ATTR] if CATEGORY_ATTR in by_lbl else []
-            ordered_lbls += [
-                l for l in orig_label_order
-                if l in by_lbl and l != CATEGORY_ATTR
-            ]
-            ordered_lbls += [
-                l for l in by_lbl
-                if l not in orig_label_order and l != CATEGORY_ATTR
-            ]
+            # Child の並びは基本 sticky（既存ラベルはファイル内の元の順、新規は
+            # 末尾）。`グループ` は下側では普通のノートに正規化済みなので、
+            # 既定リンクは 1 つの裸ブロックにまとまり、ユーザーが決めた並びのまま
+            # 保たれる。sync は並べ替えない（位置は h/Enter/o/p と手編集で決める）。
+            ordered_lbls = [l for l in orig_label_order if l in by_lbl]
+            ordered_lbls += [l for l in by_lbl if l not in orig_label_order]
             for lbl in ordered_lbls:
                 srcs = by_lbl[lbl]
                 new_down[lbl] = [
