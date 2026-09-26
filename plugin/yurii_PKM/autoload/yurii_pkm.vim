@@ -367,10 +367,14 @@ function! s:pkm_format() abort
   return get(g:, 'yurii_pkm_format', 'v2')
 endfunction
 
-function! s:index_template() abort
+" 索引テンプレート。a:with_guide が真のときだけ操作ガイドへのリンクを 1 本
+" 置く（ガイドを新規作成する初回のみ。既存ガイドの更新や、ディレクトリ移動で
+" Index を作り直すだけのときはリンクを付けない）。
+function! s:index_template(...) abort
   " index.md は全ノートの最上位の容器なので、v2 では最初から
   " attribute: グループ を付ける（無いと sync が index を容器と認識できず、
   " index に足したリンクが自動で グループ: ラベルにならない）。
+  let l:with_guide = a:0 ? a:1 : 0
   let l:v2 = s:pkm_format() ==# 'v2'
   let l:head = [
         \ '---',
@@ -383,8 +387,11 @@ function! s:index_template() abort
         \ '',
         \ ]
   if l:v2
-    " Child に操作ガイドへのリンクを 1 本置く（ガイドは Index 作成時に生成）。
-    return l:head + [s:v2_up_mark, s:v2_down_mark, s:guide_link()]
+    let l:body = [s:v2_up_mark, s:v2_down_mark]
+    if l:with_guide
+      let l:body += [s:guide_link()]
+    endif
+    return l:head + l:body
   endif
   return l:head
 endfunction
@@ -502,10 +509,14 @@ function! yurii_pkm#write_guide() abort
 endfunction
 
 " index.md と操作ガイドをまとめて作る（ガイドは常に最新へ）。
+" ガイドへのリンクは、ガイドを新規に作る初回だけ Index に置く。既にガイドが
+" あるとき（ディレクトリ移動で Index を作り直すときなど）はリンクしない。
 function! s:write_index_and_guide(root) abort
   let l:index = s:index_path(a:root)
+  let l:guide = fnamemodify(a:root, ':p') . s:sep() . s:guide_name
+  let l:first_guide = !filereadable(l:guide)
   call s:refresh_guide(a:root)
-  call writefile(s:index_template(), l:index)
+  call writefile(s:index_template(l:first_guide), l:index)
   call s:mark_index_created()
 endfunction
 
