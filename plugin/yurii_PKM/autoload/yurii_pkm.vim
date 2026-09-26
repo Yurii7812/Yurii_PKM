@@ -302,23 +302,6 @@ function! s:root_state_file() abort
   return s:state_dir() . s:sep() . 'root.txt'
 endfunction
 
-" 一時デバッグログ（原因特定したら削除する）
-function! s:debug_log(msg) abort
-  let l:dir = s:state_dir()
-  if !isdirectory(l:dir)
-    call mkdir(l:dir, 'p')
-  endif
-  call writefile([strftime('%Y-%m-%d %H:%M:%S') . ' ' . a:msg], l:dir . s:sep() . 'debug.log', 'a')
-endfunction
-
-function! yurii_pkm#debug_index_write_log() abort
-  if expand('%:t') !=# 'index.md'
-    return
-  endif
-  let l:has = match(join(getline(1, '$'), "\n"), '操作ガイド') >= 0
-  call s:debug_log('BufWritePre ' . expand('%:p') . ' has_guide_link=' . l:has)
-endfunction
-
 function! s:load_persisted_root() abort
   let l:file = s:root_state_file()
   if !filereadable(l:file)
@@ -385,8 +368,9 @@ function! s:pkm_format() abort
 endfunction
 
 " 索引テンプレート。a:with_guide が真のときだけ操作ガイドへのリンクを 1 本
-" 置く（ガイドを新規作成する初回のみ。既存ガイドの更新や、ディレクトリ移動で
-" Index を作り直すだけのときはリンクを付けない）。
+" 本文（## Parent の前）に置く。本文のリンクは sync が再生成しないので、
+" 自分で消せば復活せず、ディレクトリ移動で Index を作り直しても付かない。
+" 付けるのはガイドを新規作成する初回のみ。
 function! s:index_template(...) abort
   " index.md は全ノートの最上位の容器なので、v2 では最初から
   " attribute: グループ を付ける（無いと sync が index を容器と認識できず、
@@ -404,11 +388,11 @@ function! s:index_template(...) abort
         \ '',
         \ ]
   if l:v2
-    let l:body = [s:v2_up_mark, s:v2_down_mark]
+    let l:out = l:head
     if l:with_guide
-      let l:body += [s:guide_link()]
+      let l:out += [s:guide_link(), '']
     endif
-    return l:head + l:body
+    return l:out + [s:v2_up_mark, s:v2_down_mark]
   endif
   return l:head
 endfunction
@@ -472,6 +456,7 @@ function! s:guide_template() abort
         \ '---',
         \ 'time: ' . yurii_pkm#timestamp_yaml(),
         \ 'title: ' . l:title,
+        \ 'sync: false',
         \ '---',
         \ '',
         \ '# ' . l:title,
@@ -479,7 +464,6 @@ function! s:guide_template() abort
         \ ] + l:body + [
         \ '',
         \ s:v2_up_mark,
-        \ '[Index](index.md)',
         \ s:v2_down_mark,
         \ ]
 endfunction
@@ -532,7 +516,6 @@ function! s:write_index_and_guide(root) abort
   let l:index = s:index_path(a:root)
   let l:guide = fnamemodify(a:root, ':p') . s:sep() . s:guide_name
   let l:first_guide = !filereadable(l:guide)
-  call s:debug_log('write_index_and_guide root=' . a:root . ' first_guide=' . l:first_guide)
   call s:refresh_guide(a:root)
   call writefile(s:index_template(l:first_guide), l:index)
   call s:mark_index_created()

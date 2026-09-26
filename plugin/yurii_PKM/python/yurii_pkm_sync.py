@@ -179,21 +179,7 @@ def read_lines(path: Path) -> list[str]:
     return path.read_text(encoding="utf-8").splitlines()
 
 
-def _debug_log(msg: str) -> None:
-    try:
-        from pathlib import Path as _P
-        import time as _t
-        d = _P.home() / ".vim" / "yurii_pkm"
-        d.mkdir(parents=True, exist_ok=True)
-        with (d / "sync_debug.log").open("a", encoding="utf-8") as f:
-            f.write(_t.strftime("%Y-%m-%d %H:%M:%S") + " " + msg + "\n")
-    except Exception:
-        pass
-
-
 def write_lines(path: Path, lines: list[str]) -> None:
-    if path.name == "index.md" or any("操作ガイド" in ln for ln in lines):
-        _debug_log("write_lines " + str(path) + " guide_link=" + str(any("操作ガイド" in ln for ln in lines)))
     text = "\n".join(lines)
     if not text.endswith("\n"):
         text += "\n"
