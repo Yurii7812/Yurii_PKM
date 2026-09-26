@@ -302,6 +302,23 @@ function! s:root_state_file() abort
   return s:state_dir() . s:sep() . 'root.txt'
 endfunction
 
+" 一時デバッグログ（原因特定したら削除する）
+function! s:debug_log(msg) abort
+  let l:dir = s:state_dir()
+  if !isdirectory(l:dir)
+    call mkdir(l:dir, 'p')
+  endif
+  call writefile([strftime('%Y-%m-%d %H:%M:%S') . ' ' . a:msg], l:dir . s:sep() . 'debug.log', 'a')
+endfunction
+
+function! yurii_pkm#debug_index_write_log() abort
+  if expand('%:t') !=# 'index.md'
+    return
+  endif
+  let l:has = match(join(getline(1, '$'), "\n"), '操作ガイド') >= 0
+  call s:debug_log('BufWritePre ' . expand('%:p') . ' has_guide_link=' . l:has)
+endfunction
+
 function! s:load_persisted_root() abort
   let l:file = s:root_state_file()
   if !filereadable(l:file)
@@ -515,6 +532,7 @@ function! s:write_index_and_guide(root) abort
   let l:index = s:index_path(a:root)
   let l:guide = fnamemodify(a:root, ':p') . s:sep() . s:guide_name
   let l:first_guide = !filereadable(l:guide)
+  call s:debug_log('write_index_and_guide root=' . a:root . ' first_guide=' . l:first_guide)
   call s:refresh_guide(a:root)
   call writefile(s:index_template(l:first_guide), l:index)
   call s:mark_index_created()

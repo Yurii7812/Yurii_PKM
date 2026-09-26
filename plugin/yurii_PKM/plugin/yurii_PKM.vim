@@ -570,6 +570,12 @@ augroup yurii_pkm_guide_refresh
   autocmd VimEnter * ++once call yurii_pkm#refresh_guide()
 augroup END
 
+" 一時デバッグ: index.md 書き込み時にガイドリンクの有無を記録（原因特定したら削除）
+augroup yurii_pkm_debug_indexwrite
+  autocmd!
+  autocmd BufWritePre *index.md call yurii_pkm#debug_index_write_log()
+augroup END
+
 augroup yurii_pkm_startup_prefix_check
   autocmd!
 augroup END
