@@ -4235,6 +4235,11 @@ function! yurii_pkm#v2_add_link(...) abort
     if l:nm ==# '' | echo 'yurii_PKM: キャンセル' | return | endif
     let l:manual_name = (l:nm ==# '一つずつ入力')
   endif
+  " 呼び出し側が関係を固定している（za など）ときは表示名を聞かず、
+  " そのまま（相手のタイトルで）追加する。
+  if !empty(l:rel_fixed)
+    let l:manual_name = 0
+  endif
 
   let l:cur_path  = expand('%:p')
   let l:cur_title = yurii_pkm#current_title()
