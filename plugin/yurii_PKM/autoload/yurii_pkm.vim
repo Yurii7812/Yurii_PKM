@@ -456,7 +456,6 @@ function! s:guide_template() abort
         \ '---',
         \ 'time: ' . yurii_pkm#timestamp_yaml(),
         \ 'title: ' . l:title,
-        \ 'sync: false',
         \ '---',
         \ '',
         \ '# ' . l:title,
@@ -4072,7 +4071,9 @@ function! s:v2_insert_link_in_lines(lines, target_dir, rel, linktext, below) abo
   endfor
 
   if l:hdr == 0
-    call extend(l:lines, [s:v2_rel_header(a:rel), a:linktext], l:hi - 1)
+    " 既定の関係『ノート』は見出しを書かず裸リンクで置く。
+    let l:ins = (a:rel ==# 'ノート') ? [a:linktext] : [s:v2_rel_header(a:rel), a:linktext]
+    call extend(l:lines, l:ins, l:hi - 1)
     return {'lines': l:lines, 'ok': 1}
   endif
 
@@ -4154,11 +4155,13 @@ function! s:v2_insert_link(rel, linktext, ...) abort
   endfor
 
   if l:hdr == 0
-    " 常にブロック形（『ラベル:』の次行にリンク）。1 本でもインラインにしない。
+    " 既定の関係『ノート』は見出しを書かず裸リンクで置く（sync の正規形に
+    " 合わせる。`ノート:` を一旦挟まない）。それ以外はブロック形。
+    let l:ins = (a:rel ==# 'ノート') ? [a:linktext] : [s:v2_rel_header(a:rel), a:linktext]
     if l:below
-      call append(line('$'), [s:v2_rel_header(a:rel), a:linktext])
+      call append(line('$'), l:ins)
     else
-      call append(l:hi - 1, [s:v2_rel_header(a:rel), a:linktext])
+      call append(l:hi - 1, l:ins)
     endif
     return 1
   endif
