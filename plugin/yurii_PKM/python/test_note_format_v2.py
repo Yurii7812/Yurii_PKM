@@ -131,8 +131,8 @@ def test_semicolon_suppresses_auto_mirror() -> None:
         up, dn2 = regions((root / "20250104.md").read_text(encoding="utf-8"))
         _u, dn = regions((root / "20250111.md").read_text(encoding="utf-8"))
         check("論点;\n[問い](20250111.md)" in up, "書いた側はそのまま `論点;`")
-        check("ノート:\n[集中と気づき](20250104.md)" in dn,
-              "`;` なので相手側は自動ミラーされず既定の『ノート』のまま")
+        check("[集中と気づき](20250104.md)" in dn and "ノート:" not in dn,
+              "`;` なので相手側は既定の裸リンク（ノート: ラベル無し）のまま")
 
 
 def test_semicolon_clears_previous_mirrored_label() -> None:
@@ -150,8 +150,8 @@ def test_semicolon_clears_previous_mirrored_label() -> None:
         v2.sync_vault(root)
         _u, dn = regions(b.read_text(encoding="utf-8"))
         check("きっかけ" not in dn, "相手側から『きっかけ』が消える")
-        check("ノート:\n[A](20250104.md)" in dn,
-              "`;` なので相手側は既定の『ノート』へ戻る（sticky より優先）")
+        check("[A](20250104.md)" in dn and "ノート:" not in dn,
+              "`;` なので相手側は既定の裸リンクへ戻る（sticky より優先）")
 
 
 def test_bare_link_under_marker_defaults_to_note() -> None:
@@ -166,8 +166,8 @@ def test_bare_link_under_marker_defaults_to_note() -> None:
         )
         v2.sync_vault(root)
         up_a, _ = regions((root / "20250104.md").read_text(encoding="utf-8"))
-        check("ノート:\n[B](20250111.md)" in up_a,
-              "ラベル無しリンクでも A の上側に ノート: B が入る（親子が反映される）")
+        check("[B](20250111.md)" in up_a,
+              "ラベル無しリンクでも A の上側に裸リンク B が入る（親子が反映される）")
 
 
 def test_kanren_down_edit_mirrors() -> None:
@@ -362,7 +362,7 @@ def test_typed_link_from_down_side_suppresses_backlink() -> None:
         note(root / "20250111.md", "B")
         v2.sync_vault(root)
         up, dn = regions((root / "20250111.md").read_text(encoding="utf-8"))
-        check("ノート:\n[A](20250104.md)" in up, "B の こっちにとって に ノート: A は出る")
+        check("[A](20250104.md)" in up, "B の こっちにとって に裸リンク A は出る")
         check("バックリンク" not in dn, "B の そっちにとって に バックリンク: A は出さない（重複のため）")
 
 
@@ -586,8 +586,8 @@ def test_semicolon_on_new_pair_stays_plain_note() -> None:
         _u, dn = regions((root / "20250111.md").read_text(encoding="utf-8"))
         check("きっかけ;\n[就職について考え始めたきっかけ](20250111.md)" in up,
               "書いた側（A の上側）はそのまま『きっかけ;』")
-        check("ノート:\n[何もしないは苦痛だから](20250104.md)" in dn,
-              "相手側（B の下側）は `;` なので自動ミラーされず、既定の『ノート』のまま")
+        check("[何もしないは苦痛だから](20250104.md)" in dn and "ノート:" not in dn,
+              "相手側（B の下側）は `;` なので自動ミラーされず、既定の裸リンクのまま")
 
 
 def test_default_note_label_is_not_parenthesized() -> None:
@@ -598,7 +598,8 @@ def test_default_note_label_is_not_parenthesized() -> None:
         note(root / "20250111.md", "B")
         v2.sync_vault(root)
         _u, dn = regions((root / "20250111.md").read_text(encoding="utf-8"))
-        check("ノート:\n[A](20250104.md)" in dn, "『ノート』はそのまま『ノート:』（括弧なし）")
+        check("[A](20250104.md)" in dn and "ノート:" not in dn,
+              "既定の『ノート』はラベルを書かず裸リンクで出る")
         check("(ノート)" not in dn, "『(ノート)』のように括弧は付かない")
 
 
@@ -666,8 +667,8 @@ def test_semicolon_down_authored_stays_plain_note_on_up_side() -> None:
         note(root / "20250120.md", "C", down="論点; [A](20250104.md)")
         v2.sync_vault(root)
         up, _dn = regions((root / "20250104.md").read_text(encoding="utf-8"))
-        check("ノート:\n[C](20250120.md)" in up,
-              "C が `;` で書いたので、A の上側は自動ミラーされず既定の『ノート』のまま")
+        check("[C](20250120.md)" in up and "ノート:" not in up,
+              "C が `;` で書いたので、A の上側は自動ミラーされず既定の裸リンクのまま")
 
 
 def test_attribute_container_down_authored_keeps_picked_relation_on_own_up_side() -> None:
@@ -719,26 +720,26 @@ def test_down_section_order_is_sticky() -> None:
         a_path = root / "20250104.md"
         text1 = a_path.read_text(encoding="utf-8")
         _u, dn = regions(text1)
-        check("(索引):" in dn and "ノート:" in dn,
-              "索引は新規ペアなので (索引): として、ノートはそのまま反映される")
+        check("(索引):" in dn and "[C](20250120.md)" in dn,
+              "索引は新規ペアなので (索引): として、既定ノートは裸リンクで反映される")
 
         # 実際に生成された並びを取得し、手で逆順に並べ替える
-        idx_note = dn.index("ノート:")
+        idx_note = dn.index("[C](20250120.md)")
         idx_sk = dn.index("(索引):")
         first_is_note = idx_note < idx_sk
-        block_note = "ノート:\n[C](20250120.md)"
+        block_note = "[C](20250120.md)"
         block_sk = "(索引):\n[B](20250111.md)"
         if first_is_note:
             swapped = a_path.read_text(encoding="utf-8").replace(
-                block_note + "\n" + block_sk, block_sk + "\n" + block_note)
+                block_note + "\n\n" + block_sk, block_sk + "\n\n" + block_note)
         else:
             swapped = a_path.read_text(encoding="utf-8").replace(
-                block_sk + "\n" + block_note, block_note + "\n" + block_sk)
+                block_sk + "\n\n" + block_note, block_note + "\n\n" + block_sk)
         check(swapped != text1, "テスト前提: 並べ替えの置換が実際に効いた")
         a_path.write_text(swapped, encoding="utf-8")
         v2.sync_vault(root)
         _u2, dn2 = regions(a_path.read_text(encoding="utf-8"))
-        idx_note2 = dn2.index("ノート:")
+        idx_note2 = dn2.index("[C](20250120.md)")
         idx_sk2 = dn2.index("(索引):")
         new_first_is_note = idx_note2 < idx_sk2
         check(new_first_is_note != first_is_note,

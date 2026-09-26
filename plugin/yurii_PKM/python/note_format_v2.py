@@ -387,7 +387,8 @@ def _links_in(lines: list[str]) -> list[str]:
 # ---------------------------------------------------------------------------
 
 def _render_section(t: str, entries: list[tuple[str, str, str | None]]) -> list[str]:
-    """常にブロック形で書く。
+    """既定の `ノート` はラベルを書かず、リンクだけを裸で並べる
+    （`ノート:` 見出しは不要、という方針）。それ以外はブロック形で書く。
 
         ラベル:
         [表示名](target.md)
@@ -397,30 +398,48 @@ def _render_section(t: str, entries: list[tuple[str, str, str | None]]) -> list[
     """
     if not entries:
         return []
-    # ラベルが `;` 終端（例: `きっかけ;`）ならそのまま、それ以外は `:` を付ける。
-    out = [t if t.endswith(";") else f"{t}:"]
+    out: list[str] = []
+    if t != "ノート":  # `ノート;` など `;` 付きは明示なので見出しを残す
+        # ラベルが `;` 終端（例: `きっかけ;`）ならそのまま、それ以外は `:` を付ける。
+        out.append(t if t.endswith(";") else f"{t}:")
     for ti, tg, ann in entries:
         s = f"[{ti}]({tg})"
         out.append(s + f" — {ann}" if ann else s)
     return out
 
 
+def _join_blocks(blocks: list[list[str]]) -> list[str]:
+    """ブロック（連続する行のまとまり）を空行 1 つで区切って繋ぐ。"""
+    out: list[str] = []
+    for i, blk in enumerate(blocks):
+        if not blk:
+            continue
+        if i > 0:
+            out.append("")
+        out += blk
+    return out
+
+
 def _render_group(d: dict[str, list], is_down: bool = False) -> list[str]:
     """上側（Parent）の並びは グループ → ノート → その他（手で書いた ワード:
-    など）の順に固定し、ブロックの間を空行で区切る。下側（Child）は完全に
-    自由で、d の順序（＝ユーザーが最後に書いた/並べ替えた順）をそのまま尊重する
-    （`関連` は対称、`バックリンク` は最後）。
+    など）の順に固定する。下側（Child）は d の順序（＝ユーザーが最後に
+    書いた/並べ替えた順）をそのまま尊重する（`関連` は対称、`バックリンク`
+    は最後）。どちらもブロックの間は空行 1 つで区切る（既定の `ノート` は
+    見出しが無いので、空行が無いと前のブロックのリンクと区別できないため）。
     """
-    out: list[str] = []
     if is_down:
-        for t in d:
-            if t in _RESERVED:
-                continue
-            if d.get(t):
-                out += _render_section(t, d[t])
+        blocks = [
+            _render_section(t, d[t])
+            for t in d if t not in _RESERVED and d.get(t)
+        ]
         if d.get(BACKLINK):
-            out += _render_section(BACKLINK, d[BACKLINK])
-        out += list(d.get(_EXTRA, []))
+            blocks.append(_render_section(BACKLINK, d[BACKLINK]))
+        out = _join_blocks(blocks)
+        extra = list(d.get(_EXTRA, []))
+        if extra:
+            if out:
+                out.append("")
+            out += extra
         return out
 
     labels: list[str] = []
@@ -432,13 +451,11 @@ def _render_group(d: dict[str, list], is_down: bool = False) -> list[str]:
             continue
         if d.get(t):
             labels.append(t)
-    for i, t in enumerate(labels):
-        if i > 0:
-            out.append("")
-        out += _render_section(t, d[t])
+    blocks = [_render_section(t, d[t]) for t in labels]
+    out = _join_blocks(blocks)
     extra = list(d.get(_EXTRA, []))
     if extra:
-        if labels:
+        if out:
             out.append("")
         out += extra
     return out
