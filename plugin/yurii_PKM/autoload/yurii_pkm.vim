@@ -460,13 +460,51 @@ function! s:guide_template() abort
         \ ]
 endfunction
 
-" index.md と操作ガイドをまとめて作る（ガイドは無ければ作る）。
+" 操作ガイドを最新のテンプレートへ更新する。無ければ作る。既存の time 行は
+" 引き継いで、内容が変わったときだけ書き換える（毎回の無駄な差分を避ける）。
+function! s:refresh_guide(root) abort
+  let l:guide = a:root . s:sep() . s:guide_name
+  let l:new = s:guide_template()
+  if filereadable(l:guide)
+    let l:old = readfile(l:guide)
+    let l:old_time = matchstr(join(l:old, "\n"), '^time:.*$')
+    if !empty(l:old_time)
+      call map(l:new, 'v:val =~# "^time:" ? l:old_time : v:val')
+    endif
+    if l:old ==# l:new
+      return
+    endif
+  endif
+  call writefile(l:new, l:guide)
+endfunction
+
+" 公開: 既存の操作ガイドを最新にする（VimEnter 用。無ければ何もしない）。
+function! yurii_pkm#refresh_guide() abort
+  let l:root = s:get_pkm_root()
+  if empty(l:root) || !isdirectory(l:root)
+    return
+  endif
+  if !filereadable(l:root . s:sep() . s:guide_name)
+    return
+  endif
+  call s:refresh_guide(l:root)
+endfunction
+
+" 公開: 操作ガイドを作り直す（無ければ作る。:YuriiGuide 用）。
+function! yurii_pkm#write_guide() abort
+  let l:root = s:get_pkm_root()
+  if empty(l:root) || !isdirectory(l:root)
+    echo 'yurii_PKM: PKM root 未設定'
+    return
+  endif
+  call s:refresh_guide(l:root)
+  echo 'yurii_PKM: 操作ガイドを更新: ' . s:guide_name
+endfunction
+
+" index.md と操作ガイドをまとめて作る（ガイドは常に最新へ）。
 function! s:write_index_and_guide(root) abort
   let l:index = s:index_path(a:root)
-  let l:guide = a:root . s:sep() . s:guide_name
-  if !filereadable(l:guide)
-    call writefile(s:guide_template(), l:guide)
-  endif
+  call s:refresh_guide(a:root)
   call writefile(s:index_template(), l:index)
   call s:mark_index_created()
 endfunction

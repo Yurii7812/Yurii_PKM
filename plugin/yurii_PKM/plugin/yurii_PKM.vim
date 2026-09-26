@@ -153,6 +153,7 @@ command!          SortYomi   call yurii_pkm#sort_yomi()
 command! -range=0 -bang SortTime call yurii_pkm#sort_time(<bang>0, <line1>, <line2>, <range>)
 command!          YuriiIndex call yurii_pkm#open_index()
 command!          YuriiChooseIndexDir call yurii_pkm#choose_index_root()
+command!          YuriiGuide call yurii_pkm#write_guide()
 command!          YuriiChooseIndex call yurii_pkm#choose_index_root()
 command! -nargs=? ExpandLinks call yurii_pkm#expand_s_under_cursor(<q-args>)
 command!          JumpLastLinkBeforeParent call yurii_pkm#jump_last_link_before_up()
@@ -561,6 +562,12 @@ augroup END
 augroup yurii_pkm_startup_root_init
   autocmd!
   autocmd VimEnter * ++once call yurii_pkm#startup_restore_root()
+augroup END
+
+" 起動時に操作ガイドを最新のテンプレートへ更新（プラグイン更新に追従）。
+augroup yurii_pkm_guide_refresh
+  autocmd!
+  autocmd VimEnter * ++once call yurii_pkm#refresh_guide()
 augroup END
 
 augroup yurii_pkm_startup_prefix_check
