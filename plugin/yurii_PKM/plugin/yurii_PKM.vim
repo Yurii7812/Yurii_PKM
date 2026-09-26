@@ -406,9 +406,9 @@ function! s:setup_table_keys() abort
   if &l:filetype !=# 'markdown' && &l:filetype !=# 'vimwiki'
     return
   endif
-  inoremap <buffer><silent> <Tab>   <C-o>:call yurii_pkm#table_tab_action()<CR>
-  inoremap <buffer><silent> <S-Tab> <C-o>:call yurii_pkm#table_stab_action()<CR>
-  inoremap <buffer><silent> <CR>    <C-o>:call yurii_pkm#table_cr_action()<CR>
+  inoremap <buffer><silent> <Tab>   <Cmd>call yurii_pkm#table_tab_action()<CR>
+  inoremap <buffer><silent> <S-Tab> <Cmd>call yurii_pkm#table_stab_action()<CR>
+  inoremap <buffer><silent> <CR>    <Cmd>call yurii_pkm#table_cr_action()<CR>
   " <leader>t + 1文字: テーブル操作
   "   ta  整形          te  行編集       tc  CSV編集
   "   tdr 行削除        tdc 列削除
