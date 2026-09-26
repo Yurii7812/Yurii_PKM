@@ -648,29 +648,14 @@ function! yurii_pkm#startup_restore_root() abort
       return
     endif
 
+    " root は覚えているが Index が無い → 勝手には作らず、どこに作るか・
+    " 作ってよいかを聞く（s:setup_root_and_index が両方を尋ねる）。
     echom 'Remembered index not found: ' . s:index_path(l:root)
     let g:yurii_pkm_root = l:root
     call s:save_persisted_root(l:root)
-    let l:ans = tolower(trim(input('Create index.md? y/n: ')))
-    if l:ans !=# 'y'
-      echom 'index.md not created'
-      return
-    endif
-    if !isdirectory(l:root)
-      return
-    endif
-    let l:index = s:index_path(l:root)
     call s:setup_persistent_undo_for_root(l:root)
-    call s:write_index_and_guide(l:root)
-    call yurii_pkm#clear_title_cache()
-    execute 'cd ' . fnameescape(l:root)
-    if s:consume_index_created_flag()
-      call s:open_index_with_delay(l:index)
-    else
-      call yurii_pkm#push_history()
-      execute 'edit ' . fnameescape(l:index)
-    endif
-    echom 'Created: ' . l:index
+    call s:setup_root_and_index(1)
+    return
   finally
     let s:startup_root_recovery_active = 0
   endtry
