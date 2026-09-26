@@ -2364,7 +2364,7 @@ endfunction
 "   スコープ（ローカル / グローバル）は候補が何かの違いでしかない。
 " =============================================================================
 function! s:rlp_key(winid, key) abort
-  " --- 状態に関係なく同じ意味（記号なので打鍵を邪魔しない） ---
+  " --- 状態に関係なく同じ意味（特殊キー・矢印・⇥） ---
   if a:key ==# "\<Tab>"
     call s:rlp_switch_scope()
     return 1
@@ -2382,14 +2382,6 @@ function! s:rlp_key(winid, key) abort
   elseif a:key ==# "\<PageUp>"
     if s:rlp_pvwin >= 0 | call win_execute(s:rlp_pvwin, "normal! \<C-b>") | endif
     return 1
-  elseif a:key ==# '+'
-    call s:rlp_op('child')  | return 1
-  elseif a:key ==# '-'
-    call s:rlp_op('parent') | return 1
-  elseif a:key ==# '*'
-    call s:rlp_op('mark')   | return 1
-  elseif a:key ==# '='
-    call s:rlp_op('yank')   | return 1
   endif
 
   " ===== 入力状態: 打つとクエリ =====
@@ -2427,7 +2419,16 @@ function! s:rlp_key(winid, key) abort
   endif
 
   " ===== コマンド状態: 打たない。ローカル / グローバルで同じキー =====
-  if a:key ==# "\<Esc>" || a:key ==# "\<C-c>"
+  " 記号は入力中はクエリ文字として打てるので、コマンドとして効くのはここだけ。
+  if a:key ==# '+'
+    call s:rlp_op('child')  | return 1
+  elseif a:key ==# '-'
+    call s:rlp_op('parent') | return 1
+  elseif a:key ==# '*'
+    call s:rlp_op('mark')   | return 1
+  elseif a:key ==# '='
+    call s:rlp_op('yank')   | return 1
+  elseif a:key ==# "\<Esc>" || a:key ==# "\<C-c>"
     call popup_close(s:rlp_win, {'cancel': 1})
     return 1
   elseif a:key ==# "\<CR>"

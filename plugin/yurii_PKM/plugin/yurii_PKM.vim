@@ -244,7 +244,8 @@ nnoremap <silent> \0       <Cmd>call yurii_pkm#hub_list()<CR>
 "   打つ（入力）
 "     打つ=絞る（ラベルが無いので数字もクエリに入る）/ ⌫ 消す(空なら戻る)
 "     ↑↓ 選択 / → 潜る / ← 戻る / ⏎ 入力終了 / ⎋ 消して終了 / ⇥ スコープ
-"     + - 子親に追加 / * マーク / = ヤンク（記号なので打鍵を邪魔しない）
+"     + - * = も記号としてそのまま打てる（子親追加・マーク・ヤンクは ⏎ で
+"     入力を終えたコマンド状態か、英字キー c/p/m/y で行う）
 " <S-Space> … ポップアップを出さずカーソルだけ次の関係リンクへ（従来動作）。
 nnoremap <silent> <Space>   <Cmd>call yurii_pkm#relation_link_popup()<CR>
 nnoremap <silent> <S-Space> <Cmd>call yurii_pkm#jump_relation_link(1)<CR>
