@@ -166,6 +166,9 @@ def _fm_attr(fm: list[str]) -> str:
 
 def _looks_like_header(m: re.Match, lines: list[str], idx: int) -> bool:
     inline = m.group(3).strip()
+    # `語:: …` / `語:; …` は、余分な `:` / `;` 1 文字を落としてから見る。
+    if inline.startswith(":") or inline.startswith(";"):
+        inline = inline[1:].lstrip()
     if inline:
         return bool(LINK_LINE_RE.match(inline))
     for j in range(idx + 1, min(idx + 4, len(lines))):
@@ -185,9 +188,14 @@ def _header_label(m: re.Match) -> str:
     しないと `:` の「相手に `(group)` でミラー」が効かなくなるため。
     """
     name = RELATION_ALIASES.get(m.group(1).strip(), m.group(1).strip())
-    if m.group(2) == ":":
-        return name + ":" if name == CATEGORY_ATTR else name
-    return name + ";"
+    if m.group(2) == ";":
+        return name + ";"
+    rest = m.group(3).lstrip()
+    if rest.startswith(":"):
+        return name + "::"   # `語::` … 両方の同じセクションに `語:`
+    if rest.startswith(";"):
+        return name + ":;"   # `語:;` … 相手側も `語:;`（括弧なし・終端）
+    return name + ":" if name == CATEGORY_ATTR else name
 
 
 def _parse_sections(lines: list[str], allow_body: bool):
@@ -204,7 +212,10 @@ def _parse_sections(lines: list[str], allow_body: bool):
             cur = _header_label(m)
             seen_header = True
             sections.setdefault(cur, [])
-            lm = LINK_LINE_RE.match(m.group(3).strip())
+            inline = m.group(3).strip()
+            if inline.startswith(":") or inline.startswith(";"):
+                inline = inline[1:].lstrip()  # `語:: …` / `語:; …` の余分な 1 文字
+            lm = LINK_LINE_RE.match(inline)
             if lm:
                 sections[cur].append((lm.group(1), lm.group(2), lm.group(3) or None))
             i += 1
@@ -422,9 +433,12 @@ def _render_section(t: str, entries: list[tuple[str, str, str | None]]) -> list[
     # 分かるので見出しを書かない。`グループ;` / `ノート;` のように `;` を
     # 明示した時だけ見出しを残す（自動ミラー抑止の意思表示のため）。
     if t not in ("ノート", CATEGORY_ATTR):
-        # ラベルが `;` / `:` 終端（例: `きっかけ;` / `group:`）ならそのまま、
-        # それ以外は `:` を付ける。
-        out.append(t if (t.endswith(";") or t.endswith(":")) else f"{t}:")
+        if t.endswith("::"):
+            out.append(t[:-2] + ":")   # `語::` は `語:` として出す（両側）
+        elif t.endswith(":;") or t.endswith(";") or t.endswith(":"):
+            out.append(t)              # `語:;` / `語;` / `group:` はそのまま
+        else:
+            out.append(f"{t}:")
     for ti, tg, ann in entries:
         s = f"[{ti}]({tg})"
         out.append(s + f" — {ann}" if ann else s)
@@ -523,7 +537,9 @@ def _render_down_preserving(note: Note, key_fn) -> list[str] | None:
     def header_line(label: str) -> str | None:
         if label in ("ノート", CATEGORY_ATTR):
             return None  # 見出しを書かない（位置で表す裸リンク）
-        if label.endswith(";") or label.endswith(":"):
+        if label.endswith("::"):
+            return label[:-2] + ":"   # `語::` は `語:` で出す（両側）
+        if label.endswith(":;") or label.endswith(";") or label.endswith(":"):
             return label
         return f"{label}:"
 
@@ -543,7 +559,18 @@ def _render_down_preserving(note: Note, key_fn) -> list[str] | None:
 
     for i, ln in enumerate(raw):
         s = ln.strip()
-        lm = LINK_LINE_RE.match(s)
+        m = HEADER_RE.match(s)
+        lm = None
+        if m and _looks_like_header(m, raw, i):
+            # 見出し行。インラインのリンクがあればそれを 1 本として扱う。
+            rest = m.group(3).lstrip()
+            if rest.startswith(":") or rest.startswith(";"):
+                rest = rest[1:].lstrip()
+            lm = LINK_LINE_RE.match(rest)
+            if lm is None:
+                continue  # 見出しのみ（リンクは以降の行）。見出しは出し直す
+        else:
+            lm = LINK_LINE_RE.match(s)
         if lm:
             k = key_fn(lm.group(2))
             if k is not None and k in desired and k not in used:
@@ -557,10 +584,7 @@ def _render_down_preserving(note: Note, key_fn) -> list[str] | None:
             out.append(ln)  # 解決できないリンクはそのまま残す
             prev_label = None
             continue
-        # リンク行以外（空行・見出し・散文）
-        m = HEADER_RE.match(s)
-        if m and _looks_like_header(m, raw, i):
-            continue  # 管理対象の見出しはスキップ（リンク直前に出す）
+        # リンク行以外（空行・散文）
         out.append(ln)
         if s != "":
             prev_label = None  # 散文などでブロックが切れる
@@ -763,6 +787,26 @@ def sync_vault(root) -> int:
     body_links: dict[str, set[str]] = {}
     sym_face: dict[tuple[str, frozenset], set[str]] = {}  # (関係, {id,id}) -> 端点
 
+    # `語::` のベース語を集める。対称なので、reciprocal 側の素の `語:` も
+    # 対称として扱わないと 2 回目の sync で消えてしまう。`::` は描画で `語:` に
+    # 化けて消えるので、前回の状態（3 つ組＝対称）からも引き継ぐ。
+    prev_state = _load_state(root)
+    dc_labels: set[str] = {r[1] for r in prev_state if len(r) == 3}
+    for _n in by_path.values():
+        for _d in (_n.up, _n.down):
+            for _t in _d:
+                if _t.endswith("::"):
+                    dc_labels.add(_t[:-2])
+
+    def _sym_label(t: str) -> str | None:
+        if t in SYMMETRIC:
+            return t
+        if t.endswith("::"):
+            return t[:-2]
+        if t in dc_labels:
+            return t
+        return None
+
     for k, n in by_path.items():
         sid = ids.get(k)
         if sid is None:
@@ -775,9 +819,10 @@ def sync_vault(root) -> int:
                 if tid is None:
                     up_unresolved[k].setdefault(t, []).append((ti, tg, ann))
                     continue
-                if t in SYMMETRIC:
+                _sym = _sym_label(t)
+                if _sym is not None:
                     if tid != sid:
-                        sym_face.setdefault((t, frozenset((sid, tid))), set()).add(sid)
+                        sym_face.setdefault((_sym, frozenset((sid, tid))), set()).add(sid)
                     continue
                 up_label[(sid, tid)] = t
                 if ann:
@@ -789,9 +834,10 @@ def sync_vault(root) -> int:
                 src_id = rid(tg, n.path.parent)
                 if src_id is None:
                     continue
-                if t in SYMMETRIC:
+                _sym = _sym_label(t)
+                if _sym is not None:
                     if src_id != sid:
-                        sym_face.setdefault((t, frozenset((sid, src_id))), set()).add(sid)
+                        sym_face.setdefault((_sym, frozenset((sid, src_id))), set()).add(sid)
                     continue
                 down_label[(src_id, sid)] = t
         bl: set[str] = set()
@@ -801,10 +847,10 @@ def sync_vault(root) -> int:
                 bl.add(tid)
         body_links[sid] = bl
 
-    prev = _load_state(root)
+    prev = prev_state
     prev_pairs = {(a, b) for r in prev if len(r) == 2 for a, b in [r]}
-    prev_pairs |= {(r[0], r[2]) for r in prev if len(r) == 3 and r[1] not in SYMMETRIC}
-    prev_sym = {r for r in prev if len(r) == 3 and r[1] in SYMMETRIC}
+    prev_pairs |= {(r[0], r[2]) for r in prev if len(r) == 3 and _sym_label(r[1]) is None}
+    prev_sym = {r for r in prev if len(r) == 3 and _sym_label(r[1]) is not None}
 
     # --- 有向関係の解決（ペア単位） ---
     present: set[tuple[str, str]] = set()
@@ -844,8 +890,14 @@ def sync_vault(root) -> int:
         `ノート` 自体は括弧を付けずそのまま）。何も書かれていなければ
         `ノート`。
         """
-        if raw is None or raw.endswith(";"):
+        if raw is None:
             return "ノート"
+        if raw.endswith(":;"):
+            return raw  # `語:;` は相手側も `語:;`（括弧なし・終端）
+        if raw.endswith(";"):
+            return "ノート"  # `語;` は相手に書かない
+        if raw.endswith("::"):
+            return raw[:-2] + ":"  # 対称ラベル（両側 `語:`）
         base = raw[:-1] if raw.endswith(":") else raw  # `group:` -> `group`
         return base if base == "ノート" else f"({base})"
 
@@ -967,27 +1019,27 @@ def sync_vault(root) -> int:
             for a in incoming.get(nid, []):
                 if (nid, a) in present:  # 相互は下側に出さない
                     continue
-                src_raw = up_label.get((a, nid)) or down_label.get((a, nid))
+                src_up = up_label.get((a, nid))       # 相手（a）側のラベル
+                src_down = down_label.get((a, nid))   # 自分側のラベル
+                src_raw = src_up or src_down
                 # 下側（Child）では `グループ` を普通のノートとして扱う。
                 # 位置をガチガチに固定するのは Parent（上側）の表示だけ。
-                if src_raw is not None and src_raw.rstrip(";") == CATEGORY_ATTR:
-                    src_raw = "ノート" + (";" if src_raw.endswith(";") else "")
-                if src_raw is not None and src_raw.endswith(";"):
-                    # 相手（a）が `語;` で書いている = 「このラベルは相手側に
-                    # 見せない」の意（§4）。既に自動ミラーで入った行が残って
-                    # いても、sticky より `;` の意図を優先して既定の『ノート』
-                    # へ戻す（そうしないと一度ミラーされたラベルが消せない）。
+                if src_up is not None and src_up.endswith(":;"):
+                    # 相手（a）が `語:;` … こちら側も `語:;`（括弧なし・終端）
+                    lbl = src_up
+                elif src_up is not None and src_up.endswith(";"):
+                    # 相手（a）が `語;` = 「このラベルは相手側に見せない」の意。
+                    # 既に自動ミラーで入った行が残っていても既定の『ノート』へ戻す。
                     lbl = "ノート"
                 elif a in orig_down_label:
                     cur = orig_down_label[a]
+                    m = _mirrored_default(src_raw)
                     if _is_mirror(cur):
-                        # 自動ミラー `(語)` は相手の現在の書き方に追従（変更・削除も）
-                        lbl = _mirrored_default(src_raw)
-                    elif cur == "ノート" and _mirrored_default(src_raw) != "ノート":
-                        # 既定の裸リンクは、相手が `語:` に変えたら自動ミラーへ格上げ
-                        lbl = _mirrored_default(src_raw)
+                        lbl = m  # 自動ミラー `(語)` は相手の変更・削除に追従
+                    elif cur == "ノート" and m != "ノート":
+                        lbl = m  # 既定の裸リンクは相手が `語:` なら自動ミラーへ格上げ
                     else:
-                        lbl = cur  # 手で書いたラベルは sticky
+                        lbl = cur  # 手で書いたラベルは sticky（`語;` もそのまま残す）
                 elif attr_of.get(nid) in ATTR_LABELS:
                     # §3 の例外: 容器ノード自身の そっちにとって には、実際に
                     # 選んだ関係名がそのまま並ぶ（ノート の既定値に落とさない）。

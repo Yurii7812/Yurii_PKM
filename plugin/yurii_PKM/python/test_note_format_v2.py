@@ -154,6 +154,32 @@ def test_semicolon_clears_previous_mirrored_label() -> None:
               "`;` なので相手側は既定の裸リンクへ戻る（sticky より優先）")
 
 
+def test_colon_suffix_variants() -> None:
+    print("`:` は相手 (語): / `:;` は相手も 語:; / `;` は書かない / `::` は両方 語:")
+    # `:;` … 相手側も `語:;`（括弧なし）
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        note(root / "20250104.md", "A", down="foo:; [B](20250111.md)")
+        note(root / "20250111.md", "B")
+        v2.sync_vault(root)
+        up, _dn = regions((root / "20250111.md").read_text(encoding="utf-8"))
+        check("foo:;" in up, "`:;` は相手側も `foo:;`")
+    # `::` … 両方の同じセクションに `語:`
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        note(root / "20250104.md", "A", down="bar:: [B](20250111.md)")
+        note(root / "20250111.md", "B")
+        v2.sync_vault(root)
+        _ua, dna = regions((root / "20250104.md").read_text(encoding="utf-8"))
+        _ub, dnb = regions((root / "20250111.md").read_text(encoding="utf-8"))
+        check("bar:\n[B](20250111.md)" in dna, "A の Child に `bar:`")
+        check("bar:\n[A](20250104.md)" in dnb, "B の Child にも `bar:`")
+        v2.sync_vault(root)
+        check("bar:\n[A](20250104.md)" in regions(
+            (root / "20250111.md").read_text(encoding="utf-8"))[1],
+            "`::` は 2 回目も安定（idempotent）")
+
+
 def test_group_label_colon_and_semicolon() -> None:
     print("group: は相手側に (group) でミラー、group; は相手側に書かない")
     with tempfile.TemporaryDirectory() as d:
