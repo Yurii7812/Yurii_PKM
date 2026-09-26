@@ -486,12 +486,12 @@ def _squeeze_blanks(lines: list[str]) -> list[str]:
 
 
 def _render_down_preserving(note: Note, key_fn) -> list[str] | None:
-    """Child（下側）を「リンクの並びを変えずに」組み立てる。
+    """Child（下側）をできるだけ「元のまま」に保って組み立てる。
 
-    既存のリンク行の**順序**をそのまま保ち、ラベルと表示名だけ更新する。
-    消えた関係の行は取り除き、新しい関係の行は末尾に足す。並べ替え・
-    まとめ直し（離れた同ラベルの融合）は一切しない。位置はユーザーが
-    h/Enter/o/p と手編集で決めるもので、sync は動かさない。
+    空行・見出し・並びをそのまま残し、リンク行は位置を動かさず表示名だけ更新。
+    見出しは必要なら同じ位置で書き換える（既定に戻る場合は見出し行を外す）。
+    消えた関係の行だけ取り除き、新しい関係の行は末尾に足す。並べ替え・
+    まとめ直しは一切しない。位置はユーザーが h/Enter/o/p と手編集で決める。
     """
     raw = note.down_raw
     if raw is None:
@@ -508,51 +508,75 @@ def _render_down_preserving(note: Note, key_fn) -> list[str] | None:
         for disp, tg, ann in entries:
             desired.setdefault(key(tg), (disp, tg, ann, label))
 
-    # 元ファイルに現れる順のリンク（(key, target_text, annotation, 表示名)）。
-    ordered: list[tuple[object, str, str | None, str]] = []
-    used: set = set()
-    for ln in raw:
-        lm = LINK_LINE_RE.match(ln.strip())
-        if lm:
-            k = key_fn(lm.group(2))
-            if k is None:
-                continue
-            if k in desired and k not in used:
-                used.add(k)
-                ordered.append((k, lm.group(2), lm.group(3) or None, lm.group(1)))
-            continue
-        # 見出し行などにインラインでリンクがある場合（使用済みに記録）
-        for m in ANY_LINK_RE.finditer(ln):
-            k = key_fn(m.group(1))
-            if k is not None and k in desired:
-                if k not in used:
-                    used.add(k)
-                    ordered.append((k, m.group(1), None, m.group(0)))
-    # まだ出ていない新しい関係（末尾に足す）
-    for k, (disp, tg, ann, _label) in desired.items():
-        if k not in used:
-            used.add(k)
-            ordered.append((k, tg, None, disp))
+    def header_line(label: str) -> str | None:
+        if label in ("ノート", "グループ"):
+            return None  # 見出しを書かない
+        return label if label.endswith(";") else f"{label}:"
 
     out: list[str] = []
-    prev_label: str | None = None
-    for k, raw_tg, raw_ann, raw_text in ordered:
-        disp, _tg, ann, label = desired[k]
-        ann2 = ann if ann else raw_ann
-        s = f"[{disp}]({raw_tg})"
-        line = s + f" — {ann2}" if ann2 else s
-        if label != prev_label:
-            if out:
-                out.append("")
-            if label not in ("ノート", "グループ"):
-                out.append(label if label.endswith(";") else f"{label}:")
-            prev_label = label
-        out.append(line)
-    extra = list(note.down.get(_EXTRA, []))
-    if extra:
-        if out:
+    used: set = set()
+    pending: str | None = None   # 直近の見出し行（リンクが来たら確定して出す）
+    pending_open = False
+
+    def flush_pending() -> None:
+        nonlocal pending, pending_open
+        if pending is not None and not pending_open:
+            out.append(pending)  # リンクが続かなかった見出しは元のまま
+        pending = None
+        pending_open = False
+
+    for i, ln in enumerate(raw):
+        s = ln.strip()
+        lm = LINK_LINE_RE.match(s)
+        if lm:
+            k = key_fn(lm.group(2))
+            if k is not None and k in desired and k not in used:
+                used.add(k)
+                disp, _tg, ann, label = desired[k]
+                if pending is not None and not pending_open:
+                    hl = header_line(label)
+                    if hl is not None:
+                        out.append(hl)
+                    pending_open = True
+                ann2 = ann if ann else (lm.group(3) or None)
+                t = f"[{disp}]({lm.group(2)})"
+                out.append(t + f" — {ann2}" if ann2 else t)
+                continue
+            if k is not None:
+                continue  # 消えた関係 or 重複
+            # 解決できないリンクはそのまま残す
+            flush_pending()
+            out.append(ln)
+            continue
+        # リンク行以外（空行・見出し・散文）
+        flush_pending()
+        m = HEADER_RE.match(s)
+        if m and _looks_like_header(m, raw, i):
+            pending = ln
+            continue
+        out.append(ln)
+        # 見出し行内のインラインリンクも使用済みに記録
+        for mm in ANY_LINK_RE.finditer(ln):
+            kk = key_fn(mm.group(1))
+            if kk is not None and kk in desired:
+                used.add(kk)
+    flush_pending()
+
+    added: list[str] = []
+    for k, (disp, tg, ann, label) in desired.items():
+        if k in used:
+            continue
+        hl = header_line(label)
+        if hl is not None and added and added[-1] != "":
+            added.append("")
+        if hl is not None:
+            added.append(hl)
+        t = f"[{disp}]({tg})"
+        added.append(t + f" — {ann}" if ann else t)
+    if added:
+        if out and out[-1].strip() != "":
             out.append("")
-        out += extra
+        out += added
     return out
 
 
